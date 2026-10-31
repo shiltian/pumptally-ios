@@ -1,35 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#06343A"/>
-      <stop offset="1" stop-color="#07223B"/>
+    <linearGradient id="background" x1="0" y1="0" x2="960" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#103C42"/>
+      <stop offset="1" stop-color="#102F42"/>
     </linearGradient>
-
-    <linearGradient id="mark" x1="146" y1="224" x2="863" y2="791" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#00D4D4"/>
-      <stop offset="1" stop-color="#32ADE6"/>
+    <linearGradient id="pump" x1="287" y1="220" x2="680" y2="803" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E4F3DE"/>
+      <stop offset="1" stop-color="#72C6AC"/>
     </linearGradient>
-
-    <mask id="pumpMask">
-      <rect x="0" y="0" width="1024" height="1024" fill="black"/>
-      <g fill="white">
-        <rect x="172" y="224" width="226" height="532" rx="56"/>
-        <rect x="146" y="724" width="278" height="68" rx="34"/>
-        <path d="M 392 300 C 464 328, 470 424, 440 506" stroke="white" stroke-width="50"
-              stroke-linecap="round" fill="none"/>
-      </g>
-      <rect x="212" y="284" width="140" height="140" rx="34" fill="black"/>
-    </mask>
   </defs>
 
-  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#background)"/>
 
-  <rect x="0" y="0" width="1024" height="1024" fill="url(#mark)" mask="url(#pumpMask)"/>
+  <!-- A conventional fuel dispenser makes the purpose readable at a glance. -->
+  <circle cx="692" cy="334" r="274" fill="#4A9E8A" opacity="0.16"/>
 
-  <g stroke="url(#mark)" stroke-width="52" stroke-linecap="round" fill="none">
-    <path d="M 620 288 L 620 764"/>
-    <path d="M 715 288 L 715 764"/>
-    <path d="M 810 288 L 810 764"/>
-    <path d="M 592 672 L 838 402"/>
-  </g>
+  <!-- Hose and nozzle sit behind the dispenser body. -->
+  <path d="M 655 302
+           C 722 300 747 337 742 404
+           L 731 518
+           C 727 562 754 576 792 585"
+        fill="none" stroke="#72C6AC" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 766 558
+           L 816 581
+           L 857 508
+           L 886 524
+           L 905 490
+           L 822 443
+           L 752 559 Z"
+        fill="#E4F3DE" stroke="#102F42" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- Main pump housing and its broad base. -->
+  <path d="M 294 276
+           C 294 232 329 198 373 198
+           L 573 198
+           C 617 198 652 232 652 276
+           L 652 747
+           L 294 747 Z"
+        fill="url(#pump)"/>
+  <path d="M 264 746
+           C 264 724 282 706 304 706
+           L 642 706
+           C 664 706 682 724 682 746
+           L 682 785
+           C 682 807 664 825 642 825
+           L 304 825
+           C 282 825 264 807 264 785 Z"
+        fill="url(#pump)"/>
+
+  <!-- The dark display contains a fuel drop and a recorded/check mark. -->
+  <rect x="344" y="285" width="258" height="197" rx="34" fill="#15484C"/>
+  <path d="M 407 321
+           C 407 321 373 363 373 388
+           C 373 412 390 430 413 430
+           C 436 430 453 412 453 388
+           C 453 363 419 321 419 321 Z"
+        fill="#F4B95E"/>
+  <path d="M 481 386 L 507 411 L 563 350"
+        fill="none" stroke="#72C6AC" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Simple record lines reinforce the tracking purpose without tiny text. -->
+  <rect x="356" y="538" width="203" height="20" rx="10" fill="#15484C" opacity="0.50"/>
+  <rect x="356" y="587" width="245" height="20" rx="10" fill="#15484C" opacity="0.36"/>
+  <rect x="356" y="636" width="166" height="20" rx="10" fill="#15484C" opacity="0.25"/>
 </svg>
