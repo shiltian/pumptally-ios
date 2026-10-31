@@ -56,6 +56,7 @@ enum FuelingRecordPersistenceService {
                         throw FuelingRecordPersistenceError.insertedRelationshipUnavailable
                     }
                     StatisticsCacheService.updateForNewRecord(record, vehicle: vehicle)
+                    try SyncChangeJournal.enqueue(record, in: context)
                 }
             )
         } catch {
@@ -103,6 +104,9 @@ enum FuelingRecordPersistenceService {
                         throw FuelingRecordPersistenceError.insertedRelationshipUnavailable
                     }
                     StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+                    for record in records {
+                        try SyncChangeJournal.enqueue(record, in: context)
+                    }
                 }
             )
         } catch {
@@ -143,6 +147,7 @@ enum FuelingRecordPersistenceService {
                 },
                 afterPendingChanges: { _ in
                     StatisticsCacheService.updateForEditedRecord(vehicle: vehicle)
+                    try SyncChangeJournal.enqueue(record, in: context)
                 }
             )
         } catch {
@@ -177,6 +182,7 @@ enum FuelingRecordPersistenceService {
                         throw FuelingRecordPersistenceError.deletedRelationshipUnavailable
                     }
                     StatisticsCacheService.updateForDeletedRecord(vehicle: vehicle)
+                    try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
                 }
             )
         } catch {

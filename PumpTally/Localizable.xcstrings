@@ -2635,6 +2635,7 @@
       }
     },
     "Pull failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {

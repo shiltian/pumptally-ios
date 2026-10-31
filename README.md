@@ -55,7 +55,7 @@ A native iOS app built with SwiftUI and SwiftData to track your vehicle's fuel c
 ## Architecture
 
 - **SwiftUI** views with **SwiftData** persistence
-- Manual CloudKit integration (local SwiftData is the source of truth; CloudKit acts as a mirror)
+- CKSyncEngine-backed CloudKit integration (local SwiftData is the source of truth; CloudKit acts as a mirror)
 - Statistics caching via `StatisticsCacheService` for O(1) dashboard reads
 - Shared `FuelingRecordFormView` component used by both Add and Edit flows
 - Centralized UI styling via `Font`, `LinearGradient`, and `CardModifier` extensions

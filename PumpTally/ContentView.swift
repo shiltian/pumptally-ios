@@ -64,6 +64,7 @@ struct ContentView: View {
             }
             .onChange(of: vehicles) { oldVehicles, newVehicles in
                 // If a new vehicle was added and we were empty before, navigate to it
+                guard !hasPerformedInitialNavigation else { return }
                 if oldVehicles.isEmpty && !newVehicles.isEmpty {
                     if let first = newVehicles.first {
                         navigationPath.append(first)
@@ -184,7 +185,7 @@ struct EmptyVehicleView: View {
 
 #Preview {
     ContentView(importedFileURL: .constant(nil))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
         .environmentObject(CloudSyncService())
 }
 

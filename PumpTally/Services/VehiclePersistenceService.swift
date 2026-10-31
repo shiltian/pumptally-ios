@@ -36,6 +36,7 @@ enum VehiclePersistenceService {
         let vehicle = makeVehicle()
         do {
             context.insert(vehicle)
+            try SyncChangeJournal.enqueue(vehicle, in: context)
             try commit(context)
             return vehicle
         } catch {
@@ -52,8 +53,13 @@ enum VehiclePersistenceService {
     ) throws {
         try establishCleanBoundary(in: context)
         let snapshot = VehicleGraphSnapshot(vehicle: vehicle)
+        let fuelingRecords = vehicle.fuelingRecords ?? []
 
         do {
+            for record in fuelingRecords {
+                try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
+            }
+            try SyncChangeJournal.enqueue(vehicle, operation: .delete, in: context)
             context.delete(vehicle)
             context.processPendingChanges()
             try commit(context)
@@ -107,6 +113,12 @@ enum VehiclePersistenceService {
                 StatisticsCacheService.recalculateAllStatistics(for: vehicle)
             }
 
+            try SyncChangeJournal.enqueue(vehicle, in: context)
+            if unitSystem != oldUnit {
+                for record in vehicle.fuelingRecords ?? [] {
+                    try SyncChangeJournal.enqueue(record, in: context)
+                }
+            }
             try commit(context)
         } catch {
             logger.error("Failed to save vehicle settings: \(error.localizedDescription, privacy: .public)")
@@ -126,6 +138,7 @@ enum VehiclePersistenceService {
 
         do {
             for record in records {
+                try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
                 context.delete(record)
             }
             context.processPendingChanges()
@@ -155,9 +168,11 @@ enum VehiclePersistenceService {
 
         do {
             for record in records {
+                try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
                 context.delete(record)
             }
             for vehicle in vehicles {
+                try SyncChangeJournal.enqueue(vehicle, operation: .delete, in: context)
                 context.delete(vehicle)
             }
             context.processPendingChanges()

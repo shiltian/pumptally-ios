@@ -38,12 +38,24 @@ struct CloudRecordCodec {
         }
     }
 
+    /// Archives the complete record for the durable inbound-change inbox.
+    static func archiveFullRecord(_ record: CKRecord) throws -> Data {
+        try NSKeyedArchiver.archivedData(withRootObject: record, requiringSecureCoding: true)
+    }
+
+    /// Decodes a complete record archive. `CKRecord(coder:)` is reserved for
+    /// records encoded with `encodeSystemFields(with:)`, which stores metadata
+    /// fields directly rather than archiving a CKRecord root object.
+    static func unarchiveFullRecord(from data: Data) throws -> CKRecord? {
+        try NSKeyedUnarchiver.unarchivedObject(ofClass: CKRecord.self, from: data)
+    }
+
     let zoneID: CKRecordZone.ID
 
     /// Convert a Vehicle model to its exact CloudKit representation.
-    func vehicleToCKRecord(_ vehicle: Vehicle) -> CKRecord {
+    func vehicleToCKRecord(_ vehicle: Vehicle, existingRecord: CKRecord? = nil) -> CKRecord {
         let recordID = CKRecord.ID(recordName: vehicle.id.uuidString, zoneID: zoneID)
-        let record = CKRecord(recordType: RecordType.vehicle, recordID: recordID)
+        let record = existingRecord ?? CKRecord(recordType: RecordType.vehicle, recordID: recordID)
 
         record[CloudFieldKey.Vehicle.id] = vehicle.id.uuidString
         record[CloudFieldKey.Vehicle.name] = vehicle.name
@@ -93,10 +105,11 @@ struct CloudRecordCodec {
     /// Convert a FuelingRecord model to its exact CloudKit representation.
     func fuelingRecordToCKRecord(
         _ fuelingRecord: FuelingRecord,
-        vehicleRecordID: CKRecord.ID
+        vehicleRecordID: CKRecord.ID,
+        existingRecord: CKRecord? = nil
     ) -> CKRecord {
         let recordID = CKRecord.ID(recordName: fuelingRecord.id.uuidString, zoneID: zoneID)
-        let record = CKRecord(recordType: RecordType.fuelingRecord, recordID: recordID)
+        let record = existingRecord ?? CKRecord(recordType: RecordType.fuelingRecord, recordID: recordID)
 
         record[CloudFieldKey.FuelingRecord.id] = fuelingRecord.id.uuidString
         record[CloudFieldKey.FuelingRecord.date] = fuelingRecord.date

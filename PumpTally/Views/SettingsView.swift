@@ -302,9 +302,8 @@ struct SettingsView: View {
 
                 stateManager.markInitialSyncComplete()
 
-                // Subscribe to remote changes and start monitoring local saves
-                await cloudSyncService.subscribeToRemoteChanges()
-                cloudSyncService.startMonitoring(container: modelContext.container)
+                await cloudSyncService.startMonitoring(container: modelContext.container)
+                await cloudSyncService.synchronizeNow()
             } catch {
                 stateManager.iCloudSyncEnabled = false
                 isSyncToggleOn = false
@@ -342,6 +341,6 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
         .environmentObject(CloudSyncService())
 }

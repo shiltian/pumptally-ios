@@ -350,6 +350,6 @@ struct VehicleSettingsView: View {
 
 #Preview {
     VehicleSettingsView(vehicle: Vehicle(name: "Test Car"))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
         .environmentObject(CloudSyncService())
 }

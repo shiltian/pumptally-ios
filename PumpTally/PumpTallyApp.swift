@@ -21,11 +21,10 @@ struct PumpTallyApp: App {
     }
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: SchemaV2.self)
+        let schema = Schema(versionedSchema: SchemaV3.self)
 
         // Use in-memory storage for tests to avoid file system issues.
-        // Explicitly disable CloudKit — we manage iCloud sync manually via CloudSyncService
-        // so SwiftData must not attempt its own automatic CloudKit integration.
+        // SwiftData remains local-only; CloudSyncService mirrors it through CKSyncEngine.
         let modelConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: isRunningTests,
@@ -61,8 +60,8 @@ struct PumpTallyApp: App {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    // Pull remote changes when app returns to foreground
-                    pullRemoteChangesIfNeeded()
+                    // Reconcile pending local work and remote changes on foreground.
+                    synchronizeCloudChangesIfNeeded()
                 }
         }
         .modelContainer(sharedModelContainer)
@@ -99,20 +98,13 @@ struct PumpTallyApp: App {
             let available = await cloudSyncService.checkiCloudAvailability()
             guard available else { return }
 
-            // Start monitoring local saves
-            cloudSyncService.startMonitoring(container: sharedModelContainer)
-
-            // Subscribe to remote changes
-            await cloudSyncService.subscribeToRemoteChanges()
-
-            // Pull any changes that happened while the app was closed
-            let context = sharedModelContainer.mainContext
-            await cloudSyncService.pullRemoteChanges(to: context)
+            await cloudSyncService.startMonitoring(container: sharedModelContainer)
+            await cloudSyncService.synchronizeNow()
         }
     }
 
-    /// Pull remote changes if sync is enabled and iCloud is available
-    private func pullRemoteChangesIfNeeded() {
+    /// Synchronize pending local and remote changes when returning to foreground.
+    private func synchronizeCloudChangesIfNeeded() {
         let stateManager = cloudSyncService.stateManager
         guard stateManager.iCloudSyncEnabled && stateManager.initialSyncCompleted else { return }
 
@@ -120,8 +112,7 @@ struct PumpTallyApp: App {
             let available = await cloudSyncService.checkiCloudAvailability()
             guard available else { return }
 
-            let context = sharedModelContainer.mainContext
-            await cloudSyncService.pullRemoteChanges(to: context)
+            await cloudSyncService.synchronizeNow()
         }
     }
 

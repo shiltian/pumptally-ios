@@ -136,5 +136,5 @@ struct AddVehicleView: View {
 
 #Preview {
     AddVehicleView()
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
 }

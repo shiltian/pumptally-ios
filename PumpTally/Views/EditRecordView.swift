@@ -158,5 +158,5 @@ struct EditRecordView: View {
     )
 
     return EditRecordView(record: record, vehicle: vehicle)
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
 }

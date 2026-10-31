@@ -151,5 +151,5 @@ struct AddRecordView: View {
 
 #Preview {
     AddRecordView(vehicle: Vehicle(name: "Test Car"))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self], inMemory: true)
+        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
 }

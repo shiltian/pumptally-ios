@@ -172,6 +172,27 @@ struct CloudReconciliationService {
             }
         }
 
+        // Keep a local winner durable until CloudKit acknowledges it. Queue it
+        // before saving the reconciled models so a crash cannot leave the local
+        // winner persisted without the corresponding upload request.
+        for record in result.recordsToUpload {
+            let recordType: SyncChangeJournal.RecordType
+            switch record.recordType {
+            case CloudRecordCodec.RecordType.vehicle:
+                recordType = .vehicle
+            case CloudRecordCodec.RecordType.fuelingRecord:
+                recordType = .fuelingRecord
+            default:
+                continue
+            }
+            try SyncChangeJournal.enqueue(
+                recordName: record.recordID.recordName,
+                recordType: recordType,
+                operation: .save,
+                in: context
+            )
+        }
+
         try context.save()
         StatisticsCacheService.rebuildCacheForAllVehicles(in: context, force: true)
         return result

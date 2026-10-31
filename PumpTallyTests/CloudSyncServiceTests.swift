@@ -22,7 +22,7 @@ final class CloudSyncServiceTests: XCTestCase {
     private let t3 = Date(timeIntervalSince1970: 3_000_000)
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV2.self)
+        let schema = Schema(versionedSchema: SchemaV3.self)
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
@@ -240,6 +240,21 @@ final class CloudSyncServiceTests: XCTestCase {
             matches: fuelingRecord,
             vehicleID: vehicle.id
         )
+    }
+
+    func testFullCKRecordArchiveRoundTripsRootRecord() throws {
+        let service = makeService()
+        let vehicle = makeVehicle(name: "Archived Vehicle", createdAt: t1, modifiedAt: t2)
+        let original = service.vehicleToCKRecord(vehicle)
+
+        let data = try CloudRecordCodec.archiveFullRecord(original)
+        let restored = try XCTUnwrap(CloudRecordCodec.unarchiveFullRecord(from: data))
+
+        XCTAssertEqual(restored.recordType, original.recordType)
+        XCTAssertEqual(restored.recordID, original.recordID)
+        XCTAssertEqual(restored["vehicleID"] as? String, vehicle.id.uuidString)
+        XCTAssertEqual(restored["name"] as? String, "Archived Vehicle")
+        XCTAssertEqual(restored["vehicleModifiedAt"] as? Date, t2)
     }
 
     func testCKRecordMapping_omitsNilOptionalFields() {
@@ -592,6 +607,17 @@ final class CloudSyncServiceTests: XCTestCase {
         let uploaded = result.recordsToUpload.first { $0.recordID.recordName == local.id.uuidString }
         XCTAssertNotNil(uploaded, "Local-newer vehicle must be pushed back during pull")
         assertVehicleWirePayload(try XCTUnwrap(uploaded), matches: local)
+
+        let freshContext = ModelContext(context.container)
+        freshContext.autosaveEnabled = false
+        let queued = try freshContext.fetch(FetchDescriptor<SyncChange>())
+        XCTAssertTrue(
+            queued.contains {
+                $0.key == "Vehicle:\(local.id.uuidString)"
+                    && $0.operationRaw == SyncChangeJournal.Operation.save.rawValue
+            },
+            "The winning local record and its durable upload request must commit together"
+        )
     }
 
     func testApplyRemoteChanges_newerCloudOverwritesLocal() throws {
