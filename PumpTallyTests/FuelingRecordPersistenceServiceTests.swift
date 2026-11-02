@@ -131,6 +131,83 @@ private func persistenceFingerprint(_ container: ModelContainer) throws -> [Stri
 
 @MainActor
 final class FuelingRecordPersistenceServiceTests: XCTestCase {
+    func testNumericEditAndDeletionDirtyOnlyTheirDependentIntervals() async throws {
+        let fixture = try PersistenceFixture(recordCount: 800)
+        let changes = OSAllocatedUnfairLock(initialState: Set<UUID>())
+        let service = FuelingRecordPersistenceService(
+            container: fixture.container,
+            commit: { actor in
+                let context = actor.modelContext
+                context.processPendingChanges()
+                let changedIDs = Set(context.changedModelsArray.compactMap { ($0 as? FuelingRecord)?.id })
+                changes.withLock { $0 = changedIDs }
+                try context.save()
+            })
+        let targetID = fixture.recordIDs[400]
+        var reader = fixture.context
+        var record = try XCTUnwrap(reader.fetch(FetchDescriptor<FuelingRecord>()).first { $0.id == targetID })
+        var original = FuelingRecordValues(record: record)
+        var changed = original
+        changed.pricePerFuelUnit += 1
+        _ = try await service.update(
+            recordID: targetID, update: FuelingRecordUpdate(original: original, proposed: changed))
+        XCTAssertEqual(changes.withLock { $0 }, [targetID])
+        reader = fixture.context
+        record = try XCTUnwrap(reader.fetch(FetchDescriptor<FuelingRecord>()).first { $0.id == targetID })
+        original = FuelingRecordValues(record: record)
+        changed = original
+        changed.odometer += 10
+        _ = try await service.update(
+            recordID: targetID, update: FuelingRecordUpdate(original: original, proposed: changed))
+        XCTAssertEqual(changes.withLock { $0 }, [targetID, fixture.recordIDs[401]])
+        try await service.delete(recordID: targetID)
+        XCTAssertTrue(changes.withLock { $0 }.isSubset(of: [targetID, fixture.recordIDs[401]]))
+        XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<FuelingRecord>()), 800)
+    }
+
+    func testCopiedHistoryBusinessValuesSurviveNumericCacheRefreshAndReopen() async throws {
+        let source = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("statistics-copy.store")
+        try FileManager.default.copyItem(at: source, to: url)
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        var expected: [String: [String: String]] = [:]
+        func business(_ fingerprint: [String: [String: String]]) -> [String: [String: String]] {
+            let fields: Set<String> = [
+                "owner", "notes", "fillType", "date", "createdAt", "modifiedAt", "odometer", "price", "fuel", "cost",
+            ]
+            return fingerprint.filter { $0.key.hasPrefix("Record:") }.mapValues {
+                $0.filter { fields.contains($0.key) }
+            }
+        }
+        do {
+            let container = try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [config])
+            expected = business(try persistenceFingerprint(container))
+            let context = ModelContext(container)
+            let row = try XCTUnwrap(context.fetch(FetchDescriptor<FuelingRecord>()).first)
+            let before = FuelingRecordValues(record: row)
+            var after = before
+            after.fuelAmount += 0.123456789
+            let id = row.id
+            _ = try await FuelingRecordPersistenceService(container: container).update(
+                recordID: id,
+                update: FuelingRecordUpdate(original: before, proposed: after))
+            let actual = business(try persistenceFingerprint(container))
+            let key = "Record:\(id)"
+            expected[key]?["fuel"] = String(after.fuelAmount.bitPattern)
+            expected[key]?["modifiedAt"] = actual[key]?["modifiedAt"]
+            XCTAssertEqual(actual, expected)
+            XCTAssertEqual(actual.count, 800)
+        }
+        let reopened = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [config])
+        XCTAssertEqual(business(try persistenceFingerprint(reopened)), expected)
+    }
+
     func testCopied800RecordExportCanBeReviewedAndSkippedWithoutAnyStoreChanges() async throws {
         let source = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))

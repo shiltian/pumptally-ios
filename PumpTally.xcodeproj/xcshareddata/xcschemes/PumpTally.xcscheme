@@ -43,6 +43,7 @@
                <Test Identifier="SyncPerformanceTests"/>
                <Test Identifier="StartupCachePerformanceTests"/>
                <Test Identifier="CSVImportPerformanceTests"/>
+               <Test Identifier="StatisticsMutationPerformanceTests"/>
             </SkippedTests>
          </TestableReference>
          <TestableReference skipped="NO" parallelizable="NO">

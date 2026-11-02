@@ -174,7 +174,7 @@ enum SyncReviewService {
             }
             if !affectedOwners.isEmpty {
                 context.processPendingChanges()
-                for vehicle in affectedOwners.values { StatisticsCacheService.recalculateAllStatistics(for: vehicle) }
+                for vehicle in affectedOwners.values { StatisticsCacheService.refresh(for: vehicle) }
             }
             if !vehicleIDs.isEmpty {
                 for vehicle in try context.fetch(

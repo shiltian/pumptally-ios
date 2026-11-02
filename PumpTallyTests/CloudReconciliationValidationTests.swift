@@ -132,6 +132,47 @@ final class CloudReconciliationValidationTests: XCTestCase {
         XCTAssertEqual(unrelated.cacheLastUpdated, originalDate)
     }
 
+    func testNumericDownloadAndDeletionOnlyDirtyDependentIntervals() throws {
+        let (context, first) = try fixture()
+        let owner = first.vehicle
+        var rows = [first]
+        for index in 1..<80 {
+            let row = FuelingRecord(
+                date: originalDate.addingTimeInterval(Double(index) * 86_400),
+                odometer: 1000 + Double(index) * 300, pricePerFuelUnit: 3.5, fuelAmount: 10,
+                totalCost: 35, createdAt: originalDate, vehicle: owner)
+            context.insert(row)
+            rows.append(row)
+        }
+        context.processPendingChanges()
+        StatisticsCacheService.recalculateAllStatistics(for: owner)
+        try context.save()
+        let codec = CloudRecordCodec(zoneID: zoneID)
+        let remoteOwner = Vehicle(id: owner.id, name: owner.name, createdAt: originalDate)
+        let target = rows[40]
+        let remote = FuelingRecord(
+            id: target.id, date: target.date, odometer: target.odometer + 10,
+            pricePerFuelUnit: target.pricePerFuelUnit, fuelAmount: 12, totalCost: target.totalCost,
+            createdAt: originalDate, vehicle: remoteOwner)
+        remote.modifiedAt = newerDate
+        let incoming = codec.fuelingRecordToCKRecord(
+            remote, vehicleRecordID: codec.vehicleToCKRecord(remoteOwner).recordID)
+        let removedID = rows[20].id
+        let result = try CloudReconciliationService(codec: codec).stageRemoteChanges(
+            changedRecords: [incoming],
+            deletedRecordIDs: [CKRecord.ID(recordName: removedID.uuidString, zoneID: zoneID)], context: context)
+        XCTAssertEqual(result.affectedVehicleIDs, [owner.id])
+        context.processPendingChanges()
+        let dirty = Set(context.changedModelsArray.compactMap { ($0 as? FuelingRecord)?.id })
+        XCTAssertTrue(dirty.isSubset(of: [removedID, rows[21].id, rows[40].id, rows[41].id]))
+        XCTAssertTrue(dirty.contains(rows[40].id))
+        XCTAssertEqual(rows[40].fuelAmount, 12)
+        XCTAssertEqual(rows[41].cachedDistanceDriven, 290)
+        XCTAssertEqual(rows[21].cachedDistanceDriven, 600)
+        try context.save()
+        XCTAssertEqual(try ModelContext(context.container).fetchCount(FetchDescriptor<FuelingRecord>()), 79)
+    }
+
     func testNotesOnlyDownloadPreservesStatisticsAndNumericBitsAfterSave() throws {
         let (context, record) = try fixture()
         StatisticsCacheService.recalculateAllStatistics(for: record.vehicle)

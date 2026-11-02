@@ -27,7 +27,7 @@ struct FuelingRecordPersistenceService: Sendable {
             record.modifiedAt = Date()
             context.insert(record)
             context.processPendingChanges()
-            StatisticsCacheService.updateForNewRecord(record, vehicle: vehicle)
+            StatisticsCacheService.refresh(for: vehicle)
             try SyncChangeJournal.enqueue(record, in: context)
             return SavedFuelingRecord(record: record)
         }
@@ -63,11 +63,8 @@ struct FuelingRecordPersistenceService: Sendable {
             assign(\.fillUpType, values.fillUpType)
             assign(\.notes, values.notes)
             record.modifiedAt = Date()
-            if current.date != values.date || current.odometer != values.odometer
-                || current.pricePerFuelUnit != values.pricePerFuelUnit || current.fuelAmount != values.fuelAmount
-                || current.totalCost != values.totalCost || current.fillUpType != values.fillUpType
-            {
-                StatisticsCacheService.updateForEditedRecord(vehicle: record.vehicle)
+            if StatisticsCacheService.invalidateIfNeeded(record, previous: current) {
+                StatisticsCacheService.refresh(for: record.vehicle)
             }
             try SyncChangeJournal.enqueue(record, in: context)
             return true
@@ -82,7 +79,7 @@ struct FuelingRecordPersistenceService: Sendable {
             try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
             context.delete(record)
             context.processPendingChanges()
-            StatisticsCacheService.updateForDeletedRecord(vehicle: vehicle)
+            StatisticsCacheService.refresh(for: vehicle)
         }
     }
 
@@ -139,7 +136,7 @@ struct FuelingRecordPersistenceService: Sendable {
                 try SyncChangeJournal.enqueue(record, in: context)
             }
             context.processPendingChanges()
-            StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+            StatisticsCacheService.refresh(for: vehicle)
             return snapshots.map(\.id)
         }
     }

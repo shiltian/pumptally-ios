@@ -70,7 +70,7 @@ requires a fresh review before any records are inserted.
 - **SwiftUI** views with **SwiftData** persistence
 - One injected persistence writer serializes local commands, cache repair and sync using fresh background `ModelActor` contexts; views await committed value results
 - CKSyncEngine-backed CloudKit integration (local SwiftData is the source of truth; CloudKit acts as a mirror)
-- Statistics caching via `StatisticsCacheService` for O(1) dashboard reads
+- Statistics caching via `StatisticsCacheService` for O(1) dashboard reads. Mutations invalidate their interval inputs; a shared chronological pass checks neighbor dependencies and updates only changed cache fields. Vehicle totals remain an ordered read-only fold of the affected history to preserve floating-point results. Refreshes still read and sort that history; they do not perform constant-time aggregate updates or require new schema fields.
 - Shared `FuelingRecordFormView` component used by both Add and Edit flows
 - Centralized UI styling via `Font`, `LinearGradient`, and `CardModifier` extensions
 - Structured logging with `os.Logger` throughout
@@ -86,6 +86,12 @@ xcodebuild test -project PumpTally.xcodeproj -scheme PumpTally -destination 'pla
 The scheme's Test action uses the dedicated **Testing** build configuration. It selects `PumpTallyTests/Support/TestingAppBootstrap.swift` to supply isolated storage, preferences, synthetic UI fixtures, and a deterministic CloudKit boundary. Failure workflows also use synthetic read-only disk stores. Startup and sync events run through the same production lifecycle and service. The test app has a separate bundle identifier and no CloudKit entitlements. Ordinary Debug and Release builds select `ProductionAppBootstrap.swift` and exclude test support from compilation; the app entry point has no test-mode detection. Run tests using the scheme's configuration rather than overriding it with Debug or Release.
 
 Shared build settings live in `Config/`. The `PumpTallyBenchmarks` scheme uses Release optimization with isolated test dependencies; it does not access production data. GitHub Actions verifies functional/UI tests, coverage, optimized persistence and performance cases, focused Thread Sanitizer checks, Debug analysis, Release compilation and test-support exclusion. Core Data concurrency diagnostics are configured in test launches. Performance runs use the optimized scheme separately from functional tests. CI pins hosted Xcode 27.1; local follow-up validation uses 27.2.
+
+Statistics regressions compare incremental results bit for bit with the previous full rebuild across inserts, edits, moves and deletions. Disk-backed tests check the actual models dirtied by local and remote changes and preserve business values through copied-store migration and reopen. `StatisticsMutationPerformanceTests` compares cache-maintenance transactions against the previous rebuild at 800, 3,200 and 12,800 records, including native disk commits. Run it separately with the optimized scheme:
+
+```sh
+xcodebuild test -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:PumpTallyTests/StatisticsMutationPerformanceTests
+```
 
 Check formatting only on changed Swift lines (or add `--fix`):
 

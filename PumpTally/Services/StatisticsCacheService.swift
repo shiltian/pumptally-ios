@@ -1,318 +1,228 @@
 import Foundation
 
-/// Service for efficiently computing and caching vehicle statistics
-/// Reduces complexity from O(n² log n) to O(n log n) by computing everything in a single pass
+/// Maintains the existing materialized statistics in the caller's transaction.
+/// Interval caches record their predecessor and distance. A chronological pass
+/// checks those dependencies and recalculates only invalidated intervals.
+/// Vehicle reductions retain canonical order; no rounded-average arithmetic or
+/// additional persistent accumulator is needed.
 final class StatisticsCacheService {
-
-    // MARK: - Full Recalculation
-
-    /// Recalculate all statistics for a vehicle in a single efficient pass
-    /// Time complexity: O(n log n) where n = number of records
-    /// - Parameter vehicle: The vehicle to recalculate statistics for
-    static func recalculateAllStatistics(for vehicle: Vehicle) {
-        let records = vehicle.fuelingRecords ?? []
-
-        guard !records.isEmpty else {
-            vehicle.invalidateCache()
-            vehicle.cachedRecordCount = 0
-            vehicle.cacheLastUpdated = Date()
-            return
-        }
-
-        // Sort once - O(n log n)
-        let sortedByDate = records.sorted(
-            by: OdometerChronologyValidator.areInIncreasingOrder
-        )
-
-        // Single pass to compute all per-record cached values and aggregate statistics - O(n)
-        var totalSpent: Double = 0
-        var totalDistance: Double = 0
-        var totalFuel: Double = 0
-        var totalPricePerFuelUnit: Double = 0
-
-        var fullFillUpDistance: Double = 0
-        var fullFillUpFuel: Double = 0
-
-        var bestEfficiency: Double = 0
-        var worstEfficiency: Double = Double.greatestFiniteMagnitude
-        var highestPrice: Double = 0
-        var lowestPrice: Double = Double.greatestFiniteMagnitude
-
-        var hasValidEfficiency = false
-        var previousOdometer: Double = 0
-        for (index, record) in sortedByDate.enumerated() {
-            // Cache previous odometer for this record
-            record.cachedPreviousOdometer = previousOdometer
-
-            // Calculate distance driven
-            let distanceDriven: Double
-            if previousOdometer > 0 {
-                distanceDriven = record.odometer - previousOdometer
-                record.cachedDistanceDriven = distanceDriven
-            } else {
-                distanceDriven = 0
-                record.cachedDistanceDriven = 0
-            }
-
-            let previousRecord = index > 0 ? sortedByDate[index - 1] : nil
-            if let efficiency = FuelEfficiencyPolicy.rawEfficiency(
-                distanceDriven: distanceDriven,
-                fuelAmount: record.fuelAmount,
-                currentFillUpType: record.fillUpType,
-                previousFillUpType: previousRecord?.fillUpType,
-                previousIsFirstRecord: index == 1
-            ) {
-                record.cachedEfficiency = efficiency
-
-                // Track best/worst efficiency
-                hasValidEfficiency = true
-                if efficiency > bestEfficiency { bestEfficiency = efficiency }
-                if efficiency < worstEfficiency { worstEfficiency = efficiency }
-
-                // Accumulate for average efficiency calculation
-                fullFillUpDistance += distanceDriven
-                fullFillUpFuel += record.fuelAmount
-            } else {
-                record.cachedEfficiency = nil
-            }
-
-            // Calculate cost per distance
-            if distanceDriven > 0 {
-                record.cachedCostPerDistance = record.totalCost / distanceDriven
-            } else {
-                record.cachedCostPerDistance = nil
-            }
-
-            // Accumulate totals
-            totalSpent += record.totalCost
-            totalDistance += distanceDriven
-            totalFuel += record.fuelAmount
-            totalPricePerFuelUnit += record.pricePerFuelUnit
-
-            // Track price extremes
-            if record.pricePerFuelUnit > highestPrice { highestPrice = record.pricePerFuelUnit }
-            if record.pricePerFuelUnit < lowestPrice { lowestPrice = record.pricePerFuelUnit }
-
-            // Update state for next iteration
-            previousOdometer = record.odometer
-        }
-
-        // Store aggregated statistics on the vehicle
-        vehicle.cachedTotalSpent = totalSpent
-        vehicle.cachedTotalDistance = totalDistance
-        vehicle.cachedTotalFuel = totalFuel
-        vehicle.cachedRecordCount = records.count
-
-        // Average efficiency from full fill-ups only (more accurate)
-        if fullFillUpFuel > 0 {
-            vehicle.cachedAverageEfficiency = fullFillUpDistance / fullFillUpFuel
-        } else if totalFuel > 0 {
-            // Fallback to all records if no full fill-ups
-            vehicle.cachedAverageEfficiency = totalDistance / totalFuel
-        } else {
-            vehicle.cachedAverageEfficiency = 0
-        }
-
-        // Average cost per distance
-        if totalDistance > 0 {
-            vehicle.cachedAverageCostPerDistance = totalSpent / totalDistance
-        } else {
-            vehicle.cachedAverageCostPerDistance = 0
-        }
-
-        // Average fill-up cost
-        vehicle.cachedAverageFillUpCost = totalSpent / Double(records.count)
-
-        // Average price per fuel unit
-        vehicle.cachedAveragePricePerFuelUnit = totalPricePerFuelUnit / Double(records.count)
-
-        // Best/worst efficiency
-        vehicle.cachedBestEfficiency = hasValidEfficiency ? bestEfficiency : nil
-        vehicle.cachedWorstEfficiency = hasValidEfficiency && worstEfficiency != Double.greatestFiniteMagnitude ? worstEfficiency : nil
-
-        // Price extremes
-        vehicle.cachedHighestPricePerFuelUnit = highestPrice > 0 ? highestPrice : nil
-        vehicle.cachedLowestPricePerFuelUnit = lowestPrice != Double.greatestFiniteMagnitude ? lowestPrice : nil
-
-        vehicle.cacheLastUpdated = Date()
+    struct Update: Sendable {
+        var calculatedRecordIDs: Set<UUID> = []
+        var updatedRecordIDs: Set<UUID> = []
+        var updatedVehicle = false
     }
 
-    // MARK: - Incremental Updates
-
-    /// Update statistics after adding a new record
-    /// If the record is the most recent, this is O(1). Otherwise, triggers full recalculation.
-    static func updateForNewRecord(_ record: FuelingRecord, vehicle: Vehicle) {
-        let records = vehicle.fuelingRecords ?? []
-
-        // If this is the first record or records are empty, do full calculation
-        guard records.count > 1 else {
-            recalculateAllStatistics(for: vehicle)
-            return
-        }
-
-        // Check if this record is the most recent by deterministic chronology.
-        let isLatestRecord = !records.contains {
-            $0.id != record.id
-                && OdometerChronologyValidator.areInIncreasingOrder(record, $0)
-        }
-
-        if isLatestRecord {
-            // Find the previous record in O(n) without sorting.
-            var previousRecord: FuelingRecord?
-            for r in records {
-                guard r.id != record.id else { continue }
-                guard OdometerChronologyValidator.areInIncreasingOrder(r, record) else { continue }
-                if previousRecord == nil
-                    || OdometerChronologyValidator.areInIncreasingOrder(previousRecord!, r) {
-                    previousRecord = r
-                }
-            }
-            let previousIsFirstRecord = previousRecord.map { previous in
-                !records.contains {
-                    $0.id != previous.id
-                        && OdometerChronologyValidator.areInIncreasingOrder($0, previous)
-                }
-            } ?? false
-            incrementalAddLatestRecord(
-                record,
-                previousRecord: previousRecord,
-                previousIsFirstRecord: previousIsFirstRecord,
-                to: vehicle
-            )
-        } else {
-            // Record inserted in the middle - need to recalculate from that point
-            // For simplicity, just do a full recalculation
-            recalculateAllStatistics(for: vehicle)
-        }
-    }
-
-    /// Incremental update when adding the latest (most recent) record
-    private static func incrementalAddLatestRecord(
-        _ record: FuelingRecord,
-        previousRecord: FuelingRecord?,
-        previousIsFirstRecord: Bool,
-        to vehicle: Vehicle
-    ) {
-        guard let previousRecord else {
-            recalculateAllStatistics(for: vehicle)
-            return
-        }
-
-        let previousOdometer = previousRecord.odometer
-
-        // Cache values for the new record
-        record.cachedPreviousOdometer = previousOdometer
-
-        let distanceDriven = record.odometer - previousOdometer
-        record.cachedDistanceDriven = distanceDriven > 0 ? distanceDriven : 0
-
-        if let efficiency = FuelEfficiencyPolicy.rawEfficiency(
-            distanceDriven: distanceDriven,
-            fuelAmount: record.fuelAmount,
-            currentFillUpType: record.fillUpType,
-            previousFillUpType: previousRecord.fillUpType,
-            previousIsFirstRecord: previousIsFirstRecord
-        ) {
-            record.cachedEfficiency = efficiency
-
-            // Update best/worst efficiency
-            if let currentBest = vehicle.cachedBestEfficiency {
-                if efficiency > currentBest { vehicle.cachedBestEfficiency = efficiency }
-            } else {
-                vehicle.cachedBestEfficiency = efficiency
-            }
-
-            if let currentWorst = vehicle.cachedWorstEfficiency {
-                if efficiency < currentWorst { vehicle.cachedWorstEfficiency = efficiency }
-            } else {
-                vehicle.cachedWorstEfficiency = efficiency
-            }
-        } else {
+    /// Business mutations invalidate their own interval inputs explicitly.
+    /// Neighbor dependencies are checked by refresh after the graph is staged.
+    /// A price-only change needs aggregate work; notes/metadata need neither.
+    @discardableResult
+    static func invalidateIfNeeded(_ record: FuelingRecord, previous: FuelingRecordValues) -> Bool {
+        let intervalChanged =
+            previous.date != record.date
+            || previous.odometer.bitPattern != record.odometer.bitPattern
+            || previous.fuelAmount.bitPattern != record.fuelAmount.bitPattern
+            || previous.totalCost.bitPattern != record.totalCost.bitPattern
+            || previous.fillUpType != record.fillUpType
+        if intervalChanged {
+            record.cachedPreviousOdometer = nil
+            record.cachedDistanceDriven = nil
             record.cachedEfficiency = nil
-        }
-
-        // Calculate cost per distance
-        if distanceDriven > 0 {
-            record.cachedCostPerDistance = record.totalCost / distanceDriven
-        } else {
             record.cachedCostPerDistance = nil
         }
-
-        // Update aggregate totals
-        vehicle.cachedTotalSpent = (vehicle.cachedTotalSpent ?? 0) + record.totalCost
-        vehicle.cachedTotalDistance = (vehicle.cachedTotalDistance ?? 0) + (distanceDriven > 0 ? distanceDriven : 0)
-        vehicle.cachedTotalFuel = (vehicle.cachedTotalFuel ?? 0) + record.fuelAmount
-
-        let newCount = (vehicle.cachedRecordCount ?? 0) + 1
-        vehicle.cachedRecordCount = newCount
-
-        // Recalculate averages
-        if let totalSpent = vehicle.cachedTotalSpent {
-            vehicle.cachedAverageFillUpCost = totalSpent / Double(newCount)
-        }
-
-        if let totalDistance = vehicle.cachedTotalDistance, totalDistance > 0, let totalSpent = vehicle.cachedTotalSpent {
-            vehicle.cachedAverageCostPerDistance = totalSpent / totalDistance
-        }
-
-        // Recompute average efficiency using only valid full-to-full intervals,
-        // matching the semantics of recalculateAllStatistics. We scan the
-        // relationship for records whose cachedEfficiency was already set by
-        // prior recalculations or by this incremental update.
-        var fullFillUpDistance: Double = 0
-        var fullFillUpFuel: Double = 0
-        for r in (vehicle.fuelingRecords ?? []) {
-            if let dist = r.cachedDistanceDriven, dist > 0,
-               let _ = r.cachedEfficiency {
-                fullFillUpDistance += dist
-                fullFillUpFuel += r.fuelAmount
-            }
-        }
-        if fullFillUpFuel > 0 {
-            vehicle.cachedAverageEfficiency = fullFillUpDistance / fullFillUpFuel
-        } else if let totalDistance = vehicle.cachedTotalDistance,
-                  let totalFuel = vehicle.cachedTotalFuel, totalFuel > 0 {
-            vehicle.cachedAverageEfficiency = totalDistance / totalFuel
-        }
-
-        // Update average price per fuel unit incrementally
-        if let currentAvg = vehicle.cachedAveragePricePerFuelUnit {
-            let oldCount = Double(newCount - 1)
-            vehicle.cachedAveragePricePerFuelUnit = (currentAvg * oldCount + record.pricePerFuelUnit) / Double(newCount)
-        } else {
-            vehicle.cachedAveragePricePerFuelUnit = record.pricePerFuelUnit
-        }
-
-        // Update price extremes
-        if let currentHighest = vehicle.cachedHighestPricePerFuelUnit {
-            if record.pricePerFuelUnit > currentHighest {
-                vehicle.cachedHighestPricePerFuelUnit = record.pricePerFuelUnit
-            }
-        } else {
-            vehicle.cachedHighestPricePerFuelUnit = record.pricePerFuelUnit
-        }
-
-        if let currentLowest = vehicle.cachedLowestPricePerFuelUnit {
-            if record.pricePerFuelUnit < currentLowest {
-                vehicle.cachedLowestPricePerFuelUnit = record.pricePerFuelUnit
-            }
-        } else {
-            vehicle.cachedLowestPricePerFuelUnit = record.pricePerFuelUnit
-        }
-
-        vehicle.cacheLastUpdated = Date()
+        return intervalChanged || previous.pricePerFuelUnit.bitPattern != record.pricePerFuelUnit.bitPattern
     }
 
-    /// Update statistics after deleting a record
-    /// This triggers a full recalculation since deletion can affect subsequent records
-    static func updateForDeletedRecord(vehicle: Vehicle) {
-        recalculateAllStatistics(for: vehicle)
+    @discardableResult
+    static func refresh(for vehicle: Vehicle) -> Update {
+        update(vehicle, rebuilding: false)
     }
 
-    /// Update statistics after editing a record
-    /// This triggers a full recalculation since edits can affect all calculations
-    static func updateForEditedRecord(vehicle: Vehicle) {
-        recalculateAllStatistics(for: vehicle)
+    /// Bootstrap, explicit repair and unit adoption use the same calculation
+    /// policy, independently of existing interval caches. Equal values aren't
+    /// assigned, so a healthy rebuild does not dirty historical records.
+    @discardableResult
+    static func recalculateAllStatistics(for vehicle: Vehicle) -> Update {
+        update(vehicle, rebuilding: true)
     }
 
+    private static func update(_ vehicle: Vehicle, rebuilding: Bool) -> Update {
+        // Project each managed object once; sorting and reductions then use
+        // immutable values rather than repeated SwiftData property faults.
+        let records = (vehicle.fuelingRecords ?? []).map(Row.init).sorted {
+            OdometerChronologyValidator.areInIncreasingOrder(
+                lhsDate: $0.date, lhsOdometer: $0.odometer, lhsID: $0.id,
+                rhsDate: $1.date, rhsOdometer: $1.odometer, rhsID: $1.id)
+        }
+        var result = Update()
+        var totals = Totals()
+        for (index, record) in records.enumerated() {
+            let dependencies = Interval(
+                record: record, previous: index > 0 ? records[index - 1] : nil,
+                previousIsFirst: index == 1)
+            var cache = record.cache
+            if rebuilding || !dependencies.matches(cache) {
+                result.calculatedRecordIDs.insert(record.id)
+                cache = dependencies.calculate()
+                if cache.apply(to: record.model) { result.updatedRecordIDs.insert(record.id) }
+            }
+            totals.append(record, cache: cache)
+        }
+        result.updatedVehicle = totals.apply(to: vehicle)
+        if result.updatedVehicle || !result.updatedRecordIDs.isEmpty || vehicle.cacheLastUpdated == nil {
+            vehicle.cacheLastUpdated = Date()
+            result.updatedVehicle = true
+        }
+        return result
+    }
+
+    /// Models stay inside this synchronous, context-owned pass. Only Update
+    /// (IDs and counters) can escape. Sorting never dereferences the model.
+    private struct Row {
+        let model: FuelingRecord
+        let id: UUID
+        let date: Date
+        let odometer: Double
+        let pricePerFuelUnit: Double
+        let fuelAmount: Double
+        let totalCost: Double
+        let fillUpType: FillUpType
+        let cache: CachedInterval
+
+        init(_ record: FuelingRecord) {
+            model = record
+            id = record.id; date = record.date; odometer = record.odometer
+            pricePerFuelUnit = record.pricePerFuelUnit; fuelAmount = record.fuelAmount
+            totalCost = record.totalCost; fillUpType = record.fillUpType
+            cache = CachedInterval(
+                previousOdometer: record.cachedPreviousOdometer, distance: record.cachedDistanceDriven,
+                efficiency: record.cachedEfficiency, costPerDistance: record.cachedCostPerDistance)
+        }
+    }
+
+    private struct CachedInterval {
+        let previousOdometer: Double?
+        let distance: Double?
+        let efficiency: Double?
+        let costPerDistance: Double?
+
+        func apply(to record: FuelingRecord) -> Bool {
+            var changed = set(record, \.cachedPreviousOdometer, previousOdometer)
+            changed = set(record, \.cachedDistanceDriven, distance) || changed
+            changed = set(record, \.cachedEfficiency, efficiency) || changed
+            changed = set(record, \.cachedCostPerDistance, costPerDistance) || changed
+            return changed
+        }
+    }
+
+    private struct Interval {
+        let previousOdometer: Double
+        let distance: Double
+        let fuel: Double
+        let cost: Double
+        let fill: FillUpType
+        let previousFill: FillUpType?
+        let previousIsFirst: Bool
+
+        init(record: Row, previous: Row?, previousIsFirst: Bool) {
+            previousOdometer = previous?.odometer ?? 0
+            distance = previousOdometer > 0 ? record.odometer - previousOdometer : 0
+            fuel = record.fuelAmount
+            cost = record.totalCost
+            fill = record.fillUpType
+            previousFill = previous?.fillUpType
+            self.previousIsFirst = previousIsFirst
+        }
+
+        private var eligible: Bool {
+            FuelEfficiencyPolicy.isEligible(
+                distanceDriven: distance, fuelAmount: fuel,
+                currentFillUpType: fill, previousFillUpType: previousFill,
+                previousIsFirstRecord: previousIsFirst)
+        }
+
+        func matches(_ cache: CachedInterval) -> Bool {
+            same(cache.previousOdometer, previousOdometer)
+                && same(cache.distance, distance)
+                && (cache.efficiency != nil) == eligible
+                && (cache.costPerDistance != nil) == (distance > 0)
+        }
+
+        func calculate() -> CachedInterval {
+            CachedInterval(
+                previousOdometer: previousOdometer, distance: distance,
+                efficiency: FuelEfficiencyPolicy.rawEfficiency(
+                    distanceDriven: distance, fuelAmount: fuel,
+                    currentFillUpType: fill, previousFillUpType: previousFill,
+                    previousIsFirstRecord: previousIsFirst), costPerDistance: distance > 0 ? cost / distance : nil)
+        }
+    }
+
+    private struct Totals {
+        var count = 0
+        var spent: Double = 0
+        var distance: Double = 0
+        var fuel: Double = 0
+        var price: Double = 0
+        var eligibleDistance: Double = 0
+        var eligibleFuel: Double = 0
+        var best: Double = 0
+        var worst = Double.greatestFiniteMagnitude
+        var highest: Double = 0
+        var lowest = Double.greatestFiniteMagnitude
+        var hasEfficiency = false
+
+        mutating func append(_ record: Row, cache: CachedInterval) {
+            let intervalDistance = cache.distance ?? 0
+            if let efficiency = cache.efficiency {
+                hasEfficiency = true
+                if efficiency > best { best = efficiency }
+                if efficiency < worst { worst = efficiency }
+                eligibleDistance += intervalDistance
+                eligibleFuel += record.fuelAmount
+            }
+            spent += record.totalCost
+            distance += intervalDistance
+            fuel += record.fuelAmount
+            price += record.pricePerFuelUnit
+            if record.pricePerFuelUnit > highest { highest = record.pricePerFuelUnit }
+            if record.pricePerFuelUnit < lowest { lowest = record.pricePerFuelUnit }
+            count += 1
+        }
+
+        func apply(to vehicle: Vehicle) -> Bool {
+            let averageEfficiency =
+                eligibleFuel > 0 ? eligibleDistance / eligibleFuel : (fuel > 0 ? distance / fuel : 0)
+            var changed = set(vehicle, \.cachedTotalSpent, count > 0 ? spent : nil)
+            changed = set(vehicle, \.cachedTotalDistance, count > 0 ? distance : nil) || changed
+            changed = set(vehicle, \.cachedTotalFuel, count > 0 ? fuel : nil) || changed
+            changed = set(vehicle, \.cachedAverageEfficiency, count > 0 ? averageEfficiency : nil) || changed
+            changed =
+                set(vehicle, \.cachedAverageCostPerDistance, count > 0 ? (distance > 0 ? spent / distance : 0) : nil)
+                || changed
+            changed = set(vehicle, \.cachedAverageFillUpCost, count > 0 ? spent / Double(count) : nil) || changed
+            changed = set(vehicle, \.cachedAveragePricePerFuelUnit, count > 0 ? price / Double(count) : nil) || changed
+            changed = set(vehicle, \.cachedBestEfficiency, hasEfficiency ? best : nil) || changed
+            changed =
+                set(vehicle, \.cachedWorstEfficiency, hasEfficiency && worst != .greatestFiniteMagnitude ? worst : nil)
+                || changed
+            changed = set(vehicle, \.cachedHighestPricePerFuelUnit, highest > 0 ? highest : nil) || changed
+            changed =
+                set(vehicle, \.cachedLowestPricePerFuelUnit, lowest != .greatestFiniteMagnitude ? lowest : nil)
+                || changed
+            if vehicle.cachedRecordCount != count { vehicle.cachedRecordCount = count; changed = true }
+            return changed
+        }
+    }
+
+    private static func same(_ lhs: Double?, _ rhs: Double?) -> Bool {
+        lhs?.bitPattern == rhs?.bitPattern
+    }
+
+    private static func set<Root: AnyObject>(
+        _ root: Root, _ key: ReferenceWritableKeyPath<Root, Double?>, _ value: Double?
+    ) -> Bool {
+        guard !same(root[keyPath: key], value) else { return false }
+        root[keyPath: key] = value
+        return true
+    }
 }

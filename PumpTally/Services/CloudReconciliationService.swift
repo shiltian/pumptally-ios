@@ -92,7 +92,7 @@ struct CloudReconciliationService: Sendable {
             context.processPendingChanges()
             let ids = Array(result.affectedVehicleIDs)
             for vehicle in try context.fetch(FetchDescriptor<Vehicle>(predicate: #Predicate { ids.contains($0.id) })) {
-                StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+                StatisticsCacheService.refresh(for: vehicle)
             }
         }
         return result
@@ -167,10 +167,11 @@ struct CloudReconciliationService: Sendable {
             if let existing = recordMap[id] {
                 switch resolveFuelingRecordConflict(cloudRecord: cloud, localRecord: existing) {
                 case .cloud:
-                    if statisticsDiffer(existing, from: snapshot) {
+                    let previous = FuelingRecordValues(record: existing)
+                    codec.updateFuelingRecord(existing, from: snapshot)
+                    if StatisticsCacheService.invalidateIfNeeded(existing, previous: previous) {
                         result.affectedVehicleIDs.insert(owner.id)
                     }
-                    codec.updateFuelingRecord(existing, from: snapshot)
                 case .local:
                     result.recordsToUpload.append(
                         codec.fuelingRecordToCKRecord(
@@ -257,14 +258,6 @@ struct CloudReconciliationService: Sendable {
             recordsByID[record.id] = record
         }
         return LocalIndexes(vehicles: vehiclesByID, records: recordsByID)
-    }
-
-    private func statisticsDiffer(
-        _ record: FuelingRecord, from snapshot: CloudSnapshotValidator.FuelingRecordSnapshot
-    ) -> Bool {
-        record.date != snapshot.date || record.odometer != snapshot.odometer
-            || record.pricePerFuelUnit != snapshot.pricePerFuelUnit || record.fuelAmount != snapshot.fuelAmount
-            || record.totalCost != snapshot.totalCost || record.fillUpType != snapshot.fillUpType
     }
 
     private func fuelingRecordID(from record: CKRecord) -> UUID? {

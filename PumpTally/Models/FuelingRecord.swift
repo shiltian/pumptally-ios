@@ -121,6 +121,10 @@ final class FuelingRecord {
             return cached
         }
 
+        // A complete interval with nil efficiency is an intentional result
+        // (for example a partial fill), not a request to rescan the history.
+        if cachedPreviousOdometer != nil, cachedDistanceDriven != nil { return 0 }
+
         let records = Array(vehicle.sortedRecords.reversed())
         guard let index = records.firstIndex(where: { $0.id == id }),
               index > 0 else {

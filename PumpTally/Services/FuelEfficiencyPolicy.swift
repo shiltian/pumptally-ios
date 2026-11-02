@@ -15,17 +15,25 @@ enum FuelEfficiencyPolicy {
         previousFillUpType: FillUpType?,
         previousIsFirstRecord: Bool
     ) -> Double? {
-        guard currentFillUpType == .full,
+        guard
+            isEligible(
+                distanceDriven: distanceDriven, fuelAmount: fuelAmount,
+                currentFillUpType: currentFillUpType, previousFillUpType: previousFillUpType,
+                previousIsFirstRecord: previousIsFirstRecord)
+        else { return nil }
+        return distanceDriven / fuelAmount
+    }
+
+    static func isEligible(
+        distanceDriven: Double, fuelAmount: Double, currentFillUpType: FillUpType,
+        previousFillUpType: FillUpType?, previousIsFirstRecord: Bool
+    ) -> Bool {
+        currentFillUpType == .full
+            &&
               establishesBaseline(
                   fillUpType: previousFillUpType,
                   isFirstRecord: previousIsFirstRecord
-              ),
-              distanceDriven > 0,
-              fuelAmount > 0 else {
-            return nil
-        }
-
-        return distanceDriven / fuelAmount
+            ) && distanceDriven > 0 && fuelAmount > 0
     }
 
     private static func establishesBaseline(
