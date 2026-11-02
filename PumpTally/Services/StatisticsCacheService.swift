@@ -1,15 +1,8 @@
 import Foundation
-import SwiftData
-import os
 
 /// Service for efficiently computing and caching vehicle statistics
 /// Reduces complexity from O(n² log n) to O(n log n) by computing everything in a single pass
 final class StatisticsCacheService {
-
-    private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio",
-        category: "StatisticsCache"
-    )
 
     // MARK: - Full Recalculation
 
@@ -322,34 +315,4 @@ final class StatisticsCacheService {
         recalculateAllStatistics(for: vehicle)
     }
 
-    // MARK: - Cache Validation
-
-    /// Ensure cache is valid, recalculating if necessary
-    static func ensureCacheValid(for vehicle: Vehicle) {
-        if vehicle.needsCacheRebuild {
-            recalculateAllStatistics(for: vehicle)
-        }
-    }
-
-    /// Rebuild cache for all vehicles in the model context
-    static func rebuildCacheForAllVehicles(in modelContext: ModelContext, force: Bool = false) {
-        do {
-            let descriptor = FetchDescriptor<Vehicle>()
-            let vehicles = try modelContext.fetch(descriptor)
-
-            var didRebuild = false
-            for vehicle in vehicles {
-                if force || vehicle.needsCacheRebuild {
-                    recalculateAllStatistics(for: vehicle)
-                    didRebuild = true
-                }
-            }
-
-            if didRebuild {
-                try modelContext.save()
-            }
-        } catch {
-            logger.error("Failed to rebuild cache for all vehicles: \(error)")
-        }
-    }
 }

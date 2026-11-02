@@ -2,7 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct AddVehicleView: View {
-    @Environment(\.modelContext) private var modelContext
+    var onSave: ((UUID) -> Void)? = nil
+    @State private var isSaving = false
+    @EnvironmentObject private var writer: OwnedModelStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -92,7 +94,7 @@ struct AddVehicleView: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        saveVehicle()
+                        Task { await saveVehicle() }
                     }
                     .fontWeight(.semibold)
                     .disabled(!isValid)
@@ -104,29 +106,29 @@ struct AddVehicleView: View {
                 Text("Your changes could not be saved. No data was changed. Please try again.")
             }
         }
+        .disabled(isSaving)
+        .interactiveDismissDisabled(isSaving)
     }
 
-    private func saveVehicle() {
+    private func saveVehicle() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedMake = make.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
 
         do {
-            let vehicle = try VehiclePersistenceService.insert(context: modelContext) {
-                let vehicle = Vehicle(
-                    name: trimmedName,
-                    make: trimmedMake.isEmpty ? nil : trimmedMake,
-                    model: trimmedModel.isEmpty ? nil : trimmedModel,
-                    year: Int(yearString),
-                    unitSystem: unitSystem
-                )
-                vehicle.modifiedAt = Date()
-                return vehicle
-            }
+            let vehicleID = try await VehiclePersistenceService(writer: writer).create(
+                values: VehicleSettingsValues(
+                    name: trimmedName, make: trimmedMake.isEmpty ? nil : trimmedMake,
+                    model: trimmedModel.isEmpty ? nil : trimmedModel, year: Int(yearString), displayUnit: unitSystem),
+                storageUnit: unitSystem)
 
             if unitSystem == .metric {
-                metricEfficiencyFormat.store(for: vehicle.id)
+                metricEfficiencyFormat.store(for: vehicleID)
             }
+            onSave?(vehicleID)
             dismiss()
         } catch {
             showingSaveError = true
@@ -135,6 +137,14 @@ struct AddVehicleView: View {
 }
 
 #Preview {
-    AddVehicleView()
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return AddVehicleView()
+        .modelContainer(container)
+        .environmentObject(writer)
 }

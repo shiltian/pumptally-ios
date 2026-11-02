@@ -1,0 +1,11 @@
+{
+  "hostModel": "Mac14,14",
+  "xcodeBuild": "27B52",
+  "deviceName": "iPhone 17 Pro Max",
+  "platform": "iOS Simulator",
+  "osVersion": "27.2",
+  "meanTimeSeconds": 0.012,
+  "peakMemoryKB": 131072,
+  "minimumMeasurements": 5,
+  "provenance": "Apple M2 Ultra, Benchmark (-O), synthetic disk stores, 2026-11-01. Initial optimized means 1.4\u20131.9 ms; 12 ms permits simulator noise while rejecting the previous 69\u2013982 ms path. Memory is XCTest's reported peak physical metric, not an allocation count or a device budget. Recalibrate when runner hardware or the toolchain changes."
+}

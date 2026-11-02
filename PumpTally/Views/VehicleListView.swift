@@ -5,21 +5,21 @@ struct VehicleListView: View {
     let vehicles: [Vehicle]
     @Binding var showingAddVehicle: Bool
 
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var writer: OwnedModelStore
     @State private var showingDeleteAlert = false
     @State private var showingDeleteError = false
-    @State private var vehicleToDelete: Vehicle?
+    @State private var vehicleToDelete: UUID?
     @State private var showingSettings = false
 
     var body: some View {
         List {
             ForEach(vehicles) { vehicle in
-                NavigationLink(value: vehicle) {
+                NavigationLink(value: vehicle.id) {
                     VehicleRowView(vehicle: vehicle)
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        vehicleToDelete = vehicle
+                        vehicleToDelete = vehicle.id
                         showingDeleteAlert = true
                     } label: {
                         Label("Delete", systemImage: "trash")
@@ -34,6 +34,7 @@ struct VehicleListView: View {
                 Button(action: { showingSettings = true }) {
                     Image(systemName: "gearshape")
                 }
+                .accessibilityIdentifier("app.settings")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: { showingAddVehicle = true }) {
@@ -51,7 +52,7 @@ struct VehicleListView: View {
             }
             Button("Delete", role: .destructive) {
                 if let vehicle = vehicleToDelete {
-                    deleteVehicle(vehicle)
+                    Task { await deleteVehicle(vehicle) }
                 }
             }
         } message: {
@@ -64,9 +65,9 @@ struct VehicleListView: View {
         }
     }
 
-    private func deleteVehicle(_ vehicle: Vehicle) {
+    private func deleteVehicle(_ vehicleID: UUID) async {
         do {
-            try VehiclePersistenceService.delete(vehicle, context: modelContext)
+            try await VehiclePersistenceService(writer: writer).delete(vehicleID: vehicleID)
             withAnimation {
                 vehicleToDelete = nil
             }
@@ -134,6 +135,13 @@ struct VehicleRowView: View {
 
 struct VehicleDetailView: View {
     let vehicle: Vehicle
+    @Query private var records: [FuelingRecord]
+
+    init(vehicle: Vehicle) {
+        self.vehicle = vehicle
+        let vehicleID = vehicle.id
+        _records = Query(filter: #Predicate<FuelingRecord> { $0.vehicle.id == vehicleID })
+    }
 
     @State private var showingAddRecord = false
     @State private var pendingSummary: FuelingSummaryData?
@@ -142,12 +150,12 @@ struct VehicleDetailView: View {
 
     var body: some View {
         TabView {
-            DashboardView(vehicle: vehicle)
+            DashboardView(vehicle: vehicle, records: records)
                 .tabItem {
                     Label("Dashboard", systemImage: "gauge.with.dots.needle.67percent")
                 }
 
-            HistoryView(vehicle: vehicle)
+            HistoryView(vehicle: vehicle, records: records)
                 .tabItem {
                     Label("History", systemImage: "list.bullet.rectangle")
                 }
@@ -177,6 +185,7 @@ struct VehicleDetailView: View {
                         .font(.title2)
                         .foregroundStyle(LinearGradient.brandDiagonal)
                 }
+                .accessibilityIdentifier("fueling.add")
             }
         }
         .sheet(isPresented: $showingAddRecord, onDismiss: {
@@ -190,13 +199,10 @@ struct VehicleDetailView: View {
                 }
             }
         }) {
-            AddRecordView(vehicle: vehicle) { record, prevOdometer in
-                // Snapshot all display values NOW while the model is guaranteed valid.
-                // This avoids SwiftData faulting issues during the sheet transition.
+            AddRecordView(vehicle: vehicle, records: records) { record in
                 pendingSummary = FuelingSummaryData(
                     record: record,
-                    previousOdometer: prevOdometer,
-                    unitSystem: vehicle.unitSystem,
+                    unitSystem: vehicle.displayUnitSystem,
                     metricEfficiencyFormat: .stored(for: vehicle.id)
                 )
             }
@@ -211,12 +217,19 @@ struct VehicleDetailView: View {
 }
 
 #Preview {
-    NavigationStack {
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return NavigationStack {
         VehicleListView(
             vehicles: [],
             showingAddVehicle: .constant(false)
         )
     }
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
+    .modelContainer(container)
+    .environmentObject(writer)
 }
-

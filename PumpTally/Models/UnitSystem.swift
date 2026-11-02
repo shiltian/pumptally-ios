@@ -1,5 +1,32 @@
 import Foundation
 
+extension UnitSystem {
+    private var lengthUnit: UnitLength { self == .imperial ? .miles : .kilometers }
+    private var volumeUnit: UnitVolume { self == .imperial ? .gallons : .liters }
+
+    func distanceValue(_ value: Double, from source: UnitSystem) -> Double {
+        guard source != self else { return value }
+        return Measurement(value: value, unit: source.lengthUnit).converted(to: lengthUnit).value
+    }
+
+    func fuelValue(_ value: Double, from source: UnitSystem) -> Double {
+        guard source != self else { return value }
+        return Measurement(value: value, unit: source.volumeUnit).converted(to: volumeUnit).value
+    }
+
+    func priceValue(_ value: Double, from source: UnitSystem) -> Double {
+        value / fuelValue(1, from: source)
+    }
+
+    func efficiencyValue(_ value: Double, from source: UnitSystem) -> Double {
+        distanceValue(value, from: source) / fuelValue(1, from: source)
+    }
+
+    func costPerDistanceValue(_ value: Double, from source: UnitSystem) -> Double {
+        value / distanceValue(1, from: source)
+    }
+}
+
 /// Controls how Metric fuel efficiency is presented on this device.
 ///
 /// This is a local display preference, not part of the persisted vehicle or

@@ -1,0 +1,95 @@
+name: iOS verification
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      # Stable version in the hosted image; local verification also uses 27.2 (27B52).
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify toolchain and create required simulator
+        run: |
+          set -euo pipefail
+          test "$(xcodebuild -version | tail -1)" = 'Build version 27A9275'
+          xcodebuild -version
+          xcrun swift-format --version
+          mkdir -p artifacts
+          simulator_id=$(xcrun simctl create 'iPhone 17 Pro Max' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-1)
+          echo "SIMULATOR_UDID=$simulator_id" >> "$GITHUB_ENV"
+      - name: Check changed Swift lines
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: python3 scripts/swift_format.py --base "$FORMAT_BASE"
+      - name: Verify the pinned CSV parser
+        run: swift test --package-path ThirdParty/SwiftCSV --scratch-path "$RUNNER_TEMP/swiftcsv" --skip PerformanceTest
+      - name: Unit, integration and UI tests with coverage
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Testing -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/isolated-tests" -resultBundlePath artifacts/Tests.xcresult -enableCodeCoverage YES test CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/tests.log
+      - name: Extract coverage
+        if: always()
+        run: |
+          if test -d artifacts/Tests.xcresult; then
+            xcrun xccov view --report --json artifacts/Tests.xcresult > artifacts/coverage.json
+          fi
+      - name: Compile isolated CloudKit protocol probe (no live account)
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme CloudKitProtocol -configuration Testing -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/cloudkit-probe" build-for-testing CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/cloudkit-probe.log
+      - name: Run optimized sync scaling checks
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/SyncPerformance.xcresult -only-testing:PumpTallyTests/SyncPerformanceTests test CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/benchmarks.log
+          python3 scripts/verify_build_isolation.py "$RUNNER_TEMP/benchmarks" Benchmark
+          xcrun xcresulttool get test-results metrics --path artifacts/SyncPerformance.xcresult > artifacts/performance-metrics.json
+          # Hosted timing budgets need their own measured runner profile.
+          # Read/encode-count assertions run on every runner in the XCTest suite.
+          python3 scripts/check_sync_performance.py artifacts/SyncPerformance.xcresult --report-only | tee artifacts/performance-report.log
+      - name: Measure optimized startup cache validation and repair
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/StartupCache.xcresult -only-testing:PumpTallyTests/StartupCachePerformanceTests test-without-building CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/startup-cache.log
+          xcrun xcresulttool get test-results metrics --path artifacts/StartupCache.xcresult > artifacts/startup-cache-metrics.json
+      - name: Measure optimized CSV parsing and chronology
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/CSVImportPerformance.xcresult -only-testing:PumpTallyTests/CSVImportPerformanceTests test-without-building CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/csv-import-performance.log
+          xcrun xcresulttool get test-results metrics --path artifacts/CSVImportPerformance.xcresult > artifacts/csv-import-performance-metrics.json
+      - name: Verify persistence and observation under optimization
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/OwnedPersistence.xcresult -only-testing:PumpTallyTests/FuelingRecordPersistenceServiceTests -only-testing:PumpTallyTests/VehiclePersistenceServiceTests -only-testing:PumpTallyTests/PersistenceObservationTests -only-testing:PumpTallyTests/CSVImportServiceTests -only-testing:PumpTallyTests/OdometerChronologyValidatorTests -only-testing:PumpTallyTests/FuelingRecordEditingPersistenceTests -only-testing:PumpTallyTests/SyncSafetyTests -only-testing:PumpTallyTests/ApplicationLifecycleTests -only-testing:PumpTallyTests/StatisticsCachePersistenceTests -only-testing:PumpTallyTests/CloudSyncRuntimeTests -only-testing:PumpTallyTests/InitialSyncCommandTests test-without-building CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/owned-persistence.log
+      - name: Check persistence and sync races with Thread Sanitizer
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Testing -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/thread-sanitizer" -resultBundlePath artifacts/ThreadSanitizer.xcresult -enableThreadSanitizer YES -only-testing:PumpTallyTests/StatisticsCachePersistenceTests -only-testing:PumpTallyTests/CloudSyncRuntimeTests -only-testing:PumpTallyTests/InitialSyncCommandTests -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundWriterUsesTheModelExecutor -only-testing:PumpTallyTests/PersistenceObservationTests/testConcurrentRequestsSerializeReadModifySaveWithFreshContexts -only-testing:PumpTallyTests/PersistenceObservationTests/testCancelledSessionCloseDrainsAcceptedSaveAndRejectsQueuedCheckpoint -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundModelActorRollsBackCascadeFailureAndCanRetry -parallel-testing-enabled NO test CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/thread-sanitizer.log
+      - name: Analyze production Debug
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/production-builds" analyze CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete 2>&1 | tee artifacts/analysis.log
+      - name: Compile production Release
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Release -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/production-builds" build CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/release.log
+          python3 scripts/verify_build_isolation.py "$RUNNER_TEMP/production-builds"
+      - name: Preserve test results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-verification-${{ github.run_attempt }}
+          path: artifacts/
+          retention-days: 14

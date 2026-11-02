@@ -10,11 +10,22 @@ struct SettingsView: View {
         var id: Int { rawValue }
     }
 
+    @EnvironmentObject private var writer: OwnedModelStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var cloudSyncService: CloudSyncService
 
     @Query private var vehicles: [Vehicle]
+    @Query(sort: \PendingRemoteChange.key) private var pendingRemoteChanges: [PendingRemoteChange]
+    @Query(filter: #Predicate<SyncChange> { $0.operationRaw == "delete" && $0.originRaw == nil }, sort: \SyncChange.key)
+    private var legacyDeletions: [SyncChange]
+    @StateObject private var syncRecovery = SyncRecoveryModel()
+
+    private var recoverySource: SyncRecoveryModel.Source {
+        SyncRecoveryModel.Source(
+            keys: pendingRemoteChanges.map(\.key), payloads: pendingRemoteChanges.map(\.recordData),
+            deletionGenerations: legacyDeletions.map(\.generation), isSyncing: stateManager.syncStatus.isInProgress)
+    }
 
     private var totalRecordCount: Int {
         vehicles.reduce(0) { $0 + $1.displayRecordCount }
@@ -25,8 +36,7 @@ struct SettingsView: View {
     @State private var deleteOutcome: DeleteOutcome?
 
     // iCloud Sync state
-    @State private var isSyncToggleOn = false
-    @State private var showingConflictOptions = false
+    @State private var initialSyncProposal: InitialSyncProposal?
     @State private var showingToggleOffAlert = false
     @State private var showingICloudError = false
     @State private var iCloudErrorMessage = ""
@@ -47,10 +57,9 @@ struct SettingsView: View {
     private var iCloudSyncSection: some View {
         Section {
             Toggle(isOn: Binding(
-                get: { isSyncToggleOn },
+                    get: { stateManager.iCloudSyncEnabled },
                 set: { newValue in
                     if newValue {
-                        isSyncToggleOn = true
                         handleToggleOn()
                     } else {
                         showingToggleOffAlert = true
@@ -65,6 +74,7 @@ struct SettingsView: View {
                 }
             }
             .disabled(stateManager.syncStatus.isInProgress)
+            .accessibilityIdentifier("settings.sync")
 
             HStack {
                 Text("Status")
@@ -89,10 +99,37 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var syncRecoverySection: some View {
+        let assessment = syncRecovery.assessment
+        if !stateManager.syncStatus.isInProgress
+            && (!assessment.unitConfirmations.isEmpty || assessment.legacyDeletionCount > 0
+                || !assessment.diagnostics.isEmpty || syncRecovery.loadError != nil)
+        {
+            Section("Sync Needs Attention") {
+                if syncRecovery.loadError == nil {
+                    if !assessment.unitConfirmations.isEmpty {
+                        NavigationLink("Confirm Measurement Units", value: SyncRecoveryDestination.measurementUnits)
+                            .accessibilityIdentifier("sync.recovery.units")
+                    }
+                    if assessment.legacyDeletionCount > 0 {
+                        NavigationLink("Review Previous Deletions", value: SyncRecoveryDestination.previousDeletions)
+                            .accessibilityIdentifier("sync.recovery.deletions")
+                    }
+                }
+                if !assessment.diagnostics.isEmpty || syncRecovery.loadError != nil {
+                    NavigationLink("View Sync Diagnostics", value: SyncRecoveryDestination.diagnostics)
+                        .accessibilityIdentifier("sync.recovery.diagnostics")
+                }
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 iCloudSyncSection
+                syncRecoverySection
 
                 // Data Statistics Section
                 Section {
@@ -155,6 +192,14 @@ struct SettingsView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SyncRecoveryDestination.self) { destination in
+                switch destination {
+                case .measurementUnits: SyncMeasurementReviewView(recovery: syncRecovery)
+                case .previousDeletions: SyncDeletionReviewView(recovery: syncRecovery)
+                case .diagnostics: SyncDiagnosticsView(recovery: syncRecovery)
+                }
+            }
+            .task(id: recoverySource) { syncRecovery.reload(in: modelContext) }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -162,21 +207,19 @@ struct SettingsView: View {
                     }
                 }
             }
-            // iCloud conflict resolution action sheet
-            .confirmationDialog("iCloud Data Found", isPresented: $showingConflictOptions, titleVisibility: .visible) {
-                Button("Use iCloud Data") {
-                    performInitialSync(strategy: .overwriteLocal)
-                }
-                Button("Use Local Data") {
-                    performInitialSync(strategy: .overwriteCloud)
-                }
-                Button("Merge Both") {
-                    performInitialSync(strategy: .merge)
-                }
-                Button("Cancel", role: .cancel) {
-                    isSyncToggleOn = false
-                }
-            } message: {
+            // Use the same native alert presentation as the other confirmations.
+            .alert(
+                "iCloud Data Found",
+                isPresented: Binding(
+                    get: { initialSyncProposal != nil },
+                    set: { if !$0 { initialSyncProposal = nil } }
+                ), presenting: initialSyncProposal
+            ) { proposal in
+                Button("Use iCloud Data") { performInitialSync(strategy: .useCloud, proposal: proposal) }
+                Button("Use Local Data") { performInitialSync(strategy: .replaceCloud, proposal: proposal) }
+                Button("Merge Both") { performInitialSync(strategy: .merge, proposal: proposal) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
                 Text("iCloud already contains fueling data. How would you like to handle this?")
             }
             // Toggle off alert
@@ -209,7 +252,7 @@ struct SettingsView: View {
             .alert("Are You Sure?", isPresented: $showingDeleteAllConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Yes, Delete Everything", role: .destructive) {
-                    deleteAllData()
+                    Task { await deleteAllData() }
                 }
             } message: {
                 Text("This action cannot be undone. All your data will be permanently deleted.")
@@ -232,9 +275,6 @@ struct SettingsView: View {
                     )
                 }
             }
-            .onAppear {
-                isSyncToggleOn = stateManager.iCloudSyncEnabled
-            }
         }
     }
 
@@ -242,94 +282,49 @@ struct SettingsView: View {
 
     private func handleToggleOn() {
         Task {
-            // Check iCloud availability
-            let available = await cloudSyncService.checkiCloudAvailability()
-            guard available else {
-                isSyncToggleOn = false
-                iCloudErrorMessage = String(localized: "Please sign in to iCloud in Settings to use this feature.")
-                showingICloudError = true
-                return
-            }
-
             do {
-                // "Empty" is a valid result; a CloudKit failure is not. Never
-                // choose the upload-local strategy when cloud state is unknown.
-                let cloudHasData = try await cloudSyncService.checkCloudHasData()
-
-                if cloudHasData {
-                    // Show conflict resolution
-                    showingConflictOptions = true
+                let proposal = try await cloudSyncService.prepareInitialSync()
+                if proposal.hasCloudData {
+                    initialSyncProposal = proposal
                 } else {
-                    // No cloud data: upload local and start syncing
-                    performInitialSync(strategy: .uploadLocal)
+                    await enableSync(strategy: .merge, proposal: proposal)
                 }
-            } catch {
-                isSyncToggleOn = false
-                stateManager.syncStatus = .error(String(localized: "Sync failed"))
-                Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "Settings")
-                    .error("Unable to determine whether iCloud contains data: \(error)")
-                iCloudErrorMessage = String(localized: "Unable to sync with iCloud. Please check your internet connection and iCloud settings, then try again.")
-                showingICloudError = true
-            }
+            } catch { presentSyncError(error) }
         }
     }
 
-    private enum InitialSyncStrategy {
-        case uploadLocal      // No cloud data -- upload everything
-        case overwriteLocal   // User chose "Use iCloud Data"
-        case overwriteCloud   // User chose "Use Local Data"
-        case merge            // User chose "Merge Both"
+    private func performInitialSync(strategy: InitialSyncStrategy, proposal: InitialSyncProposal) {
+        Task { await enableSync(strategy: strategy, proposal: proposal) }
     }
 
-    private func performInitialSync(strategy: InitialSyncStrategy) {
-        Task {
-            do {
-                stateManager.iCloudSyncEnabled = true
+    private func enableSync(strategy: InitialSyncStrategy, proposal: InitialSyncProposal) async {
+        do {
+            try await cloudSyncService.enableSync(strategy: strategy, proposal: proposal)
+        } catch { presentSyncError(error) }
+    }
 
-                switch strategy {
-                case .uploadLocal:
-                    try await cloudSyncService.uploadAllLocalData(from: modelContext)
-
-                case .overwriteLocal:
-                    try await cloudSyncService.downloadAllCloudData(to: modelContext)
-
-                case .overwriteCloud:
-                    try await cloudSyncService.replaceCloudDataWithLocal(from: modelContext)
-
-                case .merge:
-                    try await cloudSyncService.mergeCloudAndLocal(context: modelContext)
-                }
-
-                stateManager.markInitialSyncComplete()
-
-                await cloudSyncService.startMonitoring(container: modelContext.container)
-                await cloudSyncService.synchronizeNow()
-            } catch {
-                stateManager.iCloudSyncEnabled = false
-                isSyncToggleOn = false
-                stateManager.syncStatus = .error(String(localized: "Sync failed"))
-                Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "Settings")
-                    .error("iCloud sync failed: \(error)")
-                iCloudErrorMessage = String(localized: "Unable to sync with iCloud. Please check your internet connection and iCloud settings, then try again.")
-                showingICloudError = true
-            }
-        }
+    private func presentSyncError(_ error: Error) {
+        Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "Settings")
+            .error("iCloud activation failed: \(error)")
+        iCloudErrorMessage = error.localizedDescription
+        showingICloudError = true
     }
 
     private func handleToggleOff(removeLocalData: Bool) {
-        if removeLocalData {
-            deleteAllData()
+        Task {
+            do {
+                try await cloudSyncService.disable(removeLocalData ? .removeLocalCopy : .keepLocalData)
+                if removeLocalData { dismiss() }
+            } catch {
+                iCloudErrorMessage = error.localizedDescription
+                showingICloudError = true
+            }
         }
-
-        stateManager.iCloudSyncEnabled = false
-        isSyncToggleOn = false
-        stateManager.resetSyncState()
-        cloudSyncService.stopMonitoring()
     }
 
-    private func deleteAllData() {
+    private func deleteAllData() async {
         do {
-            try VehiclePersistenceService.deleteAllData(context: modelContext)
+            try await VehiclePersistenceService(writer: writer).deleteAllData()
             deleteOutcome = .success
         } catch {
             Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "Settings")
@@ -340,7 +335,15 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView()
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
-        .environmentObject(CloudSyncService())
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return SettingsView()
+        .modelContainer(container)
+        .environmentObject(CloudSyncService(writer: writer))
+        .environmentObject(writer)
 }

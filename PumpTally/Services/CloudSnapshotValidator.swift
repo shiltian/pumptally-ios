@@ -6,7 +6,7 @@ import Foundation
 /// Validation is intentionally strict because replacement deletes the current local
 /// store after this succeeds. No SwiftData model is touched by this type.
 struct CloudSnapshotValidator {
-    struct VehicleSnapshot {
+    struct VehicleSnapshot: Sendable {
         let id: UUID
         let name: String
         let make: String?
@@ -15,9 +15,10 @@ struct CloudSnapshotValidator {
         let createdAt: Date
         let modifiedAt: Date?
         let unitSystem: UnitSystem
+        let displayUnitSystemRaw: String?
     }
 
-    struct FuelingRecordSnapshot {
+    struct FuelingRecordSnapshot: Sendable {
         let id: UUID
         let date: Date
         let odometer: Double
@@ -31,7 +32,7 @@ struct CloudSnapshotValidator {
         let vehicleID: UUID
     }
 
-    struct Snapshot {
+    struct Snapshot: Sendable {
         let vehicles: [VehicleSnapshot]
         let fuelingRecords: [FuelingRecordSnapshot]
     }
@@ -65,7 +66,19 @@ struct CloudSnapshotValidator {
     ) throws -> Snapshot {
         let vehicles = try validatedVehicleSnapshots(from: vehicleRecords)
         let vehicleIDs = Set(vehicles.map(\.id))
-        let fuelingRecords = try validatedFuelingRecordSnapshots(
+        let units = Dictionary(uniqueKeysWithValues: vehicles.map { ($0.id, $0.unitSystem) })
+        for record in fuelingRecordRecords {
+            if let parent = record[CloudRecordCodec.CloudFieldKey.FuelingRecord.vehicleRef] as? String,
+                let id = UUID(uuidString: parent), let unit = units[id]
+            {
+                let payload = try CloudMeasurementPayload.validate(
+                    record, storageUnit: unit, allowsLegacySnapshot: true)
+                guard payload.unitSystemRaw == unit.rawValue else {
+                    throw ValidationError.invalidFuelingRecord(record.recordID.recordName)
+                }
+            }
+        }
+        let fuelingRecords = try validateFuelingRecords(
             from: fuelingRecordRecords,
             vehicleIDs: vehicleIDs
         )
@@ -123,14 +136,17 @@ struct CloudSnapshotValidator {
                     as: Date.self,
                     invalidError: ValidationError.invalidVehicleRecord(recordName)
                 ),
-                unitSystem: unitSystem
+                    unitSystem: unitSystem,
+                    displayUnitSystemRaw: record[Field.displayUnitSystemRaw] as? String
             ))
         }
 
         return snapshots
     }
 
-    private func validatedFuelingRecordSnapshots(
+    /// Validates record structure independently of measurement wire versions.
+    /// Recovery assessment uses the same checks as snapshot replacement.
+    func validateFuelingRecords(
         from records: [CKRecord],
         vehicleIDs: Set<UUID>
     ) throws -> [FuelingRecordSnapshot] {

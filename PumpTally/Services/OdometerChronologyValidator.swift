@@ -7,7 +7,6 @@ struct OdometerReadingSnapshot: Identifiable, Equatable, Sendable {
     let date: Date
     let odometer: Double
 
-    @MainActor
     init(record: FuelingRecord) {
         id = record.id
         date = record.date
@@ -98,6 +97,12 @@ enum OdometerChronologyValidator {
             return OdometerChronologyValidation(neighbors: neighbors, issue: nil)
         }
 
+        return validate(odometer: candidateOdometer, neighbors: neighbors)
+    }
+
+    static func validate(
+        odometer candidateOdometer: Double, neighbors: OdometerChronologyNeighbors
+    ) -> OdometerChronologyValidation {
         let issue: OdometerChronologyIssue?
         if !candidateOdometer.isFinite || candidateOdometer <= 0 {
             issue = .invalidReading
@@ -156,5 +161,38 @@ enum OdometerChronologyValidator {
         if lhsDate != rhsDate { return lhsDate < rhsDate }
         if lhsOdometer != rhsOdometer { return lhsOdometer < rhsOdometer }
         return lhsID.uuidString < rhsID.uuidString
+    }
+}
+
+/// One sorted history serves every row in a bulk import. Equal timestamp and
+/// odometer groups are skipped together, exactly as the single-edit policy does.
+struct OdometerChronologyIndex {
+    private let readings: [OdometerReadingSnapshot]
+
+    init(_ readings: [OdometerReadingSnapshot]) {
+        self.readings = readings.sorted(by: OdometerChronologyValidator.areInIncreasingOrder)
+    }
+
+    func validate(_ candidate: OdometerReadingSnapshot) -> OdometerChronologyValidation {
+        func boundary(afterEqual: Bool) -> Int {
+            var lower = 0
+            var upper = readings.count
+            while lower < upper {
+                let middle = lower + (upper - lower) / 2
+                let value = readings[middle]
+                let before =
+                    value.date < candidate.date || (value.date == candidate.date && value.odometer < candidate.odometer)
+                let equal = value.date == candidate.date && value.odometer == candidate.odometer
+                if before || (afterEqual && equal) { lower = middle + 1 } else { upper = middle }
+            }
+            return lower
+        }
+        let before = boundary(afterEqual: false)
+        let after = boundary(afterEqual: true)
+        return OdometerChronologyValidator.validate(
+            odometer: candidate.odometer,
+            neighbors: .init(
+                predecessor: before > 0 ? readings[before - 1] : nil,
+                successor: after < readings.count ? readings[after] : nil))
     }
 }

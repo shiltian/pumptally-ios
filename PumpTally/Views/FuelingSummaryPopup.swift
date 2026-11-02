@@ -18,24 +18,24 @@ struct FuelingSummaryData: Identifiable {
     let unitSystem: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
-    /// Create a snapshot from a FuelingRecord at save time, capturing all
-    /// computed values while the model object is guaranteed to be valid.
+    /// Presentation consumes the committed value result, without retaining a
+    /// model from the write transaction.
     init(
-        record: FuelingRecord,
-        previousOdometer: Double,
+        record: SavedFuelingRecord,
         unitSystem: UnitSystem,
         metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
     ) {
-        self.date = record.date
-        self.odometer = record.odometer
-        self.fuelAmount = record.fuelAmount
-        self.pricePerFuelUnit = record.pricePerFuelUnit
-        self.totalCost = record.totalCost
-        self.isPartialFillUp = record.isPartialFillUp
-        self.previousOdometer = previousOdometer
-        self.efficiencyRaw = record.getEfficiency()
-        self.costPerDistance = record.getCostPerDistance()
-        self.distanceDriven = record.getDistanceDriven()
+        self.date = record.values.date
+        self.odometer = unitSystem.distanceValue(record.values.odometer, from: record.storageUnit)
+        self.fuelAmount = unitSystem.fuelValue(record.values.fuelAmount, from: record.storageUnit)
+        self.pricePerFuelUnit = unitSystem.priceValue(record.values.pricePerFuelUnit, from: record.storageUnit)
+        self.totalCost = record.values.totalCost
+        self.isPartialFillUp = record.values.fillUpType == .partial
+        self.previousOdometer = unitSystem.distanceValue(record.previousOdometer, from: record.storageUnit)
+        self.efficiencyRaw = unitSystem.efficiencyValue(record.efficiency, from: record.storageUnit)
+        self.costPerDistance = unitSystem.costPerDistanceValue(
+            record.costPerDistance, from: record.storageUnit)
+        self.distanceDriven = unitSystem.distanceValue(record.distanceDriven, from: record.storageUnit)
         self.unitSystem = unitSystem
         self.metricEfficiencyFormat = metricEfficiencyFormat
     }
@@ -275,6 +275,6 @@ struct SummaryDetailCard: View {
     record.cachedEfficiency = 300.0 / 10.5
     record.cachedCostPerDistance = 36.32 / 300.0
     return FuelingSummaryPopup(
-        data: FuelingSummaryData(record: record, previousOdometer: 12200, unitSystem: .imperial)
+        data: FuelingSummaryData(record: SavedFuelingRecord(record: record), unitSystem: .imperial)
     )
 }

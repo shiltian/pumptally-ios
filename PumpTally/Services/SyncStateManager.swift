@@ -11,17 +11,19 @@ final class SyncStateManager: ObservableObject {
         category: "SyncState"
     )
 
+    private let defaults: UserDefaults
+
     // MARK: - Published State
 
     @Published var iCloudSyncEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(iCloudSyncEnabled, forKey: Keys.iCloudSyncEnabled)
+            defaults.set(iCloudSyncEnabled, forKey: Keys.iCloudSyncEnabled)
         }
     }
 
     @Published var initialSyncCompleted: Bool {
         didSet {
-            UserDefaults.standard.set(initialSyncCompleted, forKey: Keys.initialSyncCompleted)
+            defaults.set(initialSyncCompleted, forKey: Keys.initialSyncCompleted)
         }
     }
 
@@ -35,6 +37,7 @@ final class SyncStateManager: ObservableObject {
         case synced
         case error(String)
         case unavailable
+        case reviewRequired
 
         var displayText: String {
             switch self {
@@ -43,6 +46,7 @@ final class SyncStateManager: ObservableObject {
             case .synced: return String(localized: "Synced")
             case .error(let msg): return String(localized: "Error: \(msg)")
             case .unavailable: return String(localized: "iCloud Unavailable")
+            case .reviewRequired: return String(localized: "Sync Needs Attention")
             }
         }
 
@@ -64,70 +68,18 @@ final class SyncStateManager: ObservableObject {
 
     // MARK: - Initialization
 
-    init() {
-        self.iCloudSyncEnabled = UserDefaults.standard.bool(forKey: Keys.iCloudSyncEnabled)
-        self.initialSyncCompleted = UserDefaults.standard.bool(forKey: Keys.initialSyncCompleted)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.iCloudSyncEnabled = defaults.bool(forKey: Keys.iCloudSyncEnabled)
+        self.initialSyncCompleted = defaults.bool(forKey: Keys.initialSyncCompleted)
     }
 
-    // MARK: - Server Change Token
-
-    /// The last known server change token for incremental sync
-    var serverChangeToken: CKServerChangeToken? {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: Keys.serverChangeToken) else {
-                return nil
-            }
-            do {
-                return try NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
-            } catch {
-                Self.logger.error("Failed to decode server change token: \(error)")
-                return nil
-            }
+    /// Old tokens have no verifiable account/store identity. V4 performs a
+    /// nondestructive reconciliation instead of importing an unsafe checkpoint.
+    func retireLegacyCheckpoint() {
+        for key in [Keys.serverChangeToken, Keys.syncEngineState, Keys.syncEngineBootstrapComplete] {
+            defaults.removeObject(forKey: key)
         }
-        set {
-            if let token = newValue {
-                do {
-                    let data = try NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
-                    UserDefaults.standard.set(data, forKey: Keys.serverChangeToken)
-                } catch {
-                    Self.logger.error("Failed to encode server change token: \(error)")
-                }
-            } else {
-                UserDefaults.standard.removeObject(forKey: Keys.serverChangeToken)
-            }
-        }
-    }
-
-    /// CKSyncEngine's opaque Codable state must survive process termination.
-    var syncEngineState: CKSyncEngine.State.Serialization? {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: Keys.syncEngineState) else {
-                return nil
-            }
-            do {
-                return try JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: data)
-            } catch {
-                Self.logger.error("Failed to decode CloudKit sync engine state: \(error)")
-                return nil
-            }
-        }
-        set {
-            guard let newValue else {
-                UserDefaults.standard.removeObject(forKey: Keys.syncEngineState)
-                return
-            }
-            do {
-                let data = try JSONEncoder().encode(newValue)
-                UserDefaults.standard.set(data, forKey: Keys.syncEngineState)
-            } catch {
-                Self.logger.error("Failed to encode CloudKit sync engine state: \(error)")
-            }
-        }
-    }
-
-    var syncEngineBootstrapComplete: Bool {
-        get { UserDefaults.standard.bool(forKey: Keys.syncEngineBootstrapComplete) }
-        set { UserDefaults.standard.set(newValue, forKey: Keys.syncEngineBootstrapComplete) }
     }
 
     // MARK: - State Management
@@ -135,21 +87,14 @@ final class SyncStateManager: ObservableObject {
     /// Reset all sync state (when disabling sync)
     func resetSyncState() {
         initialSyncCompleted = false
-        serverChangeToken = nil
-        syncEngineState = nil
-        syncEngineBootstrapComplete = false
+        retireLegacyCheckpoint()
         syncStatus = .idle
     }
 
-    /// Mark sync as enabled and initial sync complete
-    func markInitialSyncComplete() {
-        initialSyncCompleted = true
-        syncStatus = .synced
-    }
+
 }
 
 /// The durable outbox for local changes destined for the private CloudKit zone.
-@MainActor
 enum SyncChangeJournal {
     enum RecordType: String {
         case vehicle = "Vehicle"
@@ -173,6 +118,7 @@ enum SyncChangeJournal {
 
         if let existing = try context.fetch(descriptor).first {
             existing.operationRaw = operation.rawValue
+            existing.originRaw = "local"
             existing.generation = UUID().uuidString
             existing.createdAt = Date()
         } else {
@@ -216,6 +162,5 @@ enum SyncChangeJournal {
         guard let entry = try context.fetch(descriptor).first,
               entry.generation == generation else { return }
         context.delete(entry)
-        try context.save()
     }
 }

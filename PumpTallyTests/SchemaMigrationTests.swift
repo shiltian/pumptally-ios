@@ -13,6 +13,54 @@ import SwiftData
 @MainActor
 final class SchemaMigrationTests: XCTestCase {
 
+    func testOriginalV3FixturePreserves800RecordsAcrossMigrationAndReopen() throws {
+        let fixture = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
+        let url = tempStoreURL()
+        defer { removeStore(at: url) }
+        try FileManager.default.copyItem(at: fixture, to: url)
+        var expected: [UUID: [UInt64]] = [:]
+        var vehicleIDs = Set<UUID>()
+        do {
+            let schema = Schema(versionedSchema: SchemaV3.self)
+            let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+            let original = try ModelContainer(for: schema, configurations: [configuration])
+            let context = original.mainContext
+            for vehicle in try context.fetch(FetchDescriptor<SchemaV3.Vehicle>()) { vehicleIDs.insert(vehicle.id) }
+            for record in try context.fetch(FetchDescriptor<SchemaV3.FuelingRecord>()) {
+                expected[record.id] = [
+                    record.odometer.bitPattern, record.pricePerFuelUnit.bitPattern,
+                    record.fuelAmount.bitPattern, record.totalCost.bitPattern, record.cachedEfficiency!.bitPattern,
+                ]
+            }
+        }
+        XCTAssertEqual(expected.count, 800)
+        for _ in 0..<2 {
+            let schema = Schema(versionedSchema: SchemaV4.self)
+            let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+            let migrated = try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [configuration])
+            let context = migrated.mainContext
+            let records = try context.fetch(FetchDescriptor<FuelingRecord>())
+            XCTAssertEqual(records.count, 800)
+            XCTAssertEqual(Set(try context.fetch(FetchDescriptor<Vehicle>()).map(\.id)), vehicleIDs)
+            for record in records {
+                XCTAssertEqual(
+                    [
+                        record.odometer.bitPattern, record.pricePerFuelUnit.bitPattern,
+                        record.fuelAmount.bitPattern, record.totalCost.bitPattern, record.cachedEfficiency!.bitPattern,
+                    ], expected[record.id])
+                XCTAssertTrue(vehicleIDs.contains(record.vehicle.id))
+                XCTAssertNotNil(record.notes)
+                XCTAssertNil(record.vehicle.displayUnitSystemRaw)
+            }
+            let legacyDeletion = try XCTUnwrap(context.fetch(FetchDescriptor<SyncChange>()).first)
+            XCTAssertEqual(legacyDeletion.operationRaw, "delete")
+            XCTAssertNil(legacyDeletion.originRaw, "Migration must not manufacture deletion authorization")
+            try context.save()
+        }
+    }
+
     // MARK: - Helpers
 
     private func tempStoreURL() -> URL {
@@ -114,15 +162,15 @@ final class SchemaMigrationTests: XCTestCase {
     /// The latest schema version MUST reference the top-level runtime classes so
     /// SwiftData instantiates the types the rest of the app expects.  Using nested
     /// `@Model` copies here causes a fatal cast error at runtime.
-    func testSchemaV2ReferencesTopLevelRuntimeTypes() {
-        let models = SchemaV2.models
+    func testCurrentSchemaReferencesTopLevelRuntimeTypes() throws {
+        let models = SchemaV4.models
         XCTAssertTrue(
             models.contains(where: { $0 == PumpTally.Vehicle.self }),
-            "SchemaV2 must reference PumpTally.Vehicle, not a nested copy"
+            "Current schema must reference PumpTally.Vehicle, not a nested copy"
         )
         XCTAssertTrue(
             models.contains(where: { $0 == PumpTally.FuelingRecord.self }),
-            "SchemaV2 must reference PumpTally.FuelingRecord, not a nested copy"
+            "Current schema must reference PumpTally.FuelingRecord, not a nested copy"
         )
     }
 
@@ -150,7 +198,7 @@ final class SchemaMigrationTests: XCTestCase {
 
     func testMigrationPlanContainsAllSchemaVersions() {
         let schemas = PumpTallyMigrationPlan.schemas
-        XCTAssertEqual(schemas.count, 3, "Migration plan should list V1, V2, and V3")
+        XCTAssertEqual(schemas.count, 4, "Migration plan should list V1, V2, and V3")
     }
 
     func testMigrationPlanSchemasAreOrdered() {
@@ -166,8 +214,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertTrue(schemas[2] == SchemaV3.self, "Third schema should be V3")
     }
 
-    func testMigrationPlanHasTwoStages() {
-        XCTAssertEqual(PumpTallyMigrationPlan.stages.count, 2)
+    func testMigrationPlanHasThreeStages() throws {
+        XCTAssertEqual(PumpTallyMigrationPlan.stages.count, 3)
     }
 
     // MARK: - V1 Store Tests
@@ -250,7 +298,7 @@ final class SchemaMigrationTests: XCTestCase {
         // V1 container deallocated
 
         // --- V3: reopen with migration plan ---
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -308,7 +356,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -357,7 +405,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -392,7 +440,7 @@ final class SchemaMigrationTests: XCTestCase {
         let expected = try populateV1Store(at: url, vehicleCount: 3, recordsPerVehicle: 5)
 
         // Reopen with V3
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -424,7 +472,7 @@ final class SchemaMigrationTests: XCTestCase {
 
         let expected = try populateV1Store(at: url, vehicleCount: 2, recordsPerVehicle: 4)
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -478,7 +526,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,
@@ -513,26 +561,26 @@ final class SchemaMigrationTests: XCTestCase {
             let container = try ModelContainer(for: v2Schema, configurations: [config])
             let context = container.mainContext
 
-            let vehicle = Vehicle(id: vehicleID, name: "V2 Vehicle", createdAt: modifiedAt)
+            let vehicle = SchemaV2.Vehicle(name: "V2 Vehicle")
+            vehicle.id = vehicleID
+            vehicle.createdAt = modifiedAt
             vehicle.modifiedAt = modifiedAt
             context.insert(vehicle)
 
-            let record = FuelingRecord(
-                id: recordID,
-                date: modifiedAt,
-                odometer: expectedValues.odometer,
-                pricePerFuelUnit: expectedValues.price,
-                fuelAmount: expectedValues.fuel,
-                totalCost: expectedValues.cost,
-                createdAt: modifiedAt,
-                vehicle: vehicle
-            )
+            let record = SchemaV2.FuelingRecord(vehicle: vehicle)
+            record.id = recordID
+            record.date = modifiedAt
+            record.odometer = expectedValues.odometer
+            record.pricePerFuelUnit = expectedValues.price
+            record.fuelAmount = expectedValues.fuel
+            record.totalCost = expectedValues.cost
+            record.createdAt = modifiedAt
             record.modifiedAt = modifiedAt
             context.insert(record)
             try context.save()
         }
 
-        let v3Schema = Schema(versionedSchema: SchemaV3.self)
+        let v3Schema = Schema(versionedSchema: SchemaV4.self)
         let v3Config = ModelConfiguration(schema: v3Schema, url: url, cloudKitDatabase: .none)
         let v3Container = try ModelContainer(
             for: v3Schema,
@@ -567,7 +615,7 @@ final class SchemaMigrationTests: XCTestCase {
         let url = tempStoreURL()
         defer { removeStore(at: url) }
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: v2Schema,
@@ -623,7 +671,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let v2Schema = Schema(versionedSchema: SchemaV3.self)
+        let v2Schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(schema: v2Schema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: v2Schema,

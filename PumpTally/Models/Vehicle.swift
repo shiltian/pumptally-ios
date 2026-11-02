@@ -13,13 +13,13 @@ final class Vehicle {
 
     /// Unit system for this vehicle: "imperial" or "metric"
     var unitSystemRaw: String = UnitSystem.imperial.rawValue
+    var displayUnitSystemRaw: String?
 
     @Relationship(deleteRule: .cascade, inverse: \FuelingRecord.vehicle)
     var fuelingRecords: [FuelingRecord]?
 
     // MARK: - Cached Statistics (for performance)
     // These are pre-computed and stored to avoid recalculating on every view render
-    // Keep FuelingRecordPersistenceService.RollbackSnapshot in sync when adding a cache field.
     var cachedTotalSpent: Double?
     var cachedTotalDistance: Double?
     var cachedTotalFuel: Double?
@@ -39,6 +39,12 @@ final class Vehicle {
     var unitSystem: UnitSystem {
         get { UnitSystem(rawValue: unitSystemRaw) ?? .imperial }
         set { unitSystemRaw = newValue.rawValue }
+    }
+
+    /// The persisted measurement basis is independent of presentation.
+    var displayUnitSystem: UnitSystem {
+        get { displayUnitSystemRaw.flatMap(UnitSystem.init(rawValue:)) ?? unitSystem }
+        set { displayUnitSystemRaw = newValue.rawValue }
     }
 
     init(

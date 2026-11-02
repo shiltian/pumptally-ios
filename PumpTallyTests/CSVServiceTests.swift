@@ -78,20 +78,10 @@ final class CSVServiceTests: XCTestCase {
         XCTAssertTrue(lines[3].contains("\"third\""))
     }
 
-    func testParseCSVLineHandlesCommasAndEscapedQuotes() {
-        XCTAssertEqual(
-            CSVService.parseCSVLine(
-                "2024-01-15,12500,3.459,10.5,36.32,full,\"A \"\"quoted\"\", note\""
-            ),
-            [
-                "2024-01-15",
-                "12500",
-                "3.459",
-                "10.5",
-                "36.32",
-                "full",
-                "A \"quoted\", note"
-            ]
-        )
+    func testImportHandlesCommasAndEscapedQuotes() throws {
+        let rows = try CSVImportService.parse(
+            CSVService.csvHeader + "\n" + "2024-01-15,12500,3.459,10.5,36.32,full,\"A \"\"quoted\"\", note\"")
+        XCTAssertEqual(rows.first?.notes, "A \"quoted\", note")
+        XCTAssertEqual(rows.first?.odometer, 12500)
     }
 }

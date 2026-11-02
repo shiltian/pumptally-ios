@@ -7,6 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CF0000000000000000000004 /* CSVImportPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000005 /* CSVImportPlan.swift */; };
+		CF0000000000000000000001 /* SwiftCSV in Frameworks */ = {isa = PBXBuildFile; productRef = CF0000000000000000000002 /* SwiftCSV */; };
+		BF0000000000000000000601 /* CloudSyncMappingHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000602 /* CloudSyncMappingHarness.swift */; };
+		BF0000000000000000000501 /* SyncDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000502 /* SyncDatabase.swift */; };
+		BF0000000000000000000401 /* StartupCachePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000402 /* StartupCachePerformanceTests.swift */; };
+		BF0000000000000000000301 /* StatisticsCachePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000302 /* StatisticsCachePersistenceTests.swift */; };
+		BF0000000000000000000201 /* ApplicationStartupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000202 /* ApplicationStartupView.swift */; };
+		BF0000000000000000000101 /* StatisticsCachePersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000102 /* StatisticsCachePersistenceService.swift */; };
+		BE0000000000000000000201 /* PersistenceValues.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000202 /* PersistenceValues.swift */; };
+		BE0000000000000000000101 /* OwnedModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000102 /* OwnedModelStore.swift */; };
+		BE0000000000000000000001 /* PersistenceObservationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000002 /* PersistenceObservationTests.swift */; };
+		BD0000000000000000000021 /* CloudChangeBatchBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD0000000000000000000022 /* CloudChangeBatchBuilderTests.swift */; };
+		BD0000000000000000000011 /* CloudChangeBatchBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD0000000000000000000012 /* CloudChangeBatchBuilder.swift */; };
+		BD0000000000000000000001 /* SyncPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD0000000000000000000002 /* SyncPerformanceTests.swift */; };
 		1E6C4B202EE01BD200E33215 /* CSVImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6C4B1F2EE01BD200E33215 /* CSVImportView.swift */; };
 		A1000001296A0001 /* PumpTallyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000002296A0001 /* PumpTallyApp.swift */; };
 		A1000003296A0001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004296A0001 /* ContentView.swift */; };
@@ -26,12 +40,27 @@
 		A1000021296A0001 /* EditRecordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022296A0001 /* EditRecordView.swift */; };
 		A1000025296A0001 /* StatisticsCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000026296A0001 /* StatisticsCacheService.swift */; };
 		A1000027296A0001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000028296A0001 /* SettingsView.swift */; };
+		AA0000000000000000000001 /* ApplicationEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* ApplicationEnvironment.swift */; };
+		AA0000000000000000000003 /* ProductionAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* ProductionAppBootstrap.swift */; };
+		AA0000000000000000000005 /* TestingAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000006 /* TestingAppBootstrap.swift */; };
+		AB0000000000000000000001 /* CloudReconciliationValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */; };
+		AC0000000000000000000001 /* CloudSyncDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000002 /* CloudSyncDriver.swift */; };
+		AC0000000000000000000101 /* SyncActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000102 /* SyncActivity.swift */; };
+		AC0000000000000000000201 /* ApplicationLifecycleCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000202 /* ApplicationLifecycleCoordinator.swift */; };
+		AC0000000000000000000301 /* TestingCloudSyncEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000302 /* TestingCloudSyncEnvironment.swift */; };
+		AD0000000000000000000001 /* CloudSyncRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0000000000000000000002 /* CloudSyncRuntimeTests.swift */; };
+		AD0000000000000000000101 /* ApplicationLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0000000000000000000102 /* ApplicationLifecycleTests.swift */; };
+		AF0000000000000000000002 /* ProbeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000001 /* ProbeApp.swift */; };
+		AF0000000000000000000004 /* CloudKitProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000003 /* CloudKitProtocolTests.swift */; };
 		B1000001296B0001 /* FuelingRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002296B0001 /* FuelingRecordTests.swift */; };
 		B1000003296B0001 /* VehicleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000004296B0001 /* VehicleTests.swift */; };
 		B1000005296B0001 /* FillUpTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000006296B0001 /* FillUpTypeTests.swift */; };
 		B1000007296B0001 /* CSVServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000008296B0001 /* CSVServiceTests.swift */; };
 		B1000009296B0001 /* StatisticsCacheServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000A296B0001 /* StatisticsCacheServiceTests.swift */; };
 		B100000B296B0001 /* ExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000C296B0001 /* ExtensionsTests.swift */; };
+		BB0000000000000000000000 /* InitialSyncProposal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0000000000000000000000 /* InitialSyncProposal.swift */; };
+		BB0000000000000000000001 /* InitialSyncReconciler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0000000000000000000001 /* InitialSyncReconciler.swift */; };
+		BC0000000000000000000002 /* InitialSyncCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000001 /* InitialSyncCommandTests.swift */; };
 		C1000001296B0001 /* CloudSyncServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000002296B0001 /* CloudSyncServiceTests.swift */; };
 		D1000001296D0001 /* CurrencyInputField.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000002296D0001 /* CurrencyInputField.swift */; };
 		E1000001296E0001 /* UnitSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000002296E0001 /* UnitSystem.swift */; };
@@ -58,14 +87,30 @@
 		R100000329B00001 /* SyncOperationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R100000429B00001 /* SyncOperationCoordinatorTests.swift */; };
 		S100000129B10001 /* CSVImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000229B10001 /* CSVImportService.swift */; };
 		S100000329B10001 /* CSVImportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000429B10001 /* CSVImportServiceTests.swift */; };
+		UI0000000000000000000001 /* FuelingRecordUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UI0000000000000000000002 /* FuelingRecordUITests.swift */; };
 		V100000129B20001 /* VehiclePersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = V100000229B20001 /* VehiclePersistenceService.swift */; };
 		W100000129B30001 /* CloudRecordCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000229B30001 /* CloudRecordCodec.swift */; };
 		W100000329B30001 /* CloudSnapshotValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000429B30001 /* CloudSnapshotValidator.swift */; };
 		W100000529B30001 /* SyncConflictResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000629B30001 /* SyncConflictResolver.swift */; };
 		W100000729B30001 /* CloudReconciliationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000829B30001 /* CloudReconciliationService.swift */; };
+		X100000129B40001 /* FuelingRecordDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000229B40001 /* FuelingRecordDraft.swift */; };
+		X200000129B40001 /* FuelingRecordDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = X200000229B40001 /* FuelingRecordDraftTests.swift */; };
+		Y100000129B50001 /* SyncPersistenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Y100000229B50001 /* SyncPersistenceStore.swift */; };
+		Z100000129B60001 /* CloudMeasurementPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000229B60001 /* CloudMeasurementPayload.swift */; };
+		Z200000129B60001 /* SyncSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z200000229B60001 /* SyncSafetyTests.swift */; };
+		Z300000129B60001 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = Z300000229B60001 /* Fixtures */; };
+		Z400000129B60001 /* SyncReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z400000229B60001 /* SyncReviewService.swift */; };
+		Z500000129B60001 /* SyncReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z500000229B60001 /* SyncReviewView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		AF0000000000000000000018 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000F8296A0001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AF0000000000000000000007;
+			remoteInfo = CloudKitProbe;
+		};
 		B100000D296B0001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A10000F8296A0001 /* Project object */;
@@ -76,6 +121,19 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		CF0000000000000000000005 /* CSVImportPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportPlan.swift; sourceTree = "<group>"; };
+		BF0000000000000000000602 /* CloudSyncMappingHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncMappingHarness.swift; sourceTree = "<group>"; };
+		BF0000000000000000000502 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
+		BF0000000000000000000402 /* StartupCachePerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupCachePerformanceTests.swift; sourceTree = "<group>"; };
+		BF0000000000000000000302 /* StatisticsCachePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsCachePersistenceTests.swift; sourceTree = "<group>"; };
+		BF0000000000000000000202 /* ApplicationStartupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationStartupView.swift; sourceTree = "<group>"; };
+		BF0000000000000000000102 /* StatisticsCachePersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsCachePersistenceService.swift; sourceTree = "<group>"; };
+		BE0000000000000000000202 /* PersistenceValues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceValues.swift; sourceTree = "<group>"; };
+		BE0000000000000000000102 /* OwnedModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnedModelStore.swift; sourceTree = "<group>"; };
+		BE0000000000000000000002 /* PersistenceObservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceObservationTests.swift; sourceTree = "<group>"; };
+		BD0000000000000000000022 /* CloudChangeBatchBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudChangeBatchBuilderTests.swift; sourceTree = "<group>"; };
+		BD0000000000000000000012 /* CloudChangeBatchBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudChangeBatchBuilder.swift; sourceTree = "<group>"; };
+		BD0000000000000000000002 /* SyncPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncPerformanceTests.swift; sourceTree = "<group>"; };
 		1E6C4B1F2EE01BD200E33215 /* CSVImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportView.swift; sourceTree = "<group>"; };
 		A1000000296A0001 /* PumpTally.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PumpTally.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000002296A0001 /* PumpTallyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PumpTallyApp.swift; sourceTree = "<group>"; };
@@ -98,6 +156,31 @@
 		A1000024296A0001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000026296A0001 /* StatisticsCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsCacheService.swift; sourceTree = "<group>"; };
 		A1000028296A0001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000002 /* ApplicationEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnvironment.swift; sourceTree = "<group>"; };
+		AA0000000000000000000004 /* ProductionAppBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionAppBootstrap.swift; sourceTree = "<group>"; };
+		AA0000000000000000000006 /* TestingAppBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingAppBootstrap.swift; sourceTree = "<group>"; };
+		AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudReconciliationValidationTests.swift; sourceTree = "<group>"; };
+		AC0000000000000000000002 /* CloudSyncDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncDriver.swift; sourceTree = "<group>"; };
+		AC0000000000000000000102 /* SyncActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncActivity.swift; sourceTree = "<group>"; };
+		AC0000000000000000000202 /* ApplicationLifecycleCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationLifecycleCoordinator.swift; sourceTree = "<group>"; };
+		AC0000000000000000000302 /* TestingCloudSyncEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingCloudSyncEnvironment.swift; sourceTree = "<group>"; };
+		AD0000000000000000000002 /* CloudSyncRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncRuntimeTests.swift; sourceTree = "<group>"; };
+		AD0000000000000000000102 /* ApplicationLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationLifecycleTests.swift; sourceTree = "<group>"; };
+		AE0000000000000000000000 /* ProjectDevelopment.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectDevelopment.xcconfig; sourceTree = "<group>"; };
+		AE0000000000000000000001 /* ProjectRelease.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectRelease.xcconfig; sourceTree = "<group>"; };
+		AE0000000000000000000003 /* ApplicationProduction.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ApplicationProduction.xcconfig; sourceTree = "<group>"; };
+		AE0000000000000000000005 /* ApplicationTesting.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ApplicationTesting.xcconfig; sourceTree = "<group>"; };
+		AE0000000000000000000006 /* UnitTests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = UnitTests.xcconfig; sourceTree = "<group>"; };
+		AE0000000000000000000009 /* UITests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = UITests.xcconfig; sourceTree = "<group>"; };
+		AF0000000000000000000001 /* ProbeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProbeApp.swift; sourceTree = "<group>"; };
+		AF0000000000000000000003 /* CloudKitProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitProtocolTests.swift; sourceTree = "<group>"; };
+		AF0000000000000000000005 /* CloudKitProbe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = CloudKitProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF0000000000000000000006 /* CloudKitProtocolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = CloudKitProtocolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF0000000000000000000019 /* CloudKitProbe.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CloudKitProbe.xcconfig; sourceTree = "<group>"; };
+		AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CloudKitProtocolTests.xcconfig; sourceTree = "<group>"; };
+		AF000000000000000000001B /* Probe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Probe.entitlements; sourceTree = "<group>"; };
+		B00000000000000000000001 /* ProjectBenchmark.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectBenchmark.xcconfig; sourceTree = "<group>"; };
+		B00000000000000000000002 /* ApplicationBenchmark.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ApplicationBenchmark.xcconfig; sourceTree = "<group>"; };
 		B1000000296B0001 /* PumpTallyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PumpTallyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1000002296B0001 /* FuelingRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordTests.swift; sourceTree = "<group>"; };
 		B1000004296B0001 /* VehicleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleTests.swift; sourceTree = "<group>"; };
@@ -105,6 +188,9 @@
 		B1000008296B0001 /* CSVServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVServiceTests.swift; sourceTree = "<group>"; };
 		B100000A296B0001 /* StatisticsCacheServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsCacheServiceTests.swift; sourceTree = "<group>"; };
 		B100000C296B0001 /* ExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsTests.swift; sourceTree = "<group>"; };
+		BA0000000000000000000000 /* InitialSyncProposal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialSyncProposal.swift; sourceTree = "<group>"; };
+		BA0000000000000000000001 /* InitialSyncReconciler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialSyncReconciler.swift; sourceTree = "<group>"; };
+		BC0000000000000000000001 /* InitialSyncCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialSyncCommandTests.swift; sourceTree = "<group>"; };
 		C1000002296B0001 /* CloudSyncServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncServiceTests.swift; sourceTree = "<group>"; };
 		D1000002296D0001 /* CurrencyInputField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyInputField.swift; sourceTree = "<group>"; };
 		E1000002296E0001 /* UnitSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitSystem.swift; sourceTree = "<group>"; };
@@ -131,15 +217,40 @@
 		R100000429B00001 /* SyncOperationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncOperationCoordinatorTests.swift; sourceTree = "<group>"; };
 		S100000229B10001 /* CSVImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportService.swift; sourceTree = "<group>"; };
 		S100000429B10001 /* CSVImportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportServiceTests.swift; sourceTree = "<group>"; };
+		UI0000000000000000000002 /* FuelingRecordUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordUITests.swift; sourceTree = "<group>"; };
+		UI0000000000000000000003 /* PumpTallyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = PumpTallyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		V100000229B20001 /* VehiclePersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclePersistenceService.swift; sourceTree = "<group>"; };
 		W100000229B30001 /* CloudRecordCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecordCodec.swift; sourceTree = "<group>"; };
 		W100000429B30001 /* CloudSnapshotValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSnapshotValidator.swift; sourceTree = "<group>"; };
 		W100000629B30001 /* SyncConflictResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncConflictResolver.swift; sourceTree = "<group>"; };
 		W100000829B30001 /* CloudReconciliationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudReconciliationService.swift; sourceTree = "<group>"; };
+		X100000229B40001 /* FuelingRecordDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordDraft.swift; sourceTree = "<group>"; };
+		X200000229B40001 /* FuelingRecordDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordDraftTests.swift; sourceTree = "<group>"; };
+		Y100000229B50001 /* SyncPersistenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncPersistenceStore.swift; sourceTree = "<group>"; };
+		Z100000229B60001 /* CloudMeasurementPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMeasurementPayload.swift; sourceTree = "<group>"; };
+		Z200000229B60001 /* SyncSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSafetyTests.swift; sourceTree = "<group>"; };
+		Z300000229B60001 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fixtures; sourceTree = "<group>"; };
+		Z400000229B60001 /* SyncReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReviewService.swift; sourceTree = "<group>"; };
+		Z500000229B60001 /* SyncReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A10000FD296A0001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CF0000000000000000000001 /* SwiftCSV in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF000000000000000000000B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF000000000000000000000C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -153,14 +264,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		UI0000000000000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		A1000000296A0002 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				AF0000000000000000000005 /* CloudKitProbe.app */,
+				AF0000000000000000000006 /* CloudKitProtocolTests.xctest */,
 				A1000000296A0001 /* PumpTally.app */,
 				B1000000296B0001 /* PumpTallyTests.xctest */,
+				UI0000000000000000000003 /* PumpTallyUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -173,6 +294,9 @@
 				J100000229AB0001 /* InfoPlist.strings */,
 				H1000002298A0001 /* Localizable.xcstrings */,
 				A1000002296A0001 /* PumpTallyApp.swift */,
+				AC0000000000000000000202 /* ApplicationLifecycleCoordinator.swift */,
+				AA0000000000000000000002 /* ApplicationEnvironment.swift */,
+				AA0000000000000000000004 /* ProductionAppBootstrap.swift */,
 				A1000004296A0001 /* ContentView.swift */,
 				A1000002296A0002 /* Models */,
 				A1000003296A0002 /* Views */,
@@ -187,10 +311,12 @@
 		A1000002296A0002 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				X100000229B40001 /* FuelingRecordDraft.swift */,
 				A100000A296A0001 /* Vehicle.swift */,
 				A100000C296A0001 /* FuelingRecord.swift */,
 				E1000002296E0001 /* UnitSystem.swift */,
 				I1000002299A0001 /* PumpTallySchema.swift */,
+				BE0000000000000000000202 /* PersistenceValues.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -198,6 +324,8 @@
 		A1000003296A0002 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				BF0000000000000000000202 /* ApplicationStartupView.swift */,
+				Z500000229B60001 /* SyncReviewView.swift */,
 				D1000003296D0001 /* Components */,
 				1E6C4B1F2EE01BD200E33215 /* CSVImportView.swift */,
 				A100000E296A0001 /* VehicleListView.swift */,
@@ -219,10 +347,15 @@
 		A1000005296A0002 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				BF0000000000000000000502 /* SyncDatabase.swift */,
+				BF0000000000000000000102 /* StatisticsCachePersistenceService.swift */,
+				Z400000229B60001 /* SyncReviewService.swift */,
 				A1000018296A0001 /* CSVService.swift */,
+				CF0000000000000000000005 /* CSVImportPlan.swift */,
 				A1000026296A0001 /* StatisticsCacheService.swift */,
 				E1000004296E0001 /* CloudSyncService.swift */,
 				E1000006296E0001 /* SyncStateManager.swift */,
+				Y100000229B50001 /* SyncPersistenceStore.swift */,
 				L100000229AD0001 /* OdometerChronologyValidator.swift */,
 				N100000229AE0001 /* FuelingRecordPersistenceService.swift */,
 				P100000229AF0001 /* FuelEfficiencyPolicy.swift */,
@@ -230,9 +363,16 @@
 				S100000229B10001 /* CSVImportService.swift */,
 				V100000229B20001 /* VehiclePersistenceService.swift */,
 				W100000229B30001 /* CloudRecordCodec.swift */,
+				Z100000229B60001 /* CloudMeasurementPayload.swift */,
 				W100000429B30001 /* CloudSnapshotValidator.swift */,
 				W100000629B30001 /* SyncConflictResolver.swift */,
 				W100000829B30001 /* CloudReconciliationService.swift */,
+				BE0000000000000000000102 /* OwnedModelStore.swift */,
+				AC0000000000000000000002 /* CloudSyncDriver.swift */,
+				AC0000000000000000000102 /* SyncActivity.swift */,
+				BA0000000000000000000000 /* InitialSyncProposal.swift */,
+				BA0000000000000000000001 /* InitialSyncReconciler.swift */,
+				BD0000000000000000000012 /* CloudChangeBatchBuilder.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -256,24 +396,77 @@
 		A10000F7296A0001 = {
 			isa = PBXGroup;
 			children = (
+				AF000000000000000000001C /* CloudKitProtocolTests */,
+				AEFFFFFFFFFFFFFFFFFFFFFE /* Config */,
 				A1000001296A0002 /* PumpTally */,
 				B1000001296B0002 /* PumpTallyTests */,
+				UI0000000000000000000004 /* PumpTallyUITests */,
 				A1000000296A0002 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000007 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000000000000000000602 /* CloudSyncMappingHarness.swift */,
+				AA0000000000000000000006 /* TestingAppBootstrap.swift */,
+				AC0000000000000000000302 /* TestingCloudSyncEnvironment.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		AEFFFFFFFFFFFFFFFFFFFFFE /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				B00000000000000000000002 /* ApplicationBenchmark.xcconfig */,
+				AE0000000000000000000003 /* ApplicationProduction.xcconfig */,
+				AE0000000000000000000005 /* ApplicationTesting.xcconfig */,
+				AF0000000000000000000019 /* CloudKitProbe.xcconfig */,
+				AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */,
+				B00000000000000000000001 /* ProjectBenchmark.xcconfig */,
+				AE0000000000000000000000 /* ProjectDevelopment.xcconfig */,
+				AE0000000000000000000001 /* ProjectRelease.xcconfig */,
+				AE0000000000000000000009 /* UITests.xcconfig */,
+				AE0000000000000000000006 /* UnitTests.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		AF000000000000000000001C /* CloudKitProtocolTests */ = {
+			isa = PBXGroup;
+			children = (
+				AF0000000000000000000001 /* ProbeApp.swift */,
+				AF0000000000000000000003 /* CloudKitProtocolTests.swift */,
+				AF000000000000000000001B /* Probe.entitlements */,
+			);
+			path = CloudKitProtocolTests;
 			sourceTree = "<group>";
 		};
 		B1000001296B0002 /* PumpTallyTests */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000007 /* Support */,
+				Z300000229B60001 /* Fixtures */,
+				X200000229B40001 /* FuelingRecordDraftTests.swift */,
 				B1000002296B0001 /* FuelingRecordTests.swift */,
 				B1000004296B0001 /* VehicleTests.swift */,
 				B1000006296B0001 /* FillUpTypeTests.swift */,
 				B1000008296B0001 /* CSVServiceTests.swift */,
 				B100000A296B0001 /* StatisticsCacheServiceTests.swift */,
+				BF0000000000000000000302 /* StatisticsCachePersistenceTests.swift */,
+				BF0000000000000000000402 /* StartupCachePerformanceTests.swift */,
 				B100000C296B0001 /* ExtensionsTests.swift */,
 				E1000008296E0001 /* UnitSystemTests.swift */,
 				F0A00002297A0001 /* SchemaMigrationTests.swift */,
 				C1000002296B0001 /* CloudSyncServiceTests.swift */,
+				BC0000000000000000000001 /* InitialSyncCommandTests.swift */,
+				AD0000000000000000000002 /* CloudSyncRuntimeTests.swift */,
+				BD0000000000000000000002 /* SyncPerformanceTests.swift */,
+				BE0000000000000000000002 /* PersistenceObservationTests.swift */,
+				BD0000000000000000000022 /* CloudChangeBatchBuilderTests.swift */,
+				AD0000000000000000000102 /* ApplicationLifecycleTests.swift */,
+				AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */,
+				Z200000229B60001 /* SyncSafetyTests.swift */,
 				K100000229AC0001 /* PrecomputedChartDataTests.swift */,
 				K100000429AC0001 /* HistoryRecordsQueryTests.swift */,
 				L100000429AD0001 /* OdometerChronologyValidatorTests.swift */,
@@ -294,6 +487,14 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
+		UI0000000000000000000004 /* PumpTallyUITests */ = {
+			isa = PBXGroup;
+			children = (
+				UI0000000000000000000002 /* FuelingRecordUITests.swift */,
+			);
+			path = PumpTallyUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -310,9 +511,45 @@
 			dependencies = (
 			);
 			name = PumpTally;
+			packageProductDependencies = (CF0000000000000000000002 /* SwiftCSV */);
 			productName = PumpTally;
 			productReference = A1000000296A0001 /* PumpTally.app */;
 			productType = "com.apple.product-type.application";
+		};
+		AF0000000000000000000007 /* CloudKitProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF000000000000000000000F /* Build configuration list for PBXNativeTarget "CloudKitProbe" */;
+			buildPhases = (
+				AF0000000000000000000009 /* Sources */,
+				AF000000000000000000000B /* Frameworks */,
+				AF000000000000000000000D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CloudKitProbe;
+			productName = CloudKitProbe;
+			productReference = AF0000000000000000000005 /* CloudKitProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AF0000000000000000000008 /* CloudKitProtocolTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF0000000000000000000010 /* Build configuration list for PBXNativeTarget "CloudKitProtocolTests" */;
+			buildPhases = (
+				AF000000000000000000000A /* Sources */,
+				AF000000000000000000000C /* Frameworks */,
+				AF000000000000000000000E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AF0000000000000000000017 /* PBXTargetDependency */,
+			);
+			name = CloudKitProtocolTests;
+			productName = CloudKitProtocolTests;
+			productReference = AF0000000000000000000006 /* CloudKitProtocolTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		B100000F296B0001 /* PumpTallyTests */ = {
 			isa = PBXNativeTarget;
@@ -332,6 +569,24 @@
 			productReference = B1000000296B0001 /* PumpTallyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		UI0000000000000000000005 /* PumpTallyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = UI0000000000000000000006 /* Build configuration list for PBXNativeTarget "PumpTallyUITests" */;
+			buildPhases = (
+				UI0000000000000000000007 /* Sources */,
+				UI0000000000000000000008 /* Frameworks */,
+				UI0000000000000000000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1000013296B0001 /* PBXTargetDependency */,
+			);
+			name = PumpTallyUITests;
+			productName = PumpTallyUITests;
+			productReference = UI0000000000000000000003 /* PumpTallyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -344,6 +599,9 @@
 				TargetAttributes = {
 					A10000FF296A0001 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					AF0000000000000000000008 = {
+						TestTargetID = AF0000000000000000000007;
 					};
 					B100000F296B0001 = {
 						CreatedOnToolsVersion = 15.0;
@@ -363,11 +621,15 @@
 			);
 			mainGroup = A10000F7296A0001;
 			productRefGroup = A1000000296A0002 /* Products */;
+			packageReferences = (CF0000000000000000000003 /* SwiftCSV */);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				AF0000000000000000000007 /* CloudKitProbe */,
+				AF0000000000000000000008 /* CloudKitProtocolTests */,
 				A10000FF296A0001 /* PumpTally */,
 				B100000F296B0001 /* PumpTallyTests */,
+				UI0000000000000000000005 /* PumpTallyUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -384,7 +646,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AF000000000000000000000D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF000000000000000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B1000012296B0001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				Z300000129B60001 /* Fixtures in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		UI0000000000000000000009 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -401,6 +685,24 @@
 				1E6C4B202EE01BD200E33215 /* CSVImportView.swift in Sources */,
 				D1000001296D0001 /* CurrencyInputField.swift in Sources */,
 				A1000001296A0001 /* PumpTallyApp.swift in Sources */,
+				BF0000000000000000000201 /* ApplicationStartupView.swift in Sources */,
+				BF0000000000000000000101 /* StatisticsCachePersistenceService.swift in Sources */,
+				BF0000000000000000000501 /* SyncDatabase.swift in Sources */,
+				BB0000000000000000000000 /* InitialSyncProposal.swift in Sources */,
+				BB0000000000000000000001 /* InitialSyncReconciler.swift in Sources */,
+				BE0000000000000000000201 /* PersistenceValues.swift in Sources */,
+				BE0000000000000000000101 /* OwnedModelStore.swift in Sources */,
+				BD0000000000000000000011 /* CloudChangeBatchBuilder.swift in Sources */,
+				AC0000000000000000000001 /* CloudSyncDriver.swift in Sources */,
+				AC0000000000000000000101 /* SyncActivity.swift in Sources */,
+				AC0000000000000000000201 /* ApplicationLifecycleCoordinator.swift in Sources */,
+				AC0000000000000000000301 /* TestingCloudSyncEnvironment.swift in Sources */,
+				AA0000000000000000000001 /* ApplicationEnvironment.swift in Sources */,
+				AA0000000000000000000003 /* ProductionAppBootstrap.swift in Sources */,
+				AA0000000000000000000005 /* TestingAppBootstrap.swift in Sources */,
+				Z500000129B60001 /* SyncReviewView.swift in Sources */,
+				Z400000129B60001 /* SyncReviewService.swift in Sources */,
+				X100000129B40001 /* FuelingRecordDraft.swift in Sources */,
 				A1000003296A0001 /* ContentView.swift in Sources */,
 				A1000009296A0001 /* Vehicle.swift in Sources */,
 				A100000B296A0001 /* FuelingRecord.swift in Sources */,
@@ -410,6 +712,7 @@
 				A1000013296A0001 /* AddRecordView.swift in Sources */,
 				A1000015296A0001 /* FuelingSummaryPopup.swift in Sources */,
 				A1000017296A0001 /* CSVService.swift in Sources */,
+				CF0000000000000000000004 /* CSVImportPlan.swift in Sources */,
 				A1000025296A0001 /* StatisticsCacheService.swift in Sources */,
 				A100001B296A0001 /* AddVehicleView.swift in Sources */,
 				A100001D296A0001 /* ChartView.swift in Sources */,
@@ -419,6 +722,7 @@
 				E1000001296E0001 /* UnitSystem.swift in Sources */,
 				E1000003296E0001 /* CloudSyncService.swift in Sources */,
 				E1000005296E0001 /* SyncStateManager.swift in Sources */,
+				Y100000129B50001 /* SyncPersistenceStore.swift in Sources */,
 				F1000001296F0001 /* VehicleSettingsView.swift in Sources */,
 				G1000001297A0001 /* FuelingRecordFormView.swift in Sources */,
 				G1000003297A0001 /* iCloudSyncDetailView.swift in Sources */,
@@ -431,9 +735,26 @@
 				S100000129B10001 /* CSVImportService.swift in Sources */,
 				V100000129B20001 /* VehiclePersistenceService.swift in Sources */,
 				W100000129B30001 /* CloudRecordCodec.swift in Sources */,
+				Z100000129B60001 /* CloudMeasurementPayload.swift in Sources */,
 				W100000329B30001 /* CloudSnapshotValidator.swift in Sources */,
 				W100000529B30001 /* SyncConflictResolver.swift in Sources */,
 				W100000729B30001 /* CloudReconciliationService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF0000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF0000000000000000000002 /* ProbeApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF000000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF0000000000000000000004 /* CloudKitProtocolTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,14 +763,26 @@
 			buildActionMask = 2147483647;
 			files = (
 				B1000001296B0001 /* FuelingRecordTests.swift in Sources */,
+				X200000129B40001 /* FuelingRecordDraftTests.swift in Sources */,
 				B1000003296B0001 /* VehicleTests.swift in Sources */,
 				B1000005296B0001 /* FillUpTypeTests.swift in Sources */,
 				B1000007296B0001 /* CSVServiceTests.swift in Sources */,
 				B1000009296B0001 /* StatisticsCacheServiceTests.swift in Sources */,
+				BF0000000000000000000301 /* StatisticsCachePersistenceTests.swift in Sources */,
+				BF0000000000000000000601 /* CloudSyncMappingHarness.swift in Sources */,
+				BF0000000000000000000401 /* StartupCachePerformanceTests.swift in Sources */,
 				B100000B296B0001 /* ExtensionsTests.swift in Sources */,
 				E1000007296E0001 /* UnitSystemTests.swift in Sources */,
 				F0A00001297A0001 /* SchemaMigrationTests.swift in Sources */,
 				C1000001296B0001 /* CloudSyncServiceTests.swift in Sources */,
+				BC0000000000000000000002 /* InitialSyncCommandTests.swift in Sources */,
+				AD0000000000000000000001 /* CloudSyncRuntimeTests.swift in Sources */,
+				BD0000000000000000000001 /* SyncPerformanceTests.swift in Sources */,
+				BE0000000000000000000001 /* PersistenceObservationTests.swift in Sources */,
+				BD0000000000000000000021 /* CloudChangeBatchBuilderTests.swift in Sources */,
+				AD0000000000000000000101 /* ApplicationLifecycleTests.swift in Sources */,
+				AB0000000000000000000001 /* CloudReconciliationValidationTests.swift in Sources */,
+				Z200000129B60001 /* SyncSafetyTests.swift in Sources */,
 				K100000129AC0001 /* PrecomputedChartDataTests.swift in Sources */,
 				K100000329AC0001 /* HistoryRecordsQueryTests.swift in Sources */,
 				L100000329AD0001 /* OdometerChronologyValidatorTests.swift in Sources */,
@@ -460,9 +793,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		UI0000000000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				UI0000000000000000000001 /* FuelingRecordUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		AF0000000000000000000017 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AF0000000000000000000007 /* CloudKitProbe */;
+			targetProxy = AF0000000000000000000018 /* PBXContainerItemProxy */;
+		};
 		B1000013296B0001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A10000FF296A0001 /* PumpTally */;
@@ -481,241 +827,187 @@
 		};
 /* End PBXVariantGroup section */
 
+/* Begin XCLocalSwiftPackageReference section */
+        CF0000000000000000000003 /* SwiftCSV */ = {
+            isa = XCLocalSwiftPackageReference;
+            relativePath = ThirdParty/SwiftCSV;
+        };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+        CF0000000000000000000002 /* SwiftCSV */ = {
+            isa = XCSwiftPackageProductDependency;
+            productName = SwiftCSV;
+        };
+/* End XCSwiftPackageProductDependency section */
+
 /* Begin XCBuildConfiguration section */
-		A1000107296A0001 /* Debug */ = {
+		1EBB78303096F3450095BB3D /* Benchmark */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = F9M3UZ669L;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				MTL_FAST_MATH = YES;
-				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.CloudKitProbe;
+				PRODUCT_NAME = CloudKitProbe;
+			};
+			name = Benchmark;
+		};
+		1EBB78313096F3450095BB3D /* Benchmark */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = CloudKitProtocolTests;
+			};
+			name = Benchmark;
+		};
+		A1000107296A0001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000000 /* ProjectDevelopment.xcconfig */;
+			buildSettings = {
 			};
 			name = Debug;
 		};
 		A1000108296A0001 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000001 /* ProjectRelease.xcconfig */;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = F9M3UZ669L;
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
 		A100010A296A0001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000003 /* ApplicationProduction.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CODE_SIGN_ENTITLEMENTS = PumpTally/PumpTally.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
-				DEVELOPMENT_ASSET_PATHS = "\"PumpTally/Preview Content\"";
-				DEVELOPMENT_TEAM = F9M3UZ669L;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = PumpTally/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = PumpTally;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = armv7;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.6;
-				PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
 		A100010B296A0001 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000003 /* ApplicationProduction.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CODE_SIGN_ENTITLEMENTS = PumpTally/PumpTally.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
-				DEVELOPMENT_ASSET_PATHS = "\"PumpTally/Preview Content\"";
-				DEVELOPMENT_TEAM = F9M3UZ669L;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = PumpTally/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = PumpTally;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = armv7;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.6;
-				PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
+		AA0000000000000000000100 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000000 /* ProjectDevelopment.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		AA0000000000000000000101 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000005 /* ApplicationTesting.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		AA0000000000000000000102 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000006 /* UnitTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		AA0000000000000000000103 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000009 /* UITests.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		AF0000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF0000000000000000000019 /* CloudKitProbe.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		AF0000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF0000000000000000000019 /* CloudKitProbe.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		AF0000000000000000000013 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF0000000000000000000019 /* CloudKitProbe.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		AF0000000000000000000014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		AF0000000000000000000015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		AF0000000000000000000016 /* Testing */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Testing;
+		};
+		B00000000000000000000003 /* Benchmark */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B00000000000000000000001 /* ProjectBenchmark.xcconfig */;
+			buildSettings = {
+			};
+			name = Benchmark;
+		};
+		B00000000000000000000004 /* Benchmark */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B00000000000000000000002 /* ApplicationBenchmark.xcconfig */;
+			buildSettings = {
+			};
+			name = Benchmark;
+		};
+		B00000000000000000000005 /* Benchmark */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000006 /* UnitTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Benchmark;
+		};
+		B00000000000000000000006 /* Benchmark */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000009 /* UITests.xcconfig */;
+			buildSettings = {
+			};
+			name = Benchmark;
+		};
 		B1000014296B0001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000006 /* UnitTests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.PumpTallyTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PumpTally.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PumpTally";
 			};
 			name = Debug;
 		};
 		B1000015296B0001 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000006 /* UnitTests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.PumpTallyTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PumpTally.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PumpTally";
+			};
+			name = Release;
+		};
+		UI0000000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000009 /* UITests.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		UI0000000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000009 /* UITests.xcconfig */;
+			buildSettings = {
 			};
 			name = Release;
 		};
@@ -727,6 +1019,8 @@
 			buildConfigurations = (
 				A1000107296A0001 /* Debug */,
 				A1000108296A0001 /* Release */,
+				B00000000000000000000003 /* Benchmark */,
+				AA0000000000000000000100 /* Testing */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -736,6 +1030,30 @@
 			buildConfigurations = (
 				A100010A296A0001 /* Debug */,
 				A100010B296A0001 /* Release */,
+				B00000000000000000000004 /* Benchmark */,
+				AA0000000000000000000101 /* Testing */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF000000000000000000000F /* Build configuration list for PBXNativeTarget "CloudKitProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF0000000000000000000011 /* Debug */,
+				AF0000000000000000000012 /* Release */,
+				AF0000000000000000000013 /* Testing */,
+				1EBB78303096F3450095BB3D /* Benchmark */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF0000000000000000000010 /* Build configuration list for PBXNativeTarget "CloudKitProtocolTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF0000000000000000000014 /* Debug */,
+				AF0000000000000000000015 /* Release */,
+				AF0000000000000000000016 /* Testing */,
+				1EBB78313096F3450095BB3D /* Benchmark */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -745,6 +1063,19 @@
 			buildConfigurations = (
 				B1000014296B0001 /* Debug */,
 				B1000015296B0001 /* Release */,
+				B00000000000000000000005 /* Benchmark */,
+				AA0000000000000000000102 /* Testing */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		UI0000000000000000000006 /* Build configuration list for PBXNativeTarget "PumpTallyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				UI0000000000000000000010 /* Debug */,
+				UI0000000000000000000011 /* Release */,
+				B00000000000000000000006 /* Benchmark */,
+				AA0000000000000000000103 /* Testing */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

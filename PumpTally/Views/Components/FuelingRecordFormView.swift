@@ -5,15 +5,10 @@ import SwiftUI
 /// preview, and notes sections.
 struct FuelingRecordFormView: View {
     let unitSystem: UnitSystem
+    let storageUnit: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
-    @Binding var date: Date
-    @Binding var odometerString: String
-    @Binding var pricePerFuelUnitMills: Int
-    @Binding var fuelAmountMills: Int
-    @Binding var totalCostCents: Int
-    @Binding var fillUpType: FillUpType
-    @Binding var notes: String
+    @Binding var draft: FuelingRecordDraft
 
     var focusedField: FocusState<EditableField?>.Binding
 
@@ -26,21 +21,18 @@ struct FuelingRecordFormView: View {
     /// Whether to show the preview section (AddRecordView uses it, EditRecordView does not)
     var showPreview: Bool = true
 
-    enum EditableField: Equatable {
-        case pricePerFuelUnit
-        case fuelAmount
-        case totalCost
+    typealias EditableField = FuelingRecordDraft.Field
+
+    private var currentOdometer: Double? { draft.odometer }
+    private var fuelAmount: Double { draft.fuelAmount }
+    private var totalCost: Double { draft.totalCost }
+
+    private func numericBinding(_ field: EditableField) -> Binding<Int> {
+        Binding(get: { draft.input(for: field) }, set: { draft.edit(field, input: $0) })
     }
 
-    // MARK: - Computed Values
-
-    private var currentOdometer: Double? { Double(odometerString) }
-    private var pricePerFuelUnit: Double { Double(pricePerFuelUnitMills) / 1000.0 }
-    private var fuelAmount: Double { Double(fuelAmountMills) / 1000.0 }
-    private var totalCost: Double { Double(totalCostCents) / 100.0 }
-
     private var previewEfficiency: Double? {
-        guard showPreview, let current = currentOdometer, fuelAmount > 0 else { return nil }
+        guard showPreview, draft.fillUpType == .full, let current = currentOdometer, fuelAmount > 0 else { return nil }
         let distance = current - previousOdometer
         guard distance > 0 else { return nil }
         return unitSystem.efficiencyDisplayValue(
@@ -71,7 +63,7 @@ struct FuelingRecordFormView: View {
 
     private var dateSection: some View {
         Section {
-            DatePicker("Date & Time", selection: $date, in: ...Date())
+            DatePicker("Date & Time", selection: $draft.date, in: ...Date())
                 .font(.appBody)
         } header: {
             Text("When")
@@ -87,7 +79,8 @@ struct FuelingRecordFormView: View {
                 Text("Odometer Reading")
                     .font(.appBody)
                 Spacer()
-                TextField(unitSystem.distanceUnit, text: $odometerString)
+                TextField(unitSystem.distanceUnit, text: $draft.odometerString)
+                    .accessibilityIdentifier("fueling.odometer")
                     .font(.appBody)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
@@ -126,9 +119,13 @@ struct FuelingRecordFormView: View {
         case .invalidReading:
             Text("Odometer must be greater than zero.")
         case .notGreaterThanPredecessor(let predecessor):
-            Text("Odometer must be greater than the previous reading (\(predecessor.odometer.formatted(.number.precision(.fractionLength(0...2)))) \(unitSystem.distanceUnit)).")
+            Text(
+                "Odometer must be greater than the previous reading (\(unitSystem.distanceValue(predecessor.odometer, from: storageUnit).formatted(.number.precision(.fractionLength(0...2)))) \(unitSystem.distanceUnit))."
+            )
         case .notLessThanSuccessor(let successor):
-            Text("Odometer must be less than the next reading (\(successor.odometer.formatted(.number.precision(.fractionLength(0...2)))) \(unitSystem.distanceUnit)).")
+            Text(
+                "Odometer must be less than the next reading (\(unitSystem.distanceValue(successor.odometer, from: storageUnit).formatted(.number.precision(.fractionLength(0...2)))) \(unitSystem.distanceUnit))."
+            )
         }
     }
 
@@ -143,14 +140,12 @@ struct FuelingRecordFormView: View {
                 Text("$")
                     .foregroundColor(.secondary)
                 CurrencyInputField(
-                    value: $pricePerFuelUnitMills,
+                    value: numericBinding(.pricePerFuelUnit),
                     decimalPlaces: 3,
-                    width: 100
+                    width: 100,
+                    accessibilityIdentifier: "fueling.price"
                 )
                 .focused(focusedField, equals: .pricePerFuelUnit)
-                .onChange(of: pricePerFuelUnitMills) { _, _ in
-                    if focusedField.wrappedValue == .pricePerFuelUnit { calculateFuelAmount() }
-                }
             }
 
             HStack {
@@ -158,14 +153,12 @@ struct FuelingRecordFormView: View {
                     .font(.appBody)
                 Spacer()
                 CurrencyInputField(
-                    value: $fuelAmountMills,
+                    value: numericBinding(.fuelAmount),
                     decimalPlaces: 3,
-                    width: 100
+                    width: 100,
+                    accessibilityIdentifier: "fueling.fuel"
                 )
                 .focused(focusedField, equals: .fuelAmount)
-                .onChange(of: fuelAmountMills) { _, _ in
-                    if focusedField.wrappedValue == .fuelAmount { calculatePricePerFuelUnit() }
-                }
                 Text(unitSystem.fuelUnit)
                     .foregroundColor(.secondary)
             }
@@ -177,14 +170,12 @@ struct FuelingRecordFormView: View {
                 Text("$")
                     .foregroundColor(.secondary)
                 CurrencyInputField(
-                    value: $totalCostCents,
+                    value: numericBinding(.totalCost),
                     decimalPlaces: 2,
-                    width: 100
+                    width: 100,
+                    accessibilityIdentifier: "fueling.cost"
                 )
                 .focused(focusedField, equals: .totalCost)
-                .onChange(of: totalCostCents) { _, _ in
-                    if focusedField.wrappedValue == .totalCost { calculatePricePerFuelUnit() }
-                }
             }
         } header: {
             Text("Fuel Details")
@@ -239,7 +230,7 @@ struct FuelingRecordFormView: View {
 
     private var fillUpTypeSection: some View {
         Section {
-            Picker("Fill-up Type", selection: $fillUpType) {
+            Picker("Fill-up Type", selection: $draft.fillUpType) {
                 ForEach(FillUpType.allCases, id: \.self) { type in
                     HStack {
                         Image(systemName: type.icon)
@@ -252,7 +243,7 @@ struct FuelingRecordFormView: View {
             .font(.appBody)
             .pickerStyle(.menu)
         } footer: {
-            Text(fillUpType.description)
+            Text(draft.fillUpType.description)
                 .font(.appCaption)
         }
     }
@@ -261,7 +252,8 @@ struct FuelingRecordFormView: View {
 
     private var notesSection: some View {
         Section {
-            TextField("Add notes (optional)", text: $notes, axis: .vertical)
+            TextField("Add notes (optional)", text: $draft.notes, axis: .vertical)
+                .accessibilityIdentifier("fueling.notes")
                 .font(.appBody)
                 .lineLimit(3...6)
         } header: {
@@ -270,17 +262,4 @@ struct FuelingRecordFormView: View {
         }
     }
 
-    // MARK: - Auto-Calculation
-
-    private func calculatePricePerFuelUnit() {
-        guard fuelAmount > 0, totalCost > 0 else { return }
-        let calculated = totalCost / fuelAmount
-        pricePerFuelUnitMills = Int(round(calculated * 1000))
-    }
-
-    private func calculateFuelAmount() {
-        guard pricePerFuelUnit > 0, totalCost > 0 else { return }
-        let calculated = totalCost / pricePerFuelUnit
-        fuelAmountMills = Int(round(calculated * 1000))
-    }
 }

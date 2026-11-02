@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 import UniformTypeIdentifiers
 import os
 
@@ -130,10 +130,11 @@ struct ExportCSVView: View {
 
 struct ImportCSVView: View {
     let vehicle: Vehicle
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var cloudSyncService: CloudSyncService
     @State private var showingFilePicker = false
+    @State private var selectedFile: CSVImportFile?
+    @State private var pendingImportedCount: Int?
+    @State private var isImporting = false
     @State private var importedCount = 0
     @State private var showingSuccess = false
     @State private var errorMessage: String?
@@ -196,64 +197,44 @@ struct ImportCSVView: View {
             ) { result in
                 handleFileImport(result)
             }
+            .sheet(
+                item: $selectedFile,
+                onDismiss: {
+                    if let count = pendingImportedCount {
+                        importedCount = count
+                        pendingImportedCount = nil
+                        showingSuccess = true
+                    }
+                }
+            ) { file in
+                CSVImportView(fileURL: file.url, vehicles: [vehicle]) { count in
+                    pendingImportedCount = count
+                }
+            }
             .alert("Import Successful", isPresented: $showingSuccess) {
                 Button("OK") { dismiss() }
             } message: {
                 Text("Successfully imported \(importedCount) records.")
             }
         }
+        .disabled(isImporting)
+        .interactiveDismissDisabled(isImporting)
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard !isImporting else { return }
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
 
-            guard url.startAccessingSecurityScopedResource() else {
-                errorMessage = String(localized: "Unable to access the selected file.")
-                return
-            }
-
+            isImporting = true
             Task {
-                defer { url.stopAccessingSecurityScopedResource() }
-
-                let snapshots: [CSVImportRecordSnapshot]
+                defer { isImporting = false }
                 do {
-                    snapshots = try await Task.detached(priority: .userInitiated) {
-                        let content = try String(contentsOf: url, encoding: .utf8)
-                        return try CSVImportService.parse(content)
-                    }.value
+                    selectedFile = try await CSVImportFile.stage(url)
                 } catch {
-                    Self.logger.error("Failed to parse CSV file: \(error)")
-                    if let importError = error as? CSVImportError {
-                        errorMessage = importError.localizedDescription
-                    } else {
-                        errorMessage = String(localized: "Unable to read the selected file. Please make sure it is a valid CSV file.")
-                    }
-                    return
-                }
-
-                do {
-                    try cloudSyncService.withLocalPushesSuspended {
-                        _ = try CSVImportService.importRecords(
-                            snapshots,
-                            into: vehicle,
-                            context: modelContext
-                        )
-                    }
-                    await cloudSyncService.pushPendingLocalChanges()
-
-                    importedCount = snapshots.count
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        showingSuccess = true
-                    }
-                } catch {
-                    Self.logger.error("Failed to import CSV records: \(error)")
-                    if let importError = error as? CSVImportError {
-                        errorMessage = importError.localizedDescription
-                    } else {
-                        errorMessage = CSVImportError.persistenceFailed.localizedDescription
-                    }
+                    Self.logger.error("Failed to stage CSV file: \(error)")
+                    errorMessage = String(localized: "Unable to open the selected file. Please try again.")
                 }
             }
 
@@ -263,4 +244,3 @@ struct ImportCSVView: View {
         }
     }
 }
-

@@ -1,0 +1,6 @@
+// Release optimization with testability; benchmark storage and transport stay isolated.
+#include "ProjectRelease.xcconfig"
+
+ENABLE_TESTABILITY = YES
+ONLY_ACTIVE_ARCH = YES
+SWIFT_OPTIMIZATION_LEVEL = -O

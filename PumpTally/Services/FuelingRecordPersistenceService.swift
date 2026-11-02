@@ -1,367 +1,180 @@
 import Foundation
 import SwiftData
-import os
 
-enum FuelingRecordPersistenceError: LocalizedError {
-    case insertedRelationshipUnavailable
-    case deletedRelationshipUnavailable
+/// Typed commands commit business values, affected caches and outgoing intent
+/// together. Only IDs and immutable results leave the owned transaction.
+struct FuelingRecordPersistenceService: Sendable {
+    private let store: OwnedModelStore
 
-    var errorDescription: String? {
-        switch self {
-        case .insertedRelationshipUnavailable:
-            return "The new fueling record relationship was not available before saving."
-        case .deletedRelationshipUnavailable:
-            return "The deleted fueling record relationship was not updated before saving."
+    init(writer: OwnedModelStore) { store = writer }
+
+    func create(values: FuelingRecordValues, storageUnit: UnitSystem, vehicleID: UUID) async throws
+        -> SavedFuelingRecord
+    {
+        try await store.transaction { actor in
+            let context = actor.modelContext
+            let vehicle = try owner(vehicleID, storageUnit: storageUnit, in: context)
+            try validate(values)
+            let readings = (vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
+            guard
+                OdometerChronologyValidator.validate(date: values.date, odometer: values.odometer, records: readings)
+                    .isValid
+            else { throw FuelingRecordEditingError.invalidInput }
+            let record = FuelingRecord(
+                date: values.date, odometer: values.odometer,
+                pricePerFuelUnit: values.pricePerFuelUnit, fuelAmount: values.fuelAmount, totalCost: values.totalCost,
+                fillUpType: readings.isEmpty ? .partial : values.fillUpType, notes: values.notes, vehicle: vehicle)
+            record.modifiedAt = Date()
+            context.insert(record)
+            context.processPendingChanges()
+            StatisticsCacheService.updateForNewRecord(record, vehicle: vehicle)
+            try SyncChangeJournal.enqueue(record, in: context)
+            return SavedFuelingRecord(record: record)
         }
     }
-}
 
-/// Coordinates a record mutation and its derived cache updates as one save.
-///
-/// No stored model or schema changes are involved. A clean rollback boundary is
-/// established first, pending inverse relationships are processed in memory,
-/// then the mutation and all cache fields are committed by one `save()`.
-@MainActor
-enum FuelingRecordPersistenceService {
-    typealias Commit = (ModelContext) throws -> Void
-
-    private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio",
-        category: "RecordPersistence"
-    )
-
-    static func insert(
-        into vehicle: Vehicle,
-        context: ModelContext,
-        commit: Commit = { try $0.save() },
-        makeRecord: () -> FuelingRecord
-    ) throws -> FuelingRecord {
-        let rollbackSnapshot = RollbackSnapshot(vehicle: vehicle)
-        var insertedRecord: FuelingRecord?
-        var didMutate = false
-
-        do {
-            return try perform(
-                in: context,
-                commit: commit,
-                mutation: {
-                    didMutate = true
-                    let record = makeRecord()
-                    insertedRecord = record
-                    context.insert(record)
-                    return record
-                },
-                afterPendingChanges: { record in
-                    guard (vehicle.fuelingRecords ?? []).contains(where: { $0.id == record.id }) else {
-                        throw FuelingRecordPersistenceError.insertedRelationshipUnavailable
-                    }
-                    StatisticsCacheService.updateForNewRecord(record, vehicle: vehicle)
-                    try SyncChangeJournal.enqueue(record, in: context)
-                }
-            )
-        } catch {
-            logger.error("Failed to insert fueling record: \(error.localizedDescription, privacy: .public)")
-            if didMutate {
-                restoreAfterFailedMutation(
-                    in: context,
-                    snapshot: rollbackSnapshot
-                ) {
-                    if let insertedRecord {
-                        vehicle.fuelingRecords?.removeAll { $0.id == insertedRecord.id }
-                    }
-                }
+    @discardableResult
+    func update(recordID: UUID, update: FuelingRecordUpdate) async throws -> Bool {
+        try await store.transaction { actor in
+            let context = actor.modelContext
+            let record = try record(recordID, in: context)
+            guard update.storageUnit == nil || update.storageUnit == record.vehicle.unitSystem else {
+                throw FuelingRecordEditingError.recordChanged
             }
-            throw error
-        }
-    }
-
-    static func insertBatch(
-        into vehicle: Vehicle,
-        context: ModelContext,
-        commit: Commit = { try $0.save() },
-        makeRecords: () -> [FuelingRecord]
-    ) throws -> [FuelingRecord] {
-        let rollbackSnapshot = RollbackSnapshot(vehicle: vehicle)
-        var insertedRecords: [FuelingRecord] = []
-        var didMutate = false
-
-        do {
-            return try perform(
-                in: context,
-                commit: commit,
-                mutation: {
-                    didMutate = true
-                    insertedRecords = makeRecords()
-                    for record in insertedRecords {
-                        context.insert(record)
-                    }
-                    return insertedRecords
-                },
-                afterPendingChanges: { records in
-                    let insertedIDs = Set(records.map(\.id))
-                    let relatedIDs = Set((vehicle.fuelingRecords ?? []).map(\.id))
-                    guard insertedIDs.isSubset(of: relatedIDs) else {
-                        throw FuelingRecordPersistenceError.insertedRelationshipUnavailable
-                    }
-                    StatisticsCacheService.recalculateAllStatistics(for: vehicle)
-                    for record in records {
-                        try SyncChangeJournal.enqueue(record, in: context)
-                    }
-                }
-            )
-        } catch {
-            logger.error("Failed to insert fueling record batch: \(error.localizedDescription, privacy: .public)")
-            if didMutate {
-                let insertedIDs = Set(insertedRecords.map(\.id))
-                restoreAfterFailedMutation(
-                    in: context,
-                    snapshot: rollbackSnapshot
-                ) {
-                    vehicle.fuelingRecords?.removeAll {
-                        insertedIDs.contains($0.id)
-                    }
-                }
+            let current = FuelingRecordValues(record: record)
+            let values = try update.merging(into: current)
+            guard values != current else { return false }
+            try validate(values, preserving: current)
+            let readings = (record.vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
+            guard
+                OdometerChronologyValidator.validate(
+                    date: values.date, odometer: values.odometer, records: readings,
+                    originalRecord: OdometerReadingSnapshot(record: record)
+                ).isValid
+            else { throw FuelingRecordEditingError.invalidInput }
+            func assign<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<FuelingRecord, Value>, _ value: Value) {
+                if record[keyPath: keyPath] != value { record[keyPath: keyPath] = value }
             }
-            throw error
-        }
-    }
-
-    static func saveEdits(
-        to record: FuelingRecord,
-        in vehicle: Vehicle,
-        context: ModelContext,
-        commit: Commit = { try $0.save() },
-        applyChanges: () -> Void
-    ) throws {
-        let rollbackSnapshot = RollbackSnapshot(vehicle: vehicle, editedRecord: record)
-        var didMutate = false
-
-        do {
-            _ = try perform(
-                in: context,
-                commit: commit,
-                mutation: {
-                    didMutate = true
-                    applyChanges()
-                    return record
-                },
-                afterPendingChanges: { _ in
-                    StatisticsCacheService.updateForEditedRecord(vehicle: vehicle)
-                    try SyncChangeJournal.enqueue(record, in: context)
-                }
-            )
-        } catch {
-            logger.error("Failed to edit fueling record: \(error.localizedDescription, privacy: .public)")
-            if didMutate {
-                restoreAfterFailedMutation(in: context, snapshot: rollbackSnapshot)
+            assign(\.date, values.date)
+            assign(\.odometer, values.odometer)
+            assign(\.pricePerFuelUnit, values.pricePerFuelUnit)
+            assign(\.fuelAmount, values.fuelAmount)
+            assign(\.totalCost, values.totalCost)
+            assign(\.fillUpType, values.fillUpType)
+            assign(\.notes, values.notes)
+            record.modifiedAt = Date()
+            if current.date != values.date || current.odometer != values.odometer
+                || current.pricePerFuelUnit != values.pricePerFuelUnit || current.fuelAmount != values.fuelAmount
+                || current.totalCost != values.totalCost || current.fillUpType != values.fillUpType
+            {
+                StatisticsCacheService.updateForEditedRecord(vehicle: record.vehicle)
             }
-            throw error
+            try SyncChangeJournal.enqueue(record, in: context)
+            return true
         }
     }
 
-    static func delete(
-        _ record: FuelingRecord,
-        from vehicle: Vehicle,
-        context: ModelContext,
-        commit: Commit = { try $0.save() }
-    ) throws {
-        let rollbackSnapshot = RollbackSnapshot(vehicle: vehicle)
-        var didMutate = false
+    func delete(recordID: UUID) async throws {
+        try await store.transaction { actor in
+            let context = actor.modelContext
+            let record = try record(recordID, in: context)
+            let vehicle = record.vehicle
+            try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
+            context.delete(record)
+            context.processPendingChanges()
+            StatisticsCacheService.updateForDeletedRecord(vehicle: vehicle)
+        }
+    }
 
-        do {
-            _ = try perform(
-                in: context,
-                commit: commit,
-                mutation: {
-                    didMutate = true
-                    context.delete(record)
-                    return record.id
-                },
-                afterPendingChanges: { deletedID in
-                    guard !(vehicle.fuelingRecords ?? []).contains(where: { $0.id == deletedID }) else {
-                        throw FuelingRecordPersistenceError.deletedRelationshipUnavailable
-                    }
-                    StatisticsCacheService.updateForDeletedRecord(vehicle: vehicle)
-                    try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
-                }
-            )
-        } catch {
-            logger.error("Failed to delete fueling record: \(error.localizedDescription, privacy: .public)")
-            if didMutate {
-                restoreAfterFailedMutation(in: context, snapshot: rollbackSnapshot)
+    func prepareImport(_ snapshots: [CSVImportRecordSnapshot], vehicleID: UUID, sourceUnit: UnitSystem) async throws
+        -> CSVImportPlan
+    {
+        try await store.transaction { actor in
+            let vehicle = try importOwner(vehicleID, in: actor.modelContext)
+            let existing = (vehicle.fuelingRecords ?? []).map(CSVImportExistingRecord.init(record:))
+            for row in snapshots { try validate(row.values) }
+            let revision = CSVImportRevision(
+                storeID: ObjectIdentifier(actor.modelContainer),
+                storageUnit: vehicle.unitSystem, records: existing)
+            let plan = try CSVImportPlan(
+                records: snapshots, vehicleID: vehicleID, sourceUnit: sourceUnit,
+                revision: revision, existing: existing)
+            for row in plan.records { try validate(row.values) }
+            return plan
+        }
+    }
+
+    func importRecords(plan: CSVImportPlan, duplicates: CSVImportDuplicateDecision) async throws -> [UUID] {
+        try await store.transaction { actor in
+            let context = actor.modelContext
+            let vehicle = try importOwner(plan.vehicleID, in: context)
+            let existing = (vehicle.fuelingRecords ?? []).map(CSVImportExistingRecord.init(record:))
+            let revision = CSVImportRevision(
+                storeID: ObjectIdentifier(actor.modelContainer),
+                storageUnit: vehicle.unitSystem, records: existing)
+            guard revision == plan.revision else { throw CSVImportError.stalePlan }
+            let snapshots = plan.selectedRecords(duplicates)
+            let ids = snapshots.map(\.id)
+            guard Set(ids).count == ids.count else { throw FuelingRecordEditingError.recordChanged }
+            if !ids.isEmpty,
+                try context.fetchCount(FetchDescriptor<FuelingRecord>(predicate: #Predicate { ids.contains($0.id) }))
+                    > 0
+            {
+                throw FuelingRecordEditingError.recordChanged
             }
-            throw error
-        }
-    }
-
-    private static func perform<Result>(
-        in context: ModelContext,
-        commit: Commit,
-        mutation: () throws -> Result,
-        afterPendingChanges: (Result) throws -> Void
-    ) throws -> Result {
-        // Do not let rollback discard unrelated pending UI changes. If this
-        // boundary save fails, mutation has not started and those changes are
-        // deliberately left pending for their owner to resolve.
-        if context.hasChanges {
-            try context.save()
-        }
-
-        let result = try mutation()
-        context.processPendingChanges()
-        try afterPendingChanges(result)
-        try commit(context)
-        return result
-    }
-
-    private static func restoreAfterFailedMutation(
-        in context: ModelContext,
-        snapshot: RollbackSnapshot,
-        repairRelationship: () -> Void = {}
-    ) {
-        // First rollback restores the store transaction. SwiftData can leave
-        // registered objects stale after `processPendingChanges`, so repair
-        // those values from the snapshot; the final rollback then clears the
-        // dirty flags created by that repair while retaining restored values.
-        context.rollback()
-        repairRelationship()
-        snapshot.restore()
-        context.rollback()
-    }
-
-    /// SwiftData rollback restores the store transaction, but after
-    /// `processPendingChanges()` registered objects can retain stale in-memory
-    /// values. Capture all values this service may mutate so UI state is also
-    /// restored after a failed commit.
-    ///
-    /// IMPORTANT: This snapshot is intentionally coupled to every stored field
-    /// changed by record editing or statistics recalculation. Any new mutable
-    /// record field or cache property must be added here as well.
-    private struct RollbackSnapshot {
-        let vehicle: Vehicle
-        let vehicleCache: VehicleCacheSnapshot
-        let recordCaches: [RecordCacheSnapshot]
-        let editedRecord: EditedRecordSnapshot?
-
-        init(vehicle: Vehicle, editedRecord: FuelingRecord? = nil) {
-            self.vehicle = vehicle
-            vehicleCache = VehicleCacheSnapshot(vehicle: vehicle)
-            recordCaches = (vehicle.fuelingRecords ?? []).map(RecordCacheSnapshot.init(record:))
-            self.editedRecord = editedRecord.map(EditedRecordSnapshot.init(record:))
-        }
-
-        func restore() {
-            vehicleCache.restore(on: vehicle)
-            for snapshot in recordCaches {
-                snapshot.restore()
+            try CSVImportService.validateChronology(
+                snapshots, existingRecords: (vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:)))
+            let values = snapshots.map(\.values)
+            // Validate the complete input before constructing any models.
+            for value in values { try validate(value) }
+            guard !snapshots.isEmpty else { return [] }
+            let modifiedAt = Date()
+            for (snapshot, value) in zip(snapshots, values) {
+                let record = FuelingRecord(
+                    id: snapshot.id, date: value.date, odometer: value.odometer,
+                    pricePerFuelUnit: value.pricePerFuelUnit, fuelAmount: value.fuelAmount,
+                    totalCost: value.totalCost, fillUpType: value.fillUpType, notes: value.notes, vehicle: vehicle)
+                record.modifiedAt = modifiedAt
+                context.insert(record)
+                try SyncChangeJournal.enqueue(record, in: context)
             }
-            editedRecord?.restore()
+            context.processPendingChanges()
+            StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+            return snapshots.map(\.id)
         }
     }
 
-    private struct VehicleCacheSnapshot {
-        let cachedTotalSpent: Double?
-        let cachedTotalDistance: Double?
-        let cachedTotalFuel: Double?
-        let cachedAverageEfficiency: Double?
-        let cachedAverageCostPerDistance: Double?
-        let cachedAverageFillUpCost: Double?
-        let cachedAveragePricePerFuelUnit: Double?
-        let cachedBestEfficiency: Double?
-        let cachedWorstEfficiency: Double?
-        let cachedHighestPricePerFuelUnit: Double?
-        let cachedLowestPricePerFuelUnit: Double?
-        let cachedRecordCount: Int?
-        let cacheLastUpdated: Date?
-
-        init(vehicle: Vehicle) {
-            cachedTotalSpent = vehicle.cachedTotalSpent
-            cachedTotalDistance = vehicle.cachedTotalDistance
-            cachedTotalFuel = vehicle.cachedTotalFuel
-            cachedAverageEfficiency = vehicle.cachedAverageEfficiency
-            cachedAverageCostPerDistance = vehicle.cachedAverageCostPerDistance
-            cachedAverageFillUpCost = vehicle.cachedAverageFillUpCost
-            cachedAveragePricePerFuelUnit = vehicle.cachedAveragePricePerFuelUnit
-            cachedBestEfficiency = vehicle.cachedBestEfficiency
-            cachedWorstEfficiency = vehicle.cachedWorstEfficiency
-            cachedHighestPricePerFuelUnit = vehicle.cachedHighestPricePerFuelUnit
-            cachedLowestPricePerFuelUnit = vehicle.cachedLowestPricePerFuelUnit
-            cachedRecordCount = vehicle.cachedRecordCount
-            cacheLastUpdated = vehicle.cacheLastUpdated
-        }
-
-        func restore(on vehicle: Vehicle) {
-            vehicle.cachedTotalSpent = cachedTotalSpent
-            vehicle.cachedTotalDistance = cachedTotalDistance
-            vehicle.cachedTotalFuel = cachedTotalFuel
-            vehicle.cachedAverageEfficiency = cachedAverageEfficiency
-            vehicle.cachedAverageCostPerDistance = cachedAverageCostPerDistance
-            vehicle.cachedAverageFillUpCost = cachedAverageFillUpCost
-            vehicle.cachedAveragePricePerFuelUnit = cachedAveragePricePerFuelUnit
-            vehicle.cachedBestEfficiency = cachedBestEfficiency
-            vehicle.cachedWorstEfficiency = cachedWorstEfficiency
-            vehicle.cachedHighestPricePerFuelUnit = cachedHighestPricePerFuelUnit
-            vehicle.cachedLowestPricePerFuelUnit = cachedLowestPricePerFuelUnit
-            vehicle.cachedRecordCount = cachedRecordCount
-            vehicle.cacheLastUpdated = cacheLastUpdated
-        }
+    private func importOwner(_ id: UUID, in context: ModelContext) throws -> Vehicle {
+        var query = FetchDescriptor<Vehicle>(predicate: #Predicate { $0.id == id })
+        query.fetchLimit = 1
+        guard let vehicle = try context.fetch(query).first else { throw CSVImportError.stalePlan }
+        return vehicle
     }
 
-    private struct RecordCacheSnapshot {
-        let record: FuelingRecord
-        let cachedPreviousOdometer: Double?
-        let cachedDistanceDriven: Double?
-        let cachedEfficiency: Double?
-        let cachedCostPerDistance: Double?
-
-        init(record: FuelingRecord) {
-            self.record = record
-            cachedPreviousOdometer = record.cachedPreviousOdometer
-            cachedDistanceDriven = record.cachedDistanceDriven
-            cachedEfficiency = record.cachedEfficiency
-            cachedCostPerDistance = record.cachedCostPerDistance
-        }
-
-        func restore() {
-            record.cachedPreviousOdometer = cachedPreviousOdometer
-            record.cachedDistanceDriven = cachedDistanceDriven
-            record.cachedEfficiency = cachedEfficiency
-            record.cachedCostPerDistance = cachedCostPerDistance
-        }
+    private func owner(_ id: UUID, storageUnit: UnitSystem, in context: ModelContext) throws -> Vehicle {
+        var query = FetchDescriptor<Vehicle>(predicate: #Predicate { $0.id == id })
+        query.fetchLimit = 1
+        guard let vehicle = try context.fetch(query).first else { throw FuelingRecordEditingError.recordUnavailable }
+        guard vehicle.unitSystem == storageUnit else { throw FuelingRecordEditingError.recordChanged }
+        return vehicle
     }
 
-    private struct EditedRecordSnapshot {
-        let record: FuelingRecord
-        let date: Date
-        let odometer: Double
-        let pricePerFuelUnit: Double
-        let fuelAmount: Double
-        let totalCost: Double
-        let fillUpTypeRaw: String
-        let notes: String?
-        let modifiedAt: Date?
+    private func record(_ id: UUID, in context: ModelContext) throws -> FuelingRecord {
+        var query = FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.id == id })
+        query.fetchLimit = 1
+        guard let record = try context.fetch(query).first else { throw FuelingRecordEditingError.recordUnavailable }
+        return record
+    }
 
-        init(record: FuelingRecord) {
-            self.record = record
-            date = record.date
-            odometer = record.odometer
-            pricePerFuelUnit = record.pricePerFuelUnit
-            fuelAmount = record.fuelAmount
-            totalCost = record.totalCost
-            fillUpTypeRaw = record.fillUpTypeRaw
-            notes = record.notes
-            modifiedAt = record.modifiedAt
-        }
-
-        func restore() {
-            record.date = date
-            record.odometer = odometer
-            record.pricePerFuelUnit = pricePerFuelUnit
-            record.fuelAmount = fuelAmount
-            record.totalCost = totalCost
-            record.fillUpTypeRaw = fillUpTypeRaw
-            record.notes = notes
-            record.modifiedAt = modifiedAt
-        }
+    private func validate(_ values: FuelingRecordValues, preserving original: FuelingRecordValues? = nil) throws {
+        // Existing legacy values are grandfathered when untouched. Validation
+        // cannot turn a notes edit into a rewrite or repair of old measurements.
+        guard original?.date == values.date || values.date.timeIntervalSince1970.isFinite,
+            original?.odometer == values.odometer || (values.odometer.isFinite && values.odometer > 0),
+            original?.pricePerFuelUnit == values.pricePerFuelUnit
+                || (values.pricePerFuelUnit.isFinite && values.pricePerFuelUnit >= 0),
+            original?.fuelAmount == values.fuelAmount || (values.fuelAmount.isFinite && values.fuelAmount > 0),
+            original?.totalCost == values.totalCost || (values.totalCost.isFinite && values.totalCost >= 0)
+        else { throw FuelingRecordEditingError.invalidInput }
     }
 }

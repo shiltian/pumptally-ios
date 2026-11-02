@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import PumpTally
 
+@MainActor
 final class StatisticsCacheServiceTests: XCTestCase {
 
     // MARK: - Helper Methods
@@ -455,45 +456,6 @@ final class StatisticsCacheServiceTests: XCTestCase {
 
         XCTAssertEqual(vehicle.cachedRecordCount, 2)
         XCTAssertEqual(vehicle.cachedAveragePricePerFuelUnit!, 4.00, accuracy: 0.001) // (3 + 5) / 2
-    }
-
-    // MARK: - Cache Validation Tests
-
-    func testEnsureCacheValidWhenCacheIsValid() {
-        let vehicle = createVehicle()
-        vehicle.fuelingRecords = []
-        vehicle.cachedRecordCount = 0
-        vehicle.cacheLastUpdated = Date()
-
-        StatisticsCacheService.ensureCacheValid(for: vehicle)
-
-        XCTAssertEqual(vehicle.cachedRecordCount, 0)
-    }
-
-    func testEnsureCacheValidWhenCacheNeedsRebuild() {
-        let vehicle = createVehicle()
-
-        let record = createRecord(odometer: 10000, vehicle: vehicle)
-        vehicle.fuelingRecords = [record]
-
-        XCTAssertNil(vehicle.cacheLastUpdated)
-
-        StatisticsCacheService.ensureCacheValid(for: vehicle)
-
-        XCTAssertEqual(vehicle.cachedRecordCount, 1)
-        XCTAssertNotNil(vehicle.cacheLastUpdated)
-    }
-
-    func testEnsureCacheValidWhenRecordCountMismatch() {
-        let vehicle = createVehicle()
-
-        let record = createRecord(odometer: 10000, vehicle: vehicle)
-        vehicle.fuelingRecords = [record]
-        vehicle.cachedRecordCount = 5
-
-        StatisticsCacheService.ensureCacheValid(for: vehicle)
-
-        XCTAssertEqual(vehicle.cachedRecordCount, 1)
     }
 
     // MARK: - Edge Cases

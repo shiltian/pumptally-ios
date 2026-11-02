@@ -3,25 +3,27 @@ import SwiftData
 
 struct DashboardView: View {
     let vehicle: Vehicle
+    let records: [FuelingRecord]
 
     @AppStorage private var metricEfficiencyFormatRaw: String
 
-    init(vehicle: Vehicle) {
+    init(vehicle: Vehicle, records: [FuelingRecord]) {
         self.vehicle = vehicle
+        self.records = records
         _metricEfficiencyFormatRaw = AppStorage(
             wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
             MetricEfficiencyFormat.storageKey(for: vehicle.id)
         )
     }
 
-    private var units: UnitSystem { vehicle.unitSystem }
+    private var units: UnitSystem { vehicle.displayUnitSystem }
 
     private var metricEfficiencyFormat: MetricEfficiencyFormat {
         MetricEfficiencyFormat(rawValue: metricEfficiencyFormatRaw) ?? .defaultFormat
     }
 
     private var recordCount: Int {
-        vehicle.displayRecordCount
+        records.count
     }
 
     private var chartInvalidationKey: String {
@@ -35,20 +37,20 @@ struct DashboardView: View {
     }
 
     private var totalDistance: Double {
-        vehicle.cachedTotalDistance ?? 0
+        units.distanceValue(vehicle.cachedTotalDistance ?? 0, from: vehicle.unitSystem)
     }
 
     private var totalFuel: Double {
-        vehicle.cachedTotalFuel ?? 0
+        units.fuelValue(vehicle.cachedTotalFuel ?? 0, from: vehicle.unitSystem)
     }
 
     private var averageEfficiency: Double {
-        let raw = vehicle.cachedAverageEfficiency ?? 0
+        let raw = units.efficiencyValue(vehicle.cachedAverageEfficiency ?? 0, from: vehicle.unitSystem)
         return units.efficiencyDisplayValue(from: raw, metricFormat: metricEfficiencyFormat)
     }
 
     private var averageCostPerDistance: Double {
-        vehicle.cachedAverageCostPerDistance ?? 0
+        units.costPerDistanceValue(vehicle.cachedAverageCostPerDistance ?? 0, from: vehicle.unitSystem)
     }
 
     private var averageFillUpCost: Double {
@@ -108,7 +110,7 @@ struct DashboardView: View {
                 .padding(.horizontal)
 
                 // Last Fill-up Info - use cached values
-                if let lastRecord = vehicle.lastRecord {
+                if let lastRecord = records.max(by: OdometerChronologyValidator.areInIncreasingOrder) {
                     LastFillUpCard(
                         record: lastRecord,
                         previousOdometer: lastRecord.getPreviousOdometer(),
@@ -127,9 +129,10 @@ struct DashboardView: View {
                             .padding(.horizontal)
 
                         ChartView(
-                            records: vehicle.fuelingRecords ?? [],
+                            records: records,
                             unitSystem: units,
-                            rawAverageEfficiency: vehicle.cachedAverageEfficiency ?? 0,
+                            rawAverageEfficiency: units.efficiencyValue(
+                                vehicle.cachedAverageEfficiency ?? 0, from: vehicle.unitSystem),
                             metricEfficiencyFormat: metricEfficiencyFormat,
                             invalidationKey: chartInvalidationKey
                         )
@@ -147,10 +150,6 @@ struct DashboardView: View {
             .padding(.vertical)
         }
         .background(Color(.systemGroupedBackground))
-        .onAppear {
-            // Ensure cache is valid when view appears
-            StatisticsCacheService.ensureCacheValid(for: vehicle)
-        }
     }
 }
 
@@ -197,7 +196,7 @@ struct LastFillUpCard: View {
     // Use cached efficiency if available
     private var efficiencyValue: Double {
         unitSystem.efficiencyDisplayValue(
-            from: record.getEfficiency(),
+            from: unitSystem.efficiencyValue(record.getEfficiency(), from: record.vehicle.unitSystem),
             metricFormat: metricEfficiencyFormat
         )
     }
@@ -225,7 +224,9 @@ struct LastFillUpCard: View {
 
             HStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(record.fuelAmount.formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)")
+                    Text(
+                        "\(unitSystem.fuelValue(record.fuelAmount, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)"
+                    )
                         .font(.appButton)
                         .fontWeight(.semibold)
                     Text(unitSystem.fuelName)
@@ -308,7 +309,11 @@ struct EmptyRecordsView: View {
 
 #Preview {
     NavigationStack {
-        DashboardView(vehicle: Vehicle(name: "Test Car"))
+        DashboardView(vehicle: Vehicle(name: "Test Car"), records: [])
     }
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
+    .modelContainer(
+        for: [
+            Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self,
+            SyncCheckpoint.self,
+        ], inMemory: true)
 }

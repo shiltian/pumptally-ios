@@ -3,78 +3,64 @@ import SwiftData
 
 struct AddRecordView: View {
     let vehicle: Vehicle
-    let onSave: ((FuelingRecord, Double) -> Void)?
+    let records: [FuelingRecord]
+    let onSave: ((SavedFuelingRecord) -> Void)?
 
-    @Environment(\.modelContext) private var modelContext
+    @State private var isSaving = false
+    @EnvironmentObject private var writer: OwnedModelStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage private var metricEfficiencyFormatRaw: String
 
-    private var units: UnitSystem { vehicle.unitSystem }
+    private var units: UnitSystem { draft.inputUnit }
 
     private var metricEfficiencyFormat: MetricEfficiencyFormat {
         MetricEfficiencyFormat(rawValue: metricEfficiencyFormatRaw) ?? .defaultFormat
     }
 
-    // Form fields
-    @State private var date = Date()
-    @State private var odometerString = ""
-    @State private var pricePerFuelUnitMills: Int = 0
-    @State private var fuelAmountMills: Int = 0
-    @State private var totalCostCents: Int = 0
-    @State private var fillUpType: FillUpType = .full
-    @State private var notes = ""
+    @State private var draft = FuelingRecordDraft()
     @State private var showingSaveError = false
+    @State private var saveErrorMessage = ""
 
     @FocusState private var focusedField: FuelingRecordFormView.EditableField?
 
-    init(vehicle: Vehicle, onSave: ((FuelingRecord, Double) -> Void)? = nil) {
+    init(vehicle: Vehicle, records: [FuelingRecord], onSave: ((SavedFuelingRecord) -> Void)? = nil) {
         self.vehicle = vehicle
+        self.records = records
         self.onSave = onSave
+        _draft = State(
+            initialValue: FuelingRecordDraft(storageUnit: vehicle.unitSystem, inputUnit: vehicle.displayUnitSystem))
         _metricEfficiencyFormatRaw = AppStorage(
             wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
             MetricEfficiencyFormat.storageKey(for: vehicle.id)
         )
     }
 
-    // Parsed values for validation
-    private var currentOdometer: Double? { Double(odometerString) }
-    private var pricePerFuelUnit: Double { Double(pricePerFuelUnitMills) / 1000.0 }
-    private var fuelAmount: Double { Double(fuelAmountMills) / 1000.0 }
-    private var totalCost: Double { Double(totalCostCents) / 100.0 }
-
     private var chronologyValidation: OdometerChronologyValidation? {
-        guard let current = currentOdometer else { return nil }
+        guard let current = draft.storageOdometer else { return nil }
         return OdometerChronologyValidator.validate(
-            date: date,
+            date: draft.date,
             odometer: current,
-            records: (vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
+            records: records.map(OdometerReadingSnapshot.init(record:))
         )
     }
 
     private func isValid(_ validation: OdometerChronologyValidation?) -> Bool {
         guard validation?.isValid == true else { return false }
-        guard pricePerFuelUnit > 0 else { return false }
-        guard fuelAmount > 0 else { return false }
-        guard totalCost > 0 else { return false }
-        return true
+        return draft.isValid
     }
 
     var body: some View {
         let validation = chronologyValidation
-        let previousOdometer = validation?.neighbors.predecessor?.odometer ?? 0
+        let previousOdometer = units.distanceValue(
+            validation?.neighbors.predecessor?.odometer ?? 0, from: vehicle.unitSystem)
 
         NavigationStack {
             Form {
                 FuelingRecordFormView(
                     unitSystem: units,
+                    storageUnit: vehicle.unitSystem,
                     metricEfficiencyFormat: metricEfficiencyFormat,
-                    date: $date,
-                    odometerString: $odometerString,
-                    pricePerFuelUnitMills: $pricePerFuelUnitMills,
-                    fuelAmountMills: $fuelAmountMills,
-                    totalCostCents: $totalCostCents,
-                    fillUpType: $fillUpType,
-                    notes: $notes,
+                    draft: $draft,
                     focusedField: $focusedField,
                     previousOdometer: previousOdometer,
                     odometerValidationIssue: validation?.issue,
@@ -89,7 +75,7 @@ struct AddRecordView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveRecord() }
+                    Button("Save") { Task { await saveRecord() } }
                         .fontWeight(.semibold)
                         .disabled(!isValid(validation))
                 }
@@ -107,49 +93,41 @@ struct AddRecordView: View {
             .alert("Unable to Save", isPresented: $showingSaveError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Your changes could not be saved. No data was changed. Please try again.")
+                Text(saveErrorMessage)
             }
         }
+        .disabled(isSaving)
+        .interactiveDismissDisabled(isSaving)
     }
 
-    private func saveRecord() {
+    private func saveRecord() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         let validation = chronologyValidation
-        guard isValid(validation), let current = currentOdometer else { return }
-        let previousOdometer = validation?.neighbors.predecessor?.odometer ?? 0
-
-        // Preserve the user's selected type for a backdated record. The legacy
-        // first-record override applies only when this vehicle has no history.
-        let isVehicleFirstRecord = (vehicle.fuelingRecords ?? []).isEmpty
-        let effectiveFillUpType: FillUpType = isVehicleFirstRecord ? .partial : fillUpType
-
+        guard isValid(validation) else { return }
         do {
-            let record = try FuelingRecordPersistenceService.insert(
-                into: vehicle,
-                context: modelContext
-            ) {
-                let record = FuelingRecord(
-                    date: date,
-                    odometer: current,
-                    pricePerFuelUnit: pricePerFuelUnit,
-                    fuelAmount: fuelAmount,
-                    totalCost: totalCost,
-                    fillUpType: effectiveFillUpType,
-                    notes: notes.isEmpty ? nil : notes,
-                    vehicle: vehicle
-                )
-                record.modifiedAt = Date()
-                return record
-            }
-
-            onSave?(record, previousOdometer)
+            let record = try await FuelingRecordPersistenceService(writer: writer).create(
+                values: draft.makeValues(), storageUnit: draft.storageUnit, vehicleID: vehicle.id
+            )
+            onSave?(record)
             dismiss()
         } catch {
+            saveErrorMessage = error.localizedDescription
             showingSaveError = true
         }
     }
 }
 
 #Preview {
-    AddRecordView(vehicle: Vehicle(name: "Test Car"))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return AddRecordView(vehicle: Vehicle(name: "Test Car"), records: [])
+        .modelContainer(container)
+        .environmentObject(writer)
 }

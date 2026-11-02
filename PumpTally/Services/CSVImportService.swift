@@ -1,5 +1,5 @@
 import Foundation
-import SwiftData
+import SwiftCSV
 
 struct CSVImportRecordSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
@@ -18,6 +18,7 @@ enum CSVImportError: LocalizedError, Equatable, Sendable {
     case invalidRow(line: Int, reason: String)
     case invalidChronology(line: Int, reason: String)
     case persistenceFailed
+    case stalePlan
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ enum CSVImportError: LocalizedError, Equatable, Sendable {
             return "Row \(line) has invalid odometer chronology: \(reason)"
         case .persistenceFailed:
             return String(localized: "Unable to save the imported records. No data was changed. Please try again.")
+        case .stalePlan:
+            return String(localized: "Your vehicle or records changed. Review the import again before saving.")
         }
     }
 }
@@ -39,7 +42,7 @@ enum CSVImportError: LocalizedError, Equatable, Sendable {
 /// only after every row has passed structural and chronology validation.
 enum CSVImportService {
     static func parse(_ content: String) throws -> [CSVImportRecordSnapshot] {
-        let logicalRecords = try splitLogicalRecords(content)
+        let logicalRecords = try rows(content)
         guard let header = logicalRecords.first else {
             throw CSVImportError.invalidFile(String(localized: "The file is empty"))
         }
@@ -48,14 +51,14 @@ enum CSVImportService {
                 String(localized: "The file only contains a header row with no data")
             )
         }
-        try validateHeader(header.content)
+        try validateHeader(header.fields)
 
         var records: [CSVImportRecordSnapshot] = []
         let dateParser = ImportDateParser()
 
         for logicalRecord in logicalRecords.dropFirst() {
             let lineNumber = logicalRecord.lineNumber
-            let fields = CSVService.parseCSVLine(logicalRecord.content)
+            let fields = logicalRecord.fields
             guard (5...7).contains(fields.count) else {
                 throw CSVImportError.invalidRow(
                     line: lineNumber,
@@ -63,7 +66,7 @@ enum CSVImportService {
                 )
             }
 
-            guard let date = dateParser.parse(fields[0]) else {
+            guard let date = dateParser.parse(fields[0].trimmingCharacters(in: .whitespacesAndNewlines)) else {
                 throw CSVImportError.invalidRow(
                     line: lineNumber,
                     reason: String(localized: "the date is invalid")
@@ -123,17 +126,27 @@ enum CSVImportService {
         _ records: [CSVImportRecordSnapshot],
         existingRecords: [OdometerReadingSnapshot]
     ) throws {
+        guard existingRecords.allSatisfy({ $0.date.timeIntervalSince1970.isFinite && $0.odometer.isFinite }) else {
+            throw CSVImportError.invalidFile(
+                String(
+                    localized:
+                        "This vehicle has invalid dates or odometer readings. Review its history before importing."))
+        }
+        for row in records {
+            guard row.date.timeIntervalSince1970.isFinite, row.odometer.isFinite, row.odometer > 0 else {
+                throw CSVImportError.invalidChronology(
+                    line: row.lineNumber,
+                    reason: String(localized: "the reading must be a positive finite number"))
+            }
+        }
         let importedReadings = records.map {
             OdometerReadingSnapshot(id: $0.id, date: $0.date, odometer: $0.odometer)
         }
-        let allReadings = existingRecords + importedReadings
+        let index = OdometerChronologyIndex(existingRecords + importedReadings)
 
         for record in records {
-            let validation = OdometerChronologyValidator.validate(
-                date: record.date,
-                odometer: record.odometer,
-                records: allReadings
-            )
+            let validation = index.validate(
+                OdometerReadingSnapshot(id: record.id, date: record.date, odometer: record.odometer))
             guard let issue = validation.issue else { continue }
 
             let reason: String
@@ -156,50 +169,12 @@ enum CSVImportService {
         }
     }
 
-    @MainActor
-    static func importRecords(
-        _ records: [CSVImportRecordSnapshot],
-        into vehicle: Vehicle,
-        context: ModelContext,
-        commit: FuelingRecordPersistenceService.Commit = { try $0.save() }
-    ) throws -> [FuelingRecord] {
-        try validateChronology(
-            records,
-            existingRecords: (vehicle.fuelingRecords ?? []).map(
-                OdometerReadingSnapshot.init(record:)
-            )
-        )
-
-        let modifiedAt = Date()
-        return try FuelingRecordPersistenceService.insertBatch(
-            into: vehicle,
-            context: context,
-            commit: commit
-        ) {
-            records.map { snapshot in
-                let record = FuelingRecord(
-                    id: snapshot.id,
-                    date: snapshot.date,
-                    odometer: snapshot.odometer,
-                    pricePerFuelUnit: snapshot.pricePerFuelUnit,
-                    fuelAmount: snapshot.fuelAmount,
-                    totalCost: snapshot.totalCost,
-                    fillUpType: snapshot.fillUpType,
-                    notes: snapshot.notes,
-                    vehicle: vehicle
-                )
-                record.modifiedAt = modifiedAt
-                return record
-            }
-        }
-    }
-
     private static func positiveNumber(
         _ text: String,
         name: String,
         line: Int
     ) throws -> Double {
-        guard let value = Double(text), value.isFinite, value > 0 else {
+        guard let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), value.isFinite, value > 0 else {
             throw CSVImportError.invalidRow(
                 line: line,
                 reason: "\(name) must be a positive finite number"
@@ -213,7 +188,8 @@ enum CSVImportService {
         name: String,
         line: Int
     ) throws -> Double {
-        guard let value = Double(text), value.isFinite, value >= 0 else {
+        guard let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), value.isFinite, value >= 0
+        else {
             throw CSVImportError.invalidRow(
                 line: line,
                 reason: "\(name) must be a nonnegative finite number"
@@ -222,8 +198,8 @@ enum CSVImportService {
         return value
     }
 
-    private static func validateHeader(_ line: String) throws {
-        let fields = CSVService.parseCSVLine(line).map {
+    private static func validateHeader(_ header: [String]) throws {
+        let fields = header.map {
             $0.lowercased().filter(\.isLetter)
         }
         let acceptedColumns: [Set<String>] = [
@@ -247,80 +223,24 @@ enum CSVImportService {
         }
     }
 
-    private struct LogicalRecord {
+    private struct Row {
         let lineNumber: Int
-        let content: String
+        let fields: [String]
     }
 
-    private static func splitLogicalRecords(
-        _ content: String
-    ) throws -> [LogicalRecord] {
-        let normalized = content
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        let physicalLines = normalized.split(
-            separator: "\n",
-            omittingEmptySubsequences: false
-        )
-
-        var records: [LogicalRecord] = []
-        var currentContent: String?
-        var currentStartLine = 0
-        var insideQuotes = false
-
-        for (index, lineSlice) in physicalLines.enumerated() {
-            let line = String(lineSlice)
-            let lineNumber = index + 1
-
-            if currentContent == nil {
-                guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
-                    continue
-                }
-                currentContent = line
-                currentStartLine = lineNumber
-            } else {
-                currentContent?.append("\n")
-                currentContent?.append(line)
-            }
-
-            updateQuoteState(for: line, insideQuotes: &insideQuotes)
-            if !insideQuotes, let completeRecord = currentContent {
-                records.append(
-                    LogicalRecord(
-                        lineNumber: currentStartLine,
-                        content: completeRecord
-                    )
-                )
-                currentContent = nil
-            }
+    private static func rows(_ content: String) throws -> [Row] {
+        let text = content.hasPrefix("\u{FEFF}") ? String(content.dropFirst()) : content
+        let fields: [[String]]
+        do { fields = try SwiftCSV.parseCSV(text) } catch {
+            throw CSVImportError.invalidFile(String(localized: "The CSV contains invalid or unclosed quoted text."))
         }
-
-        if insideQuotes {
-            throw CSVImportError.invalidRow(
-                line: currentStartLine,
-                reason: String(localized: "quoted text is not closed")
-            )
-        }
-        return records
-    }
-
-    private static func updateQuoteState(
-        for line: String,
-        insideQuotes: inout Bool
-    ) {
-        let characters = Array(line)
-        var index = 0
-        while index < characters.count {
-            if characters[index] == "\"" {
-                if insideQuotes,
-                   index + 1 < characters.count,
-                   characters[index + 1] == "\"" {
-                    index += 2
-                    continue
-                }
-                insideQuotes.toggle()
-            }
-            index += 1
+        var line = 1
+        return fields.compactMap { fields in
+            let row = Row(lineNumber: line, fields: fields)
+            // The library handles CSV syntax. Counting decoded newlines only
+            // maps its rows back to physical lines; no quote scanner is needed.
+            line += 1 + fields.reduce(0) { count, field in count + field.filter(\.isNewline).count }
+            return fields.count == 1 && fields[0].trimmingCharacters(in: .whitespaces).isEmpty ? nil : row
         }
     }
 

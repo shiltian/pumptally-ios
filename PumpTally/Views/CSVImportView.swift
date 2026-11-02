@@ -1,23 +1,53 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 import os
 
 struct CSVImportView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let fileURL: URL?
+    let fileURL: URL
     let vehicles: [Vehicle]
-    let onImport: ([CSVImportRecordSnapshot], Vehicle) throws -> Void
+    let onImport: @MainActor (Int) -> Void
+    @EnvironmentObject private var writer: OwnedModelStore
+    @EnvironmentObject private var cloudSyncService: CloudSyncService
+    @State private var sourceUnit: UnitSystem?
+    @State private var preparation: Preparation = .idle
+    @State private var duplicateDecision: CSVImportDuplicateDecision?
+
+    private enum Preparation {
+        case idle, preparing
+        case ready(Request, CSVImportPlan)
+        case failed(String)
+    }
+
+    private struct Request: Hashable {
+        let vehicleID: UUID
+        let sourceUnit: UnitSystem
+        let recordIDs: [UUID]
+    }
+
+    private var request: Request? {
+        guard let selectedVehicleID, let sourceUnit, !parsedRecords.isEmpty else { return nil }
+        return Request(vehicleID: selectedVehicleID, sourceUnit: sourceUnit, recordIDs: parsedRecords.map(\.id))
+    }
+
+    private var plan: CSVImportPlan? {
+        if case .ready(let prepared, let plan) = preparation, prepared == request { return plan }
+        return nil
+    }
 
     @State private var csvContent: String = ""
     @State private var parsedRecords: [CSVImportRecordSnapshot] = []
-    @State private var selectedVehicle: Vehicle?
+    @State private var selectedVehicleID: UUID?
+    @State private var isImporting = false
     @State private var isLoading = true
     @State private var parseError: String?
     @State private var importError: String?
     @State private var showingImportError = false
     @State private var previewLines: [String] = []
-    @State private var importSummary: ImportSummary?
+    private var importSummary: ImportSummary {
+        ImportSummary(records: plan?.selectedRecords(duplicateDecision ?? .importAll) ?? parsedRecords)
+    }
 
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio",
@@ -63,8 +93,9 @@ struct CSVImportView: View {
                                 noVehicleWarning
                             }
 
-                            // Import Summary
+                            sourceUnitsSection
                             importSummarySection
+                            reviewSection
                         }
                         .padding()
                     }
@@ -80,22 +111,16 @@ struct CSVImportView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Import") {
-                        if let vehicle = selectedVehicle {
-                            do {
-                                try onImport(parsedRecords, vehicle)
-                                dismiss()
-                            } catch {
-                                importError = error.localizedDescription
-                                showingImportError = true
-                            }
-                        }
-                    }
-                    .disabled(selectedVehicle == nil || parsedRecords.isEmpty)
+                    Button("Import") { Task { await importSelectedRecords() } }
+                        .accessibilityIdentifier("csv.import")
+                        .disabled(
+                            plan == nil || (plan?.possibleDuplicateIDs.isEmpty == false && duplicateDecision == nil))
                 }
             }
-            .task {
-                await loadAndParseCSV()
+            .task { await loadAndParseCSV() }
+            .task(id: request) { await prepareImport() }
+            .onChange(of: vehicles.map(\.id), initial: true) { _, ids in
+                if selectedVehicleID == nil { selectedVehicleID = ids.first }
             }
             .alert("Import Failed", isPresented: $showingImportError) {
                 Button("OK", role: .cancel) {}
@@ -103,6 +128,8 @@ struct CSVImportView: View {
                 Text(importError ?? String(localized: "Unable to import the selected records."))
             }
         }
+        .disabled(isImporting)
+        .interactiveDismissDisabled(isImporting)
     }
 
     // MARK: - View Components
@@ -115,7 +142,7 @@ struct CSVImportView: View {
 
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(fileURL?.lastPathComponent ?? "Unknown file")
+                    Text(fileURL.lastPathComponent)
                         .font(.appSubheadline)
                         .fontWeight(.medium)
 
@@ -144,8 +171,8 @@ struct CSVImportView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(previewLines.prefix(6), id: \.self) { line in
-                        Text(line)
+                    ForEach(previewLines.indices.prefix(6), id: \.self) { index in
+                        Text(previewLines[index])
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
@@ -176,7 +203,7 @@ struct CSVImportView: View {
 
             ForEach(vehicles) { vehicle in
                 Button {
-                    selectedVehicle = vehicle
+                    selectedVehicleID = vehicle.id
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -193,7 +220,7 @@ struct CSVImportView: View {
 
                         Spacer()
 
-                        if selectedVehicle?.id == vehicle.id {
+                        if selectedVehicleID == vehicle.id {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.teal)
                         }
@@ -201,11 +228,11 @@ struct CSVImportView: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(selectedVehicle?.id == vehicle.id ? Color.teal.opacity(0.1) : Color(.systemGray6))
+                            .fill(selectedVehicleID == vehicle.id ? Color.teal.opacity(0.1) : Color(.systemGray6))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(selectedVehicle?.id == vehicle.id ? Color.teal : Color.clear, lineWidth: 2)
+                            .stroke(selectedVehicleID == vehicle.id ? Color.teal : Color.clear, lineWidth: 2)
                     )
                 }
                 .buttonStyle(.plain)
@@ -240,16 +267,21 @@ struct CSVImportView: View {
                 .font(.appBody)
                 .fontWeight(.semibold)
 
-            if let summary = importSummary, summary.totalRecords > 0 {
+            let summary = importSummary
+            if summary.totalRecords > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     SummaryRow(label: "Total Records", value: "\(summary.totalRecords)")
 
                     if let firstDate = summary.firstDate,
-                       let lastDate = summary.lastDate {
+                        let lastDate = summary.lastDate
+                    {
                         SummaryRow(label: "Date Range", value: "\(formatDate(firstDate)) - \(formatDate(lastDate))")
                     }
 
-                    SummaryRow(label: "Total Fuel", value: String(format: "%.2f", summary.totalFuel))
+                    SummaryRow(
+                        label: "Total Fuel",
+                        value: summary.totalFuel.formatted(.number.precision(.fractionLength(2)))
+                            + " " + (plan?.revision.storageUnit.fuelUnit ?? sourceUnit?.fuelUnit ?? ""))
 
                     SummaryRow(label: "Total Cost", value: String(format: "$%.2f", summary.totalCost))
                 }
@@ -260,14 +292,103 @@ struct CSVImportView: View {
         }
     }
 
+    private var sourceUnitsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Units in This CSV").font(.appBody).fontWeight(.semibold)
+            Text("CSV files do not include measurement units. Choose the units used by the original records.")
+                .font(.appCaption).foregroundStyle(.secondary)
+            Picker("CSV Units", selection: $sourceUnit) {
+                Text("Choose Units").tag(UnitSystem?.none)
+                Text("Miles and US Gallons").tag(UnitSystem?.some(.imperial))
+                Text("Kilometers and Liters").tag(UnitSystem?.some(.metric))
+            }
+            .accessibilityIdentifier("csv.units")
+            .pickerStyle(.menu)
+        }
+    }
+
+    @ViewBuilder private var reviewSection: some View {
+        switch preparation {
+        case .idle: EmptyView()
+        case .preparing: ProgressView("Reviewing Import…")
+        case .failed(let message):
+            Text(message).foregroundStyle(.red)
+            Button("Review Again") { Task { await prepareImport() } }
+        case .ready(_, let plan):
+            Text(
+                "Measurements will be stored in \(plan.revision.storageUnit.distanceUnit) and \(plan.revision.storageUnit.fuelUnit)."
+            )
+            .font(.appCaption).foregroundStyle(.secondary)
+            if let duplicateDecision {
+                Text("\(plan.selectedRecords(duplicateDecision).count) records will be imported.").font(.appCaption)
+            }
+            if !plan.possibleDuplicateIDs.isEmpty {
+                Text("\(plan.possibleDuplicateIDs.count) possible duplicate rows").font(.headline)
+                Text(
+                    "These rows match existing records or earlier rows in this file. CSV files do not contain record IDs, so matching rows may still be separate fill-ups."
+                )
+                .font(.appCaption).foregroundStyle(.secondary)
+                Picker("Possible Duplicates", selection: $duplicateDecision) {
+                    Text("Choose an Action").tag(CSVImportDuplicateDecision?.none)
+                    Text("Skip Possible Duplicates").tag(CSVImportDuplicateDecision?.some(.skipPossibleDuplicates))
+                    Text("Import All Rows").tag(CSVImportDuplicateDecision?.some(.importAll))
+                }.accessibilityIdentifier("csv.duplicates").pickerStyle(.menu)
+                ForEach(plan.records.filter { plan.possibleDuplicateIDs.contains($0.id) }.prefix(10)) { row in
+                    Text(
+                        "Row \(row.lineNumber): \(formatDate(row.date)), \(row.odometer.formatted()) \(plan.revision.storageUnit.distanceUnit)"
+                    )
+                    .font(.appCaption)
+                }
+            }
+        }
+    }
+
+    private func prepareImport() async {
+        guard let request else { preparation = .idle; return }
+        preparation = .preparing
+        duplicateDecision = nil
+        do {
+            let plan = try await FuelingRecordPersistenceService(writer: writer).prepareImport(
+                parsedRecords, vehicleID: request.vehicleID, sourceUnit: request.sourceUnit)
+            try Task.checkCancellation()
+            preparation = .ready(request, plan)
+        } catch is CancellationError {} catch {
+            guard !Task.isCancelled else { return }
+            preparation = .failed(error.localizedDescription)
+        }
+    }
+
+    private func importSelectedRecords() async {
+        guard !isImporting, let plan else { return }
+        guard plan.possibleDuplicateIDs.isEmpty || duplicateDecision != nil else { return }
+        let decision = duplicateDecision ?? .importAll
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            let ids = try await cloudSyncService.withLocalPushesSuspended {
+                try await FuelingRecordPersistenceService(writer: writer).importRecords(
+                    plan: plan, duplicates: decision)
+            }
+            onImport(ids.count)
+            Task { await cloudSyncService.pushPendingLocalChanges() }
+            dismiss()
+        } catch {
+            Self.logger.error("Failed to save CSV import: \(error)")
+            importError =
+                (error as? CSVImportError)?.localizedDescription
+                ?? CSVImportError.persistenceFailed.localizedDescription
+            showingImportError = true
+            // A stale decision must be reviewed again before it can be submitted.
+            if let error = error as? CSVImportError, error == .stalePlan {
+                preparation = .failed(error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - Helper Methods
 
     private func loadAndParseCSV() async {
-        guard let url = fileURL else {
-            parseError = String(localized: "No file URL provided")
-            isLoading = false
-            return
-        }
+        let url = fileURL
 
         do {
             let parsed = try await Task.detached(priority: .userInitiated) {
@@ -275,18 +396,13 @@ struct CSVImportView: View {
                 let records = try CSVImportService.parse(content)
                 return (content: content, records: records)
             }.value
+            try Task.checkCancellation()
             csvContent = parsed.content
 
             // Store preview lines
             previewLines = csvContent.components(separatedBy: .newlines).filter { !$0.isEmpty }
 
-            // Auto-select the first vehicle if possible
-            if selectedVehicle == nil {
-                selectedVehicle = vehicles.first
-            }
-
             parsedRecords = parsed.records
-            importSummary = ImportSummary(records: parsedRecords)
 
             isLoading = false
         } catch let error as CSVImportError {
@@ -347,9 +463,8 @@ private struct SummaryRow: View {
 
 #Preview {
     CSVImportView(
-        fileURL: nil,
+        fileURL: URL(fileURLWithPath: "/example.csv"),
         vehicles: [],
-        onImport: { _, _ in }
+        onImport: { _ in }
     )
 }
-

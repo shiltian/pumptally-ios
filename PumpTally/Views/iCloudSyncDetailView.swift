@@ -5,7 +5,6 @@ import os
 // MARK: - iCloud Sync Detail View
 
 struct iCloudSyncDetailView: View {
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var cloudSyncService: CloudSyncService
 
     @Query private var vehicles: [Vehicle]
@@ -160,7 +159,7 @@ struct iCloudSyncDetailView: View {
         cloudRecordCount = nil
         Task {
             do {
-                try await cloudSyncService.replaceCloudDataWithLocal(from: modelContext)
+                try await cloudSyncService.replaceCloudDataWithLocal()
                 let counts = await cloudSyncService.fetchCloudRecordCounts()
 
                 await MainActor.run {

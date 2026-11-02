@@ -1,0 +1,8 @@
+// Shared Xcode settings. Environment selection is compile-time only.
+#include "Application.xcconfig"
+
+CODE_SIGN_ENTITLEMENTS =
+ENABLE_PREVIEWS = NO
+EXCLUDED_SOURCE_FILE_NAMES = ProductionAppBootstrap.swift
+INFOPLIST_KEY_CFBundleDisplayName = PumpTally Tests
+PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.testing

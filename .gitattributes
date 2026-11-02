@@ -1,0 +1,2 @@
+# Preserve upstream source formatting and whitespace-sensitive CSV fixtures.
+ThirdParty/SwiftCSV/** -whitespace linguist-vendored

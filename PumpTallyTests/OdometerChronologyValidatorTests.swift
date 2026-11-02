@@ -2,6 +2,30 @@ import XCTest
 @testable import PumpTally
 
 final class OdometerChronologyValidatorTests: XCTestCase {
+    func testBulkIndexMatchesSingleEditPolicyAcrossLegacyAndEqualTimeHistories() {
+        var state: UInt64 = 47
+        func number(_ bound: UInt64) -> Int {
+            state = state &* 6364136223846793005 &+ 1
+            return Int((state >> 32) % bound)
+        }
+        for _ in 0..<100 {
+            let history = (0..<80).map { index in
+                OdometerReadingSnapshot(
+                    id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index))!,
+                    date: Date(timeIntervalSince1970: Double(number(15))), odometer: Double(number(20)))
+            }
+            let index = OdometerChronologyIndex(history)
+            for _ in 0..<40 {
+                let candidate = OdometerReadingSnapshot(
+                    id: UUID(),
+                    date: Date(timeIntervalSince1970: Double(number(16))), odometer: Double(number(22)))
+                XCTAssertEqual(
+                    index.validate(candidate),
+                    OdometerChronologyValidator.validate(
+                        date: candidate.date, odometer: candidate.odometer, records: history))
+            }
+        }
+    }
 
     private let baseDate = Date(timeIntervalSince1970: 1_000_000)
 

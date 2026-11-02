@@ -5,11 +5,13 @@ import os
 struct VehicleSettingsView: View {
     let vehicle: Vehicle
 
-    @Environment(\.modelContext) private var modelContext
+    @State private var isSaving = false
+    @EnvironmentObject private var writer: OwnedModelStore
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var cloudSyncService: CloudSyncService
 
     // Vehicle detail editing
+    @State private var originalSettings: VehicleSettingsValues
     @State private var name: String
     @State private var make: String
     @State private var model: String
@@ -18,7 +20,6 @@ struct VehicleSettingsView: View {
     // Unit system
     @State private var selectedUnit: UnitSystem
     @State private var metricEfficiencyFormat: MetricEfficiencyFormat
-    @State private var showingUnitConversionAlert = false
 
     // CSV
     @State private var showingExportOptions = false
@@ -29,15 +30,17 @@ struct VehicleSettingsView: View {
     @State private var showingClearHistoryConfirmation = false
     @State private var showingClearHistorySuccess = false
     @State private var showingSaveError = false
+    @State private var saveErrorMessage = ""
     @State private var showingClearHistoryError = false
 
     init(vehicle: Vehicle) {
         self.vehicle = vehicle
+        _originalSettings = State(initialValue: VehicleSettingsValues(vehicle: vehicle))
         _name = State(initialValue: vehicle.name)
         _make = State(initialValue: vehicle.make ?? "")
         _model = State(initialValue: vehicle.model ?? "")
         _yearString = State(initialValue: vehicle.year != nil ? "\(vehicle.year!)" : "")
-        _selectedUnit = State(initialValue: vehicle.unitSystem)
+        _selectedUnit = State(initialValue: vehicle.displayUnitSystem)
         _metricEfficiencyFormat = State(
             initialValue: MetricEfficiencyFormat.stored(for: vehicle.id)
         )
@@ -48,7 +51,7 @@ struct VehicleSettingsView: View {
     }
 
     private var unitHasChanged: Bool {
-        selectedUnit != vehicle.unitSystem
+        selectedUnit != vehicle.displayUnitSystem
     }
 
     private var isValid: Bool {
@@ -131,7 +134,7 @@ struct VehicleSettingsView: View {
                             .font(.appCaption)
                     }
                     if unitHasChanged && recordCount > 0 {
-                        Text("Changing the unit system will convert all \(recordCount) existing record(s) to \(selectedUnit.displayName). This cannot be undone.")
+                        Text("Changes display and input units. Stored measurements are preserved.")
                             .font(.appCaption)
                             .foregroundColor(.orange)
                     }
@@ -186,24 +189,11 @@ struct VehicleSettingsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        if unitHasChanged && recordCount > 0 {
-                            showingUnitConversionAlert = true
-                        } else {
-                            saveAndDismiss()
-                        }
+                        Task { await saveAndDismiss() }
                     }
                     .fontWeight(.semibold)
                     .disabled(!isValid)
                 }
-            }
-            // Unit conversion confirmation
-            .alert("Convert Records?", isPresented: $showingUnitConversionAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Convert & Save", role: .destructive) {
-                    saveAndDismiss()
-                }
-            } message: {
-                Text("This will convert all \(recordCount) record(s) from \(vehicle.unitSystem.displayName) to \(selectedUnit.displayName). This cannot be undone.")
             }
             // Clear history alerts
             .alert("Clear Fueling History?", isPresented: $showingClearHistoryAlert) {
@@ -217,7 +207,7 @@ struct VehicleSettingsView: View {
             .alert("Are You Sure?", isPresented: $showingClearHistoryConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Yes, Delete All Records", role: .destructive) {
-                    clearFuelingHistory()
+                    Task { await clearFuelingHistory() }
                 }
             } message: {
                 Text("This action cannot be undone. All fueling history for this vehicle will be permanently deleted.")
@@ -230,7 +220,7 @@ struct VehicleSettingsView: View {
             .alert("Unable to Save", isPresented: $showingSaveError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Your changes could not be saved. No data was changed. Please try again.")
+                Text(saveErrorMessage)
             }
             .alert("Unable to Delete", isPresented: $showingClearHistoryError) {
                 Button("OK", role: .cancel) {}
@@ -245,11 +235,16 @@ struct VehicleSettingsView: View {
                 ImportCSVView(vehicle: vehicle)
             }
         }
+        .disabled(isSaving)
+        .interactiveDismissDisabled(isSaving)
     }
 
     // MARK: - Actions
 
-    private func saveAndDismiss() {
+    private func saveAndDismiss() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         // Save vehicle detail edits
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedMake = make.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -257,83 +252,27 @@ struct VehicleSettingsView: View {
         let updatedMake = trimmedMake.isEmpty ? nil : trimmedMake
         let updatedModel = trimmedModel.isEmpty ? nil : trimmedModel
         let updatedYear = Int(yearString)
-        let persistedVehicleHasChanged =
-            trimmedName != vehicle.name ||
-            updatedMake != vehicle.make ||
-            updatedModel != vehicle.model ||
-            updatedYear != vehicle.year ||
-            unitHasChanged
-
-        // A format-only change is local display state. Do not dirty or sync the
-        // SwiftData vehicle when no persisted vehicle fields changed.
-        guard persistedVehicleHasChanged else {
-            if selectedUnit == .metric {
-                metricEfficiencyFormat.store(for: vehicle.id)
-            }
-            dismiss()
-            return
-        }
-
-        let now = Date()
-        let shouldPushAfterSave = unitHasChanged
-
-        var didSave = false
+        let proposed = VehicleSettingsValues(
+            name: trimmedName, make: updatedMake, model: updatedModel,
+            year: updatedYear, displayUnit: selectedUnit)
         do {
-            if shouldPushAfterSave {
-                try cloudSyncService.withLocalPushesSuspended {
-                    try VehiclePersistenceService.saveSettings(
-                        for: vehicle,
-                        name: trimmedName,
-                        make: updatedMake,
-                        model: updatedModel,
-                        year: updatedYear,
-                        unitSystem: selectedUnit,
-                        modifiedAt: now,
-                        context: modelContext
-                    )
-                }
-            } else {
-                try VehiclePersistenceService.saveSettings(
-                    for: vehicle,
-                    name: trimmedName,
-                    make: updatedMake,
-                    model: updatedModel,
-                    year: updatedYear,
-                    unitSystem: selectedUnit,
-                    modifiedAt: now,
-                    context: modelContext
-                )
-            }
-            didSave = true
-        } catch {
-            Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "VehicleSettings")
-                .error("Failed to save vehicle settings: \(error)")
-            showingSaveError = true
-        }
-
-        if didSave && shouldPushAfterSave {
-            Task {
-                await cloudSyncService.pushPendingLocalChanges()
-            }
-        }
-
-        if didSave {
-            if selectedUnit == .metric {
-                metricEfficiencyFormat.store(for: vehicle.id)
-            }
+            try await VehiclePersistenceService(writer: writer).update(
+                vehicleID: vehicle.id, update: VehicleSettingsUpdate(original: originalSettings, proposed: proposed))
+            if selectedUnit == .metric { metricEfficiencyFormat.store(for: vehicle.id) }
             dismiss()
+        } catch {
+            saveErrorMessage = error.localizedDescription
+            showingSaveError = true
         }
     }
 
-    private func clearFuelingHistory() {
+    private func clearFuelingHistory() async {
         guard !(vehicle.fuelingRecords?.isEmpty ?? true) else { return }
 
         do {
-            try cloudSyncService.withLocalPushesSuspended {
-                try VehiclePersistenceService.clearFuelingHistory(
-                    for: vehicle,
-                    context: modelContext
-                )
+            try await cloudSyncService.withLocalPushesSuspended {
+                try await VehiclePersistenceService(writer: writer).clearFuelingHistory(
+                    vehicleID: vehicle.id)
             }
 
             showingClearHistorySuccess = true
@@ -349,7 +288,15 @@ struct VehicleSettingsView: View {
 }
 
 #Preview {
-    VehicleSettingsView(vehicle: Vehicle(name: "Test Car"))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
-        .environmentObject(CloudSyncService())
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return VehicleSettingsView(vehicle: Vehicle(name: "Test Car"))
+        .modelContainer(container)
+        .environmentObject(CloudSyncService(writer: writer))
+        .environmentObject(writer)
 }

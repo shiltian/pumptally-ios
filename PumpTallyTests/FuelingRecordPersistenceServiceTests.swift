@@ -1,573 +1,749 @@
-import XCTest
 import SwiftData
+import XCTest
+import os
+
 @testable import PumpTally
 
 @MainActor
-final class FuelingRecordPersistenceServiceTests: XCTestCase {
+private final class PersistenceFixture {
+    let container: ModelContainer
+    let url: URL
+    let vehicleID: UUID
+    let otherVehicleID: UUID
+    let recordIDs: [UUID]
 
-    private enum TestError: Error {
-        case commitFailed
-    }
-
-    private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV3.self)
-        let configuration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: true,
-            cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        return ModelContext(container)
-    }
-
-    private func makeSavedVehicle(in context: ModelContext) throws -> Vehicle {
-        let vehicle = Vehicle(name: "Test Car")
+    init(recordCount: Int = 2) throws {
+        // SwiftData can retain SQLite handles past XCTest teardown. These
+        // isolated stores stay in the test application's temporary directory.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        url = directory.appendingPathComponent("store")
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        container = try ModelContainer(
+            for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+        let context = ModelContext(container)
+        let vehicle = Vehicle(name: "Original", make: "Make", model: "Model", year: 2020)
+        let other = Vehicle(name: "Unrelated", unitSystem: .metric)
         context.insert(vehicle)
+        context.insert(other)
+        var ids: [UUID] = []
+        for index in 0..<recordCount {
+            let record = FuelingRecord(
+                date: Date(timeIntervalSince1970: 1_000_000 + Double(index) * 86_400),
+                odometer: 1000.123456789 + Double(index) * 300, pricePerFuelUnit: 3.459876543,
+                fuelAmount: 10.123456789, totalCost: 35.123456789, notes: "Original \(index)", vehicle: vehicle)
+            context.insert(record)
+            ids.append(record.id)
+        }
+        context.insert(
+            FuelingRecord(odometer: 500, pricePerFuelUnit: 1.5, fuelAmount: 20, totalCost: 30, vehicle: other))
+        context.processPendingChanges()
+        StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+        StatisticsCacheService.recalculateAllStatistics(for: other)
         try context.save()
-        return vehicle
+        vehicleID = vehicle.id
+        otherVehicleID = other.id
+        recordIDs = ids
     }
 
-    private func insertRecord(
-        odometer: Double = 100,
-        into vehicle: Vehicle,
-        context: ModelContext
-    ) throws -> FuelingRecord {
-        try FuelingRecordPersistenceService.insert(into: vehicle, context: context) {
-            FuelingRecord(
-                odometer: odometer,
-                pricePerFuelUnit: 3,
-                fuelAmount: 10,
-                totalCost: 30,
-                vehicle: vehicle
-            )
-        }
+    var context: ModelContext { ModelContext(container) }
+
+    nonisolated func vehicle(_ context: ModelContext) throws -> Vehicle {
+        let id = vehicleID
+        return try XCTUnwrap(context.fetch(FetchDescriptor<Vehicle>(predicate: #Predicate { $0.id == id })).first)
     }
 
-    func testInsertProcessesInverseRelationshipAndCommitsCachesOnce() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        var commitCount = 0
-
-        let record = try FuelingRecordPersistenceService.insert(
-            into: vehicle,
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
-            }
-        ) {
-            FuelingRecord(
-                odometer: 100,
-                pricePerFuelUnit: 3,
-                fuelAmount: 10,
-                totalCost: 30,
-                vehicle: vehicle
-            )
-        }
-
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.id), [record.id])
-        XCTAssertEqual(vehicle.cachedRecordCount, 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertFalse(context.hasChanges)
+    nonisolated func record(_ context: ModelContext) throws -> FuelingRecord {
+        let id = try XCTUnwrap(recordIDs.last)
+        return try XCTUnwrap(context.fetch(FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.id == id })).first)
     }
 
-    func testDeleteProcessesInverseRelationshipBeforeCacheRecalculation() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        let record = try insertRecord(into: vehicle, context: context)
-
-        try FuelingRecordPersistenceService.delete(record, from: vehicle, context: context)
-
-        XCTAssertTrue((vehicle.fuelingRecords ?? []).isEmpty)
-        XCTAssertEqual(vehicle.cachedRecordCount, 0)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
-        XCTAssertFalse(context.hasChanges)
+    var values: FuelingRecordValues {
+        FuelingRecordValues(
+            date: Date(timeIntervalSince1970: 3_000_000), odometer: 1700.123456789,
+            pricePerFuelUnit: 3.459876543, fuelAmount: 10.123456789, totalCost: 35.123456789, fillUpType: .full,
+            notes: "New")
     }
 
-    func testEditCommitsRecordAndCacheChangesTogether() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        let first = try insertRecord(odometer: 100, into: vehicle, context: context)
-        let second = try insertRecord(odometer: 200, into: vehicle, context: context)
-
-        try FuelingRecordPersistenceService.saveEdits(
-            to: second,
-            in: vehicle,
-            context: context
-        ) {
-            second.odometer = 250
-            second.totalCost = 45
-        }
-
-        XCTAssertEqual(first.cachedDistanceDriven, 0)
-        XCTAssertEqual(second.odometer, 250)
-        XCTAssertEqual(second.cachedDistanceDriven, 150)
-        XCTAssertEqual(vehicle.cachedTotalSpent, 75)
-        XCTAssertFalse(context.hasChanges)
+    func update() throws -> FuelingRecordUpdate {
+        let context = context
+        let original = try FuelingRecordValues(record: record(context))
+        var proposed = original
+        proposed.odometer += 100
+        proposed.totalCost = 45
+        return FuelingRecordUpdate(original: original, proposed: proposed, storageUnit: .imperial)
     }
 
-    func testFailedInsertRollsBackRecordAndCaches() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-
-        XCTAssertThrowsError(
-            try FuelingRecordPersistenceService.insert(
-                into: vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            ) {
-                FuelingRecord(
-                    odometer: 100,
-                    pricePerFuelUnit: 3,
-                    fuelAmount: 10,
-                    totalCost: 30,
-                    vehicle: vehicle
-                )
-            }
+    func importRows() throws -> [CSVImportRecordSnapshot] {
+        try CSVImportService.parse(
+            "date,odometer,price,fuel,cost,fillUpType,notes\n2024-01-15,2000,3,10,30,full,First\n2024-02-15,2300,3,10,30,full,Second"
         )
-
-        XCTAssertTrue((vehicle.fuelingRecords ?? []).isEmpty)
-        XCTAssertNil(vehicle.cachedRecordCount)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
-        XCTAssertFalse(context.hasChanges)
     }
 
-    func testBatchInsertCommitsEveryRecordAndCachesOnce() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        var commitCount = 0
+    func fingerprint() throws -> [String: [String: String]] { try persistenceFingerprint(container) }
+}
 
-        let records = try FuelingRecordPersistenceService.insertBatch(
-            into: vehicle,
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
+/// Independent, bit-exact assertions for saved business values and caches.
+@MainActor
+private func persistenceFingerprint(_ container: ModelContainer) throws -> [String: [String: String]] {
+    let context = ModelContext(container)
+    func bits(_ fields: [(String, Double?)]) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: fields.map { ($0.0, $0.1.map { String($0.bitPattern) } ?? "nil") })
+    }
+    var result: [String: [String: String]] = [:]
+    for v in try context.fetch(FetchDescriptor<Vehicle>()) {
+        result["Vehicle:\(v.id)"] = [
+            "name": v.name, "make": v.make ?? "nil", "model": v.model ?? "nil", "year": String(describing: v.year),
+            "storageUnit": v.unitSystemRaw, "displayUnit": v.displayUnitSystemRaw ?? "nil",
+            "count": String(describing: v.cachedRecordCount),
+        ].merging(
+            bits([
+                ("createdAt", v.createdAt.timeIntervalSince1970), ("modifiedAt", v.modifiedAt?.timeIntervalSince1970),
+                ("cacheDate", v.cacheLastUpdated?.timeIntervalSince1970),
+                ("spent", v.cachedTotalSpent), ("distance", v.cachedTotalDistance), ("fuel", v.cachedTotalFuel),
+                ("efficiency", v.cachedAverageEfficiency),
+                ("costPerDistance", v.cachedAverageCostPerDistance), ("fillCost", v.cachedAverageFillUpCost),
+                ("price", v.cachedAveragePricePerFuelUnit),
+                ("best", v.cachedBestEfficiency), ("worst", v.cachedWorstEfficiency),
+                ("highestPrice", v.cachedHighestPricePerFuelUnit), ("lowestPrice", v.cachedLowestPricePerFuelUnit),
+            ]), uniquingKeysWith: { _, rhs in rhs })
+    }
+    for r in try context.fetch(FetchDescriptor<FuelingRecord>()) {
+        result["Record:\(r.id)"] = [
+            "owner": r.vehicle.id.uuidString, "notes": r.notes ?? "nil", "fillType": r.fillUpTypeRaw,
+        ].merging(
+            bits([
+                ("date", r.date.timeIntervalSince1970), ("createdAt", r.createdAt.timeIntervalSince1970),
+                ("modifiedAt", r.modifiedAt?.timeIntervalSince1970),
+                ("odometer", r.odometer), ("price", r.pricePerFuelUnit), ("fuel", r.fuelAmount), ("cost", r.totalCost),
+                ("previousOdometer", r.cachedPreviousOdometer), ("distance", r.cachedDistanceDriven),
+                ("efficiency", r.cachedEfficiency), ("costPerDistance", r.cachedCostPerDistance),
+            ]), uniquingKeysWith: { _, rhs in rhs })
+    }
+    for entry in try context.fetch(FetchDescriptor<SyncChange>()) {
+        result["Journal:\(entry.key)"] = [
+            "generation": entry.generation, "operation": entry.operationRaw, "origin": entry.originRaw ?? "nil",
+            "createdAt": String(entry.createdAt.timeIntervalSince1970.bitPattern),
+        ]
+    }
+    return result
+}
+
+@MainActor
+final class FuelingRecordPersistenceServiceTests: XCTestCase {
+    func testCopied800RecordExportCanBeReviewedAndSkippedWithoutAnyStoreChanges() async throws {
+        let source = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("csv-copy.store")
+        try FileManager.default.copyItem(at: source, to: url)
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        var expected: [String: [String: String]] = [:]
+        do {
+            let container = try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [configuration])
+            let context = ModelContext(container)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 800)
+            expected = try persistenceFingerprint(container)
+            let service = FuelingRecordPersistenceService(container: container)
+            for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) {
+                let history = vehicle.fuelingRecords ?? []
+                let csv = CSVService.exportRecords(history.map(CSVService.RecordSnapshot.init(record:)))
+                let plan = try await service.prepareImport(
+                    CSVImportService.parse(csv), vehicleID: vehicle.id, sourceUnit: vehicle.unitSystem)
+                XCTAssertEqual(plan.possibleDuplicateIDs.count, history.count)
+                let ids = try await service.importRecords(plan: plan, duplicates: .skipPossibleDuplicates)
+                XCTAssertTrue(ids.isEmpty)
             }
-        ) {
-            [100.0, 200.0, 300.0].map { odometer in
-                FuelingRecord(
-                    odometer: odometer,
-                    pricePerFuelUnit: 3,
-                    fuelAmount: 10,
-                    totalCost: 30,
-                    vehicle: vehicle
-                )
-            }
+            XCTAssertEqual(try persistenceFingerprint(container), expected)
         }
+        let reopened = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [configuration])
+        XCTAssertEqual(try persistenceFingerprint(reopened), expected)
+    }
+    private enum Failure: Error { case diskFull }
 
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertEqual(records.count, 3)
-        XCTAssertEqual(vehicle.fuelingRecords?.count, 3)
-        XCTAssertEqual(vehicle.cachedRecordCount, 3)
-        XCTAssertEqual(vehicle.cachedTotalDistance, 200)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 3)
-        XCTAssertFalse(context.hasChanges)
+    func testCopied800RecordHistorySurvivesNotesAndDisplayCommandsAndReopenExactly() async throws {
+        let source = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
+        // SwiftData can retain SQLite handles past XCTest teardown. These
+        // isolated stores stay in the test application's temporary directory.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("copy.store")
+        try FileManager.default.copyItem(at: source, to: url)
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        var expected: [String: [String: String]] = [:]
+        do {
+            let container = try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+                configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+            let reader = ModelContext(container)
+            XCTAssertEqual(try reader.fetchCount(FetchDescriptor<FuelingRecord>()), 800)
+            expected = try persistenceFingerprint(container)
+            let record = try XCTUnwrap(
+                reader.fetch(FetchDescriptor<FuelingRecord>()).first(where: {
+                    expected["Journal:FuelingRecord:\($0.id)"] == nil
+                        && expected["Journal:Vehicle:\($0.vehicle.id)"] == nil
+                }))
+            let owner = record.vehicle
+            let original = FuelingRecordValues(record: record)
+            var proposed = original
+            proposed.notes = "Copied history: notes only"
+            try await FuelingRecordPersistenceService(container: container).update(
+                recordID: record.id,
+                update: FuelingRecordUpdate(original: original, proposed: proposed, storageUnit: owner.unitSystem))
+            let settings = VehicleSettingsValues(vehicle: owner)
+            var display = settings
+            display.displayUnit = settings.displayUnit == .imperial ? .metric : .imperial
+            try await VehiclePersistenceService(container: container).update(
+                vehicleID: owner.id,
+                update: VehicleSettingsUpdate(original: settings, proposed: display))
+            let actual = try persistenceFingerprint(container)
+            let recordKey = "Record:\(record.id)"
+            let vehicleKey = "Vehicle:\(owner.id)"
+            XCTAssertNotEqual(actual[recordKey]?["modifiedAt"], expected[recordKey]?["modifiedAt"])
+            XCTAssertNotEqual(actual[vehicleKey]?["modifiedAt"], expected[vehicleKey]?["modifiedAt"])
+            expected[recordKey]?["notes"] = proposed.notes
+            expected[recordKey]?["modifiedAt"] = actual[recordKey]?["modifiedAt"]
+            expected[vehicleKey]?["displayUnit"] = display.displayUnit.rawValue
+            expected[vehicleKey]?["modifiedAt"] = actual[vehicleKey]?["modifiedAt"]
+            let newKeys = Set(actual.keys).subtracting(expected.keys)
+            XCTAssertEqual(newKeys, ["Journal:FuelingRecord:\(record.id)", "Journal:Vehicle:\(owner.id)"])
+            for key in newKeys {
+                XCTAssertEqual(actual[key]?["operation"], "save")
+                XCTAssertEqual(actual[key]?["origin"], "local")
+                XCTAssertNotNil(UUID(uuidString: actual[key]?["generation"] ?? ""))
+                expected[key] = actual[key]
+            }
+            XCTAssertEqual(actual, expected)
+        }
+        let reopened = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+        XCTAssertEqual(try persistenceFingerprint(reopened), expected)
     }
 
-    func testFailedBatchInsertRollsBackEveryRecordAndCache() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        _ = try insertRecord(odometer: 50, into: vehicle, context: context)
-        let originalRecordCount = vehicle.cachedRecordCount
-        let originalDistance = vehicle.cachedTotalDistance
+    func testImportRejectsReplayedOrDuplicateCommandIDsWithoutChangingTheStore() async throws {
+        let fixture = try PersistenceFixture()
+        let service = FuelingRecordPersistenceService(container: fixture.container)
+        let rows = try fixture.importRows()
+        do {
+            _ =
+                try await service.importRecords(
+                    [rows[0], rows[0]], vehicleID: fixture.vehicleID, storageUnit: .imperial)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        _ = try await service.importRecords(rows, vehicleID: fixture.vehicleID, storageUnit: .imperial)
+        let before = try fixture.fingerprint()
+        do {
+            _ = try await service.importRecords(rows, vehicleID: fixture.vehicleID, storageUnit: .imperial)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), before)
+    }
 
-        XCTAssertThrowsError(
-            try FuelingRecordPersistenceService.insertBatch(
-                into: vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            ) {
-                [100.0, 200.0, 300.0].map { odometer in
-                    FuelingRecord(
-                        odometer: odometer,
-                        pricePerFuelUnit: 3,
-                        fuelAmount: 10,
-                        totalCost: 30,
-                        vehicle: vehicle
-                    )
+    func testCreateCommitsRecordCacheAndIntentOnceAndReturnsValues() async throws {
+        let fixture = try PersistenceFixture()
+        let commits = OSAllocatedUnfairLock(initialState: 0)
+        let service = FuelingRecordPersistenceService(
+            container: fixture.container,
+            commit: { actor in
+                let context = actor.modelContext
+                commits.withLock { $0 += 1 }
+                XCTAssertFalse(Thread.isMainThread)
+                XCTAssertFalse(context.autosaveEnabled)
+                XCTAssertEqual(try fixture.vehicle(context).cachedRecordCount, 3)
+                XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 1)
+                try context.save()
+            })
+        let saved = try await service.create(
+            values: fixture.values, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+        XCTAssertEqual(commits.withLock({ $0 }), 1)
+        XCTAssertEqual(saved.values, fixture.values)
+        XCTAssertEqual(saved.vehicleID, fixture.vehicleID)
+        XCTAssertEqual(saved.previousOdometer, 1300.123456789)
+        XCTAssertEqual(saved.distanceDriven, 400, accuracy: 0.000001)
+        let context = fixture.context
+        XCTAssertEqual(try fixture.vehicle(context).fuelingRecords?.count, 3)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 1)
+    }
+
+    func testFirstCreatedRecordIsPartial() async throws {
+        let fixture = try PersistenceFixture(recordCount: 0)
+        let saved = try await FuelingRecordPersistenceService(container: fixture.container).create(
+            values: fixture.values, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+        XCTAssertEqual(saved.values.fillUpType, .partial)
+        XCTAssertEqual(saved.efficiency, 0)
+        XCTAssertEqual(saved.previousOdometer, 0)
+    }
+
+    func testEditCommitsTheRecordAndRecomputedHistoryTogether() async throws {
+        let fixture = try PersistenceFixture()
+        try await FuelingRecordPersistenceService(container: fixture.container).update(
+            recordID: fixture.recordIDs.last!, update: fixture.update())
+        let context = fixture.context
+        XCTAssertEqual(try fixture.record(context).odometer, 1400.123456789)
+        XCTAssertEqual(try fixture.record(context).cachedDistanceDriven ?? 0, 400, accuracy: 0.000001)
+        XCTAssertEqual(try fixture.vehicle(context).cachedTotalSpent ?? 0, 80.123456789, accuracy: 0.000001)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncChange>()).map(\.operationRaw), ["save"])
+    }
+
+    func testDeleteCommitsVerifiedIntentAndRebuildsOnlyTheOwner() async throws {
+        let fixture = try PersistenceFixture()
+        let original = try fixture.fingerprint()["Vehicle:\(fixture.otherVehicleID)"]
+        try await FuelingRecordPersistenceService(container: fixture.container).delete(
+            recordID: fixture.recordIDs.last!)
+        let context = fixture.context
+        XCTAssertEqual(try fixture.vehicle(context).cachedRecordCount, 1)
+        let entry = try XCTUnwrap(context.fetch(FetchDescriptor<SyncChange>()).first)
+        XCTAssertEqual(entry.recordName, fixture.recordIDs.last!.uuidString)
+        XCTAssertEqual(entry.operationRaw, "delete")
+        XCTAssertEqual(entry.originRaw, "local")
+        XCTAssertEqual(try fixture.fingerprint()["Vehicle:\(fixture.otherVehicleID)"], original)
+    }
+
+    func testEveryRecordCommandFailureIsAtomicAndRetryUsesFreshContext() async throws {
+        for operation in 0..<4 {
+            let fixture = try PersistenceFixture()
+            let before = try fixture.fingerprint()
+            let edit = try fixture.update()
+            let imports = try fixture.importRows()
+            let fail = OSAllocatedUnfairLock(initialState: true)
+            let attempts = OSAllocatedUnfairLock(initialState: 0)
+            let service = FuelingRecordPersistenceService(
+                container: fixture.container,
+                commit: {
+                    attempts.withLock { $0 += 1 }
+                    if fail.withLock({ $0 }) { throw Failure.diskFull }
+                    try $0.modelContext.save()
+                })
+            func perform() async throws {
+                switch operation {
+                case 0:
+                    _ = try await service.create(
+                        values: fixture.values, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+                case 1: try await service.update(recordID: fixture.recordIDs.last!, update: edit)
+                case 2: try await service.delete(recordID: fixture.recordIDs.last!)
+                default:
+                    _ = try await service.importRecords(imports, vehicleID: fixture.vehicleID, storageUnit: .imperial)
                 }
             }
-        )
-
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.odometer), [50])
-        XCTAssertEqual(vehicle.cachedRecordCount, originalRecordCount)
-        XCTAssertEqual(vehicle.cachedTotalDistance, originalDistance)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testFailedEditRollsBackRecordAndCaches() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        let first = try insertRecord(odometer: 100, into: vehicle, context: context)
-        let second = try insertRecord(odometer: 200, into: vehicle, context: context)
-        let originalTotalDistance = vehicle.cachedTotalDistance
-
-        XCTAssertThrowsError(
-            try FuelingRecordPersistenceService.saveEdits(
-                to: second,
-                in: vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            ) {
-                second.odometer = 300
-                second.totalCost = 99
+            do {
+                _ = try await perform()
+                XCTFail("Expected operation to throw")
+            } catch let caughtError {
+                _ = caughtError
             }
-        )
-
-        XCTAssertEqual(first.cachedDistanceDriven, 0)
-        XCTAssertEqual(second.odometer, 200)
-        XCTAssertEqual(second.totalCost, 30)
-        XCTAssertEqual(vehicle.cachedTotalDistance, originalTotalDistance)
-        XCTAssertFalse(context.hasChanges)
+            XCTAssertEqual(try fixture.fingerprint(), before)
+            fail.withLock { $0 = false }
+            try await perform()
+            XCTAssertNotEqual(try fixture.fingerprint(), before)
+            XCTAssertEqual(attempts.withLock({ $0 }), 2)
+        }
     }
 
-    func testFailedDeleteRestoresRecordAndCaches() throws {
-        let context = try makeContext()
-        let vehicle = try makeSavedVehicle(in: context)
-        let record = try insertRecord(into: vehicle, context: context)
+    func testRealReadOnlyStoreRejectsEveryRecordCommandWithoutChangingData() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let readOnly = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(schema: schema, url: fixture.url, allowsSave: false, cloudKitDatabase: .none)
+            ])
+        let service = FuelingRecordPersistenceService(container: readOnly)
+        do {
+            _ =
+                try await service.create(values: fixture.values, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.update(recordID: fixture.recordIDs.last!, update: fixture.update())
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.delete(recordID: fixture.recordIDs.last!)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ =
+                try await service.importRecords(
+                    fixture.importRows(), vehicleID: fixture.vehicleID, storageUnit: .imperial)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), before)
+    }
 
-        XCTAssertThrowsError(
-            try FuelingRecordPersistenceService.delete(
-                record,
-                from: vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            )
+    func testSuccessAndFailureDoNotSaveOrRollbackUnrelatedUIChanges() async throws {
+        let fixture = try PersistenceFixture()
+        let reader = fixture.container.mainContext
+        reader.autosaveEnabled = false
+        let visible = try fixture.record(reader)
+        visible.notes = "Uncommitted UI draft"
+        let failing = FuelingRecordPersistenceService(
+            container: fixture.container, commit: { _ in throw Failure.diskFull })
+        do {
+            _ = try await failing.delete(recordID: fixture.recordIDs.last!)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        _ = try await FuelingRecordPersistenceService(container: fixture.container).create(
+            values: fixture.values, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+        XCTAssertTrue(reader.hasChanges)
+        XCTAssertEqual(visible.notes, "Uncommitted UI draft")
+        let context = fixture.context
+        XCTAssertEqual(try fixture.record(context).notes, "Original 1")
+        reader.rollback()
+    }
+
+    func testNoOpSkipsCommitTimestampAndJournal() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        let context = fixture.context
+        let values = try FuelingRecordValues(record: fixture.record(context))
+        let changed = try await FuelingRecordPersistenceService(
+            container: fixture.container, commit: { _ in XCTFail("No-op save") }
         )
+        .update(recordID: fixture.recordIDs.last!, update: FuelingRecordUpdate(original: values, proposed: values))
+        XCTAssertFalse(changed)
+        XCTAssertEqual(try fixture.fingerprint(), before)
+    }
 
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.id), [record.id])
-        XCTAssertEqual(vehicle.cachedRecordCount, 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertFalse(context.hasChanges)
+    func testInvalidChronologyAndObsoleteStorageBasisAreRejectedBeforeSaving() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        let service = FuelingRecordPersistenceService(
+            container: fixture.container, commit: { _ in XCTFail("Invalid input save") })
+        var invalid = fixture.values
+        invalid.odometer = 500
+        do {
+            _ = try await service.create(values: invalid, storageUnit: .imperial, vehicleID: fixture.vehicleID)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ =
+                try await service.create(values: fixture.values, storageUnit: .metric, vehicleID: fixture.vehicleID)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), before)
     }
 }
 
 @MainActor
 final class VehiclePersistenceServiceTests: XCTestCase {
+    private enum Failure: Error { case diskFull }
 
-    private enum TestError: Error {
-        case commitFailed
-    }
-
-    private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV3.self)
-        let configuration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: true,
-            cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        return ModelContext(container)
-    }
-
-    private func makeSavedGraph(
-        in context: ModelContext
-    ) throws -> (Vehicle, FuelingRecord) {
-        let vehicle = Vehicle(
-            name: "Original",
-            make: "Old Make",
-            model: "Old Model",
-            year: 2020,
-            unitSystem: .imperial
-        )
-        vehicle.modifiedAt = Date(timeIntervalSince1970: 100)
-        context.insert(vehicle)
-
-        let record = FuelingRecord(
-            date: Date(timeIntervalSince1970: 200),
-            odometer: 1_000,
-            pricePerFuelUnit: 3.5,
-            fuelAmount: 10,
-            totalCost: 35,
-            fillUpType: .full,
-            notes: "Original note",
-            vehicle: vehicle
-        )
-        record.modifiedAt = Date(timeIntervalSince1970: 300)
-        context.insert(record)
-        context.processPendingChanges()
-
-        setSentinelCaches(on: vehicle, record: record)
+    /// Isolates the native cascade contract from the application's commands.
+    /// Optimized runs can log an invalidated-model diagnostic during deletion;
+    /// this checks the SDK operation and the surviving graph independently.
+    func testNativeCascadeDeletePreservesTheSurvivingGraphWithoutApplicationCommands() throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        let context = fixture.context
+        context.delete(try fixture.vehicle(context))
         try context.save()
-        return (vehicle, record)
+        let saved = fixture.context
+        XCTAssertEqual(try saved.fetch(FetchDescriptor<Vehicle>()).map(\.id), [fixture.otherVehicleID])
+        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
+        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<SyncChange>()), 0)
+        let after = try fixture.fingerprint()
+        for (key, value) in after { XCTAssertEqual(value, before[key]) }
     }
 
-    private func setSentinelCaches(on vehicle: Vehicle, record: FuelingRecord) {
-        vehicle.cachedTotalSpent = 1
-        vehicle.cachedTotalDistance = 2
-        vehicle.cachedTotalFuel = 3
-        vehicle.cachedAverageEfficiency = 4
-        vehicle.cachedAverageCostPerDistance = 5
-        vehicle.cachedAverageFillUpCost = 6
-        vehicle.cachedAveragePricePerFuelUnit = 7
-        vehicle.cachedBestEfficiency = 8
-        vehicle.cachedWorstEfficiency = 9
-        vehicle.cachedHighestPricePerFuelUnit = 10
-        vehicle.cachedLowestPricePerFuelUnit = 11
-        vehicle.cachedRecordCount = 12
-        vehicle.cacheLastUpdated = Date(timeIntervalSince1970: 400)
-
-        record.cachedPreviousOdometer = 13
-        record.cachedDistanceDriven = 14
-        record.cachedEfficiency = 15
-        record.cachedCostPerDistance = 16
-    }
-
-    private func assertSentinelCaches(
-        on vehicle: Vehicle,
-        record: FuelingRecord,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        XCTAssertEqual(vehicle.cachedTotalSpent, 1, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedTotalDistance, 2, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedTotalFuel, 3, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedAverageEfficiency, 4, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedAverageCostPerDistance, 5, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedAverageFillUpCost, 6, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedAveragePricePerFuelUnit, 7, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedBestEfficiency, 8, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedWorstEfficiency, 9, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedHighestPricePerFuelUnit, 10, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedLowestPricePerFuelUnit, 11, file: file, line: line)
-        XCTAssertEqual(vehicle.cachedRecordCount, 12, file: file, line: line)
-        XCTAssertEqual(
-            vehicle.cacheLastUpdated,
-            Date(timeIntervalSince1970: 400),
-            file: file,
-            line: line
-        )
-
-        XCTAssertEqual(record.cachedPreviousOdometer, 13, file: file, line: line)
-        XCTAssertEqual(record.cachedDistanceDriven, 14, file: file, line: line)
-        XCTAssertEqual(record.cachedEfficiency, 15, file: file, line: line)
-        XCTAssertEqual(record.cachedCostPerDistance, 16, file: file, line: line)
-    }
-
-    func testInsertUsesOneExplicitCommit() throws {
-        let context = try makeContext()
-        var commitCount = 0
-
-        let vehicle = try VehiclePersistenceService.insert(
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
-            }
-        ) {
-            Vehicle(name: "Inserted")
+    func testFailedLegacyUnitDecisionPreservesMeasurementsAndInboxUntilRetry() async throws {
+        let fixture = try PersistenceFixture()
+        let context = fixture.context
+        let vehicle = try fixture.vehicle(context)
+        let codec = CloudRecordCodec(zoneID: NativeCloudSyncEnvironment.zoneID)
+        let incoming = codec.vehicleToCKRecord(vehicle)
+        incoming[CloudRecordCodec.CloudFieldKey.Vehicle.unitSystemRaw] = "metric"
+        try await SyncPersistenceStore(container: fixture.container).capture(modifications: [incoming], deletions: [])
+        let item = try XCTUnwrap(SyncReviewService.items(in: context).first)
+        let original = try fixture.fingerprint()
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let readOnly = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(schema: schema, url: fixture.url, allowsSave: false, cloudKitDatabase: .none)
+            ])
+        do {
+            _ = try await SyncReviewService.confirm(
+                item, sourceUnit: .metric, writer: OwnedModelStore(container: readOnly))
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
         }
-
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertEqual(vehicle.name, "Inserted")
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 1)
-        XCTAssertFalse(context.hasChanges)
+        XCTAssertEqual(try fixture.fingerprint(), original)
+        XCTAssertEqual(try SyncReviewService.items(in: context).map(\.archivedPayload), [item.archivedPayload])
+        try await SyncReviewService.confirm(
+            item, sourceUnit: .metric, writer: OwnedModelStore(container: fixture.container))
+        let saved = fixture.context
+        XCTAssertEqual(try fixture.vehicle(saved).unitSystem, .metric)
+        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<PendingRemoteChange>()), 0)
+        XCTAssertEqual(
+            try saved.fetchCount(FetchDescriptor<SyncChange>()), 0, "Unit adoption must not queue bulk uploads")
     }
 
-    func testFailedInsertLeavesNoVehicle() throws {
-        let context = try makeContext()
-
-        XCTAssertThrowsError(
-            try VehiclePersistenceService.insert(
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            ) {
-                Vehicle(name: "Not Saved")
-            }
-        )
-
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 0)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testSaveSettingsConvertsSourceValuesAndCommitsOnce() throws {
-        let context = try makeContext()
-        let (vehicle, record) = try makeSavedGraph(in: context)
-        var commitCount = 0
-
-        try VehiclePersistenceService.saveSettings(
-            for: vehicle,
-            name: "Updated",
-            make: nil,
-            model: "New Model",
-            year: 2025,
-            unitSystem: .metric,
-            modifiedAt: Date(timeIntervalSince1970: 500),
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
-            }
-        )
-
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertEqual(vehicle.name, "Updated")
-        XCTAssertNil(vehicle.make)
-        XCTAssertEqual(vehicle.model, "New Model")
-        XCTAssertEqual(vehicle.year, 2025)
-        XCTAssertEqual(vehicle.unitSystem, .metric)
-        XCTAssertEqual(record.odometer, 1_000 * UnitSystem.milesToKm, accuracy: 0.000_001)
-        XCTAssertEqual(record.fuelAmount, 10 * UnitSystem.gallonsToLiters, accuracy: 0.000_001)
-        XCTAssertEqual(record.pricePerFuelUnit, 3.5 / UnitSystem.gallonsToLiters, accuracy: 0.000_001)
-        XCTAssertEqual(record.totalCost, 35)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testFailedSaveSettingsRestoresMetadataRecordsAndEveryCache() throws {
-        let context = try makeContext()
-        let (vehicle, record) = try makeSavedGraph(in: context)
-
-        XCTAssertThrowsError(
-            try VehiclePersistenceService.saveSettings(
-                for: vehicle,
-                name: "Updated",
-                make: nil,
-                model: "New Model",
-                year: 2025,
-                unitSystem: .metric,
-                modifiedAt: Date(timeIntervalSince1970: 500),
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            )
-        )
-
-        XCTAssertEqual(vehicle.name, "Original")
-        XCTAssertEqual(vehicle.make, "Old Make")
-        XCTAssertEqual(vehicle.model, "Old Model")
-        XCTAssertEqual(vehicle.year, 2020)
-        XCTAssertEqual(vehicle.unitSystem, .imperial)
-        XCTAssertEqual(vehicle.modifiedAt, Date(timeIntervalSince1970: 100))
-
-        XCTAssertEqual(record.date, Date(timeIntervalSince1970: 200))
-        XCTAssertEqual(record.odometer, 1_000)
-        XCTAssertEqual(record.pricePerFuelUnit, 3.5)
-        XCTAssertEqual(record.fuelAmount, 10)
-        XCTAssertEqual(record.totalCost, 35)
-        XCTAssertEqual(record.fillUpType, .full)
-        XCTAssertEqual(record.notes, "Original note")
-        XCTAssertEqual(record.modifiedAt, Date(timeIntervalSince1970: 300))
-        assertSentinelCaches(on: vehicle, record: record)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testClearHistoryCommitsRecordsAndEmptyCachesTogether() throws {
-        let context = try makeContext()
-        let (vehicle, _) = try makeSavedGraph(in: context)
-        var commitCount = 0
-
-        try VehiclePersistenceService.clearFuelingHistory(
-            for: vehicle,
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
-            }
-        )
-
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertTrue((vehicle.fuelingRecords ?? []).isEmpty)
-        XCTAssertEqual(vehicle.cachedRecordCount, 0)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testFailedClearHistoryRestoresRelationshipAndEveryCache() throws {
-        let context = try makeContext()
-        let (vehicle, record) = try makeSavedGraph(in: context)
-
-        XCTAssertThrowsError(
-            try VehiclePersistenceService.clearFuelingHistory(
-                for: vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            )
-        )
-
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.id), [record.id])
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        assertSentinelCaches(on: vehicle, record: record)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testFailedVehicleDeleteRestoresGraph() throws {
-        let context = try makeContext()
-        let (vehicle, record) = try makeSavedGraph(in: context)
-
-        XCTAssertThrowsError(
-            try VehiclePersistenceService.delete(
-                vehicle,
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            )
-        )
-
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.id), [record.id])
-        assertSentinelCaches(on: vehicle, record: record)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testVehicleDeleteCommitsEntireGraph() throws {
-        let context = try makeContext()
-        let (vehicle, _) = try makeSavedGraph(in: context)
-        var commitCount = 0
-
-        try VehiclePersistenceService.delete(
-            vehicle,
-            context: context,
-            commit: {
-                commitCount += 1
-                try $0.save()
-            }
-        )
-
-        XCTAssertEqual(commitCount, 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 0)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testFailedDeleteAllRestoresEveryGraph() throws {
-        let context = try makeContext()
-        let (vehicle, record) = try makeSavedGraph(in: context)
-
-        XCTAssertThrowsError(
-            try VehiclePersistenceService.deleteAllData(
-                context: context,
-                commit: { _ in throw TestError.commitFailed }
-            )
-        )
-
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertEqual(vehicle.fuelingRecords?.map(\.id), [record.id])
-        assertSentinelCaches(on: vehicle, record: record)
-        XCTAssertFalse(context.hasChanges)
-    }
-
-    func testDeleteAllCommitsEveryGraphOnce() throws {
-        let context = try makeContext()
-        _ = try makeSavedGraph(in: context)
-        let secondVehicle = Vehicle(name: "Second")
-        context.insert(secondVehicle)
+    func testFailedLegacyDeletionDecisionPreservesItsGenerationAndAllData() async throws {
+        let fixture = try PersistenceFixture()
+        let context = fixture.context
+        let legacy = SyncChange(
+            recordName: fixture.vehicleID.uuidString, recordTypeRaw: "Vehicle", operationRaw: "delete")
+        legacy.originRaw = nil
+        context.insert(legacy)
+        let childDecision = SyncChange(
+            recordName: fixture.recordIDs[0].uuidString, recordTypeRaw: "FuelingRecord", operationRaw: "delete")
+        childDecision.originRaw = nil
+        context.insert(childDecision)
         try context.save()
-        var commitCount = 0
+        let original = try fixture.fingerprint()
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let readOnly = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(schema: schema, url: fixture.url, allowsSave: false, cloudKitDatabase: .none)
+            ])
+        do {
+            _ = try await SyncReviewService.resolveLegacyDeletions(
+                apply: true, writer: OwnedModelStore(container: readOnly))
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), original)
+        try await SyncReviewService.resolveLegacyDeletions(
+            apply: true, writer: OwnedModelStore(container: fixture.container))
+        let saved = fixture.context
+        XCTAssertEqual(try saved.fetch(FetchDescriptor<Vehicle>()).map(\.id), [fixture.otherVehicleID])
+        let entries = try saved.fetch(FetchDescriptor<SyncChange>())
+        XCTAssertEqual(Set(entries.map(\.recordName)), Set((fixture.recordIDs + [fixture.vehicleID]).map(\.uuidString)))
+        XCTAssertTrue(entries.allSatisfy { $0.originRaw != nil && $0.operationRaw == "delete" })
+    }
 
-        try VehiclePersistenceService.deleteAllData(
-            context: context,
+    private func update(_ fixture: PersistenceFixture) throws -> VehicleSettingsUpdate {
+        let context = fixture.context
+        let original = try VehicleSettingsValues(vehicle: fixture.vehicle(context))
+        var proposed = original
+        proposed.name = "Renamed"
+        proposed.displayUnit = .metric
+        return VehicleSettingsUpdate(original: original, proposed: proposed)
+    }
+
+    func testCreateUsesOneExplicitCommitAndReturnsAnID() async throws {
+        let fixture = try PersistenceFixture()
+        let commits = OSAllocatedUnfairLock(initialState: 0)
+        let id = try await VehiclePersistenceService(
+            container: fixture.container,
             commit: {
-                commitCount += 1
-                try $0.save()
+                commits.withLock { $0 += 1 }
+                XCTAssertFalse(Thread.isMainThread)
+                XCTAssertEqual(try $0.modelContext.fetchCount(FetchDescriptor<SyncChange>()), 1)
+                try $0.modelContext.save()
             }
-        )
+        ).create(values: VehicleSettingsValues(name: "New", displayUnit: .metric), storageUnit: .metric)
+        let context = fixture.context
+        let vehicle = try XCTUnwrap(
+            context.fetch(FetchDescriptor<Vehicle>(predicate: #Predicate { $0.id == id })).first)
+        XCTAssertEqual(commits.withLock({ $0 }), 1)
+        XCTAssertEqual(vehicle.name, "New")
+        XCTAssertEqual(vehicle.unitSystem, .metric)
+        XCTAssertEqual(vehicle.displayUnitSystem, .metric)
+    }
 
-        XCTAssertEqual(commitCount, 1)
+    func testSettingsChangeDisplayUnitsWithoutRewritingStoredMeasurementsOrCaches() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        try await VehiclePersistenceService(container: fixture.container).update(
+            vehicleID: fixture.vehicleID, update: update(fixture))
+        let context = fixture.context
+        let vehicle = try fixture.vehicle(context)
+        XCTAssertEqual(vehicle.name, "Renamed")
+        XCTAssertEqual(vehicle.unitSystem, .imperial)
+        XCTAssertEqual(vehicle.displayUnitSystem, .metric)
+        for id in fixture.recordIDs {
+            XCTAssertEqual(try fixture.fingerprint()["Record:\(id)"], before["Record:\(id)"])
+        }
+        XCTAssertEqual(
+            try fixture.fingerprint()["Vehicle:\(fixture.otherVehicleID)"], before["Vehicle:\(fixture.otherVehicleID)"])
+    }
+
+    func testClearHistoryDeletesChildrenAndCommitsOnlyTheirIntent() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()["Vehicle:\(fixture.otherVehicleID)"]
+        try await VehiclePersistenceService(container: fixture.container).clearFuelingHistory(
+            vehicleID: fixture.vehicleID)
+        let context = fixture.context
+        XCTAssertEqual(try fixture.vehicle(context).fuelingRecords?.count, 0)
+        XCTAssertEqual(try fixture.vehicle(context).cachedRecordCount, 0)
+        let journal = try context.fetch(FetchDescriptor<SyncChange>())
+        XCTAssertEqual(Set(journal.map(\.recordName)), Set(fixture.recordIDs.map(\.uuidString)))
+        XCTAssertTrue(journal.allSatisfy { $0.operationRaw == "delete" && $0.originRaw == "local" })
+        XCTAssertEqual(try fixture.fingerprint()["Vehicle:\(fixture.otherVehicleID)"], before)
+    }
+
+    func testVehicleDeleteCommitsParentAndChildDeletionIntentTogether() async throws {
+        let fixture = try PersistenceFixture()
+        try await VehiclePersistenceService(container: fixture.container).delete(vehicleID: fixture.vehicleID)
+        let context = fixture.context
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Vehicle>()).map(\.id), [fixture.otherVehicleID])
+        let entries = try context.fetch(FetchDescriptor<SyncChange>())
+        XCTAssertEqual(Set(entries.map(\.recordName)), Set((fixture.recordIDs + [fixture.vehicleID]).map(\.uuidString)))
+        XCTAssertTrue(entries.allSatisfy { $0.operationRaw == "delete" && $0.originRaw == "local" })
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
+    }
+
+    func testDeleteAllCommitsEveryDeletionIntentOnce() async throws {
+        let fixture = try PersistenceFixture()
+        let commits = OSAllocatedUnfairLock(initialState: 0)
+        try await VehiclePersistenceService(
+            container: fixture.container,
+            commit: {
+                commits.withLock { $0 += 1 }; try $0.modelContext.save()
+            }
+        ).deleteAllData()
+        let context = fixture.context
+        XCTAssertEqual(commits.withLock({ $0 }), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<Vehicle>()), 0)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
-        XCTAssertFalse(context.hasChanges)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 5)
+    }
+
+    func testEveryVehicleCommandFailureIsAtomicAndRetryUsesFreshContext() async throws {
+        for operation in 0..<5 {
+            let fixture = try PersistenceFixture()
+            let before = try fixture.fingerprint()
+            let edit = try update(fixture)
+            let fail = OSAllocatedUnfairLock(initialState: true)
+            let service = VehiclePersistenceService(
+                container: fixture.container,
+                commit: {
+                    if fail.withLock({ $0 }) { throw Failure.diskFull }
+                    try $0.modelContext.save()
+                })
+            func perform() async throws {
+                switch operation {
+                case 0: _ = try await service.create(values: VehicleSettingsValues(name: "New"), storageUnit: .imperial)
+                case 1: try await service.update(vehicleID: fixture.vehicleID, update: edit)
+                case 2: try await service.delete(vehicleID: fixture.vehicleID)
+                case 3: try await service.clearFuelingHistory(vehicleID: fixture.vehicleID)
+                default: try await service.deleteAllData()
+                }
+            }
+            do {
+                _ = try await perform()
+                XCTFail("Expected operation to throw")
+            } catch let caughtError {
+                _ = caughtError
+            }
+            XCTAssertEqual(try fixture.fingerprint(), before)
+            fail.withLock { $0 = false }
+            try await perform()
+            XCTAssertNotEqual(try fixture.fingerprint(), before)
+        }
+    }
+
+    func testRealReadOnlyStoreRejectsEveryVehicleCommandWithoutChangingData() async throws {
+        let fixture = try PersistenceFixture()
+        let before = try fixture.fingerprint()
+        let schema = Schema(versionedSchema: SchemaV4.self)
+        let readOnly = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(schema: schema, url: fixture.url, allowsSave: false, cloudKitDatabase: .none)
+            ])
+        let service = VehiclePersistenceService(container: readOnly)
+        do {
+            _ = try await service.create(values: VehicleSettingsValues(name: "New"), storageUnit: .imperial)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.update(vehicleID: fixture.vehicleID, update: update(fixture))
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.clearFuelingHistory(vehicleID: fixture.vehicleID)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.delete(vehicleID: fixture.vehicleID)
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        do {
+            _ = try await service.deleteAllData()
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), before)
+    }
+
+    func testNoOpSettingsAndEmptyHistoryDoNotCommit() async throws {
+        let fixture = try PersistenceFixture(recordCount: 0)
+        let before = try fixture.fingerprint()
+        let context = fixture.context
+        let original = try VehicleSettingsValues(vehicle: fixture.vehicle(context))
+        let service = VehiclePersistenceService(container: fixture.container, commit: { _ in XCTFail("No-op save") })
+        let asyncResult17 = try await service.update(
+            vehicleID: fixture.vehicleID, update: VehicleSettingsUpdate(original: original, proposed: original))
+        XCTAssertFalse(asyncResult17)
+        try await service.clearFuelingHistory(vehicleID: fixture.vehicleID)
+        XCTAssertEqual(try fixture.fingerprint(), before)
+    }
+
+    func testSettingsMergePreservesUneditedFieldsAndRejectsConflictingEdits() async throws {
+        let fixture = try PersistenceFixture()
+        let reader = fixture.context
+        let original = try VehicleSettingsValues(vehicle: fixture.vehicle(reader))
+        var remote = original
+        remote.make = "Updated elsewhere"
+        let service = VehiclePersistenceService(container: fixture.container)
+        try await service.update(
+            vehicleID: fixture.vehicleID, update: VehicleSettingsUpdate(original: original, proposed: remote))
+        var mine = original
+        mine.name = "My name"
+        try await service.update(
+            vehicleID: fixture.vehicleID, update: VehicleSettingsUpdate(original: original, proposed: mine))
+        let context = fixture.context
+        XCTAssertEqual(try fixture.vehicle(context).make, "Updated elsewhere")
+        XCTAssertEqual(try fixture.vehicle(context).name, "My name")
+        mine.make = "Conflicting make"
+        let before = try fixture.fingerprint()
+        do {
+            _ =
+                try await service.update(
+                    vehicleID: fixture.vehicleID, update: VehicleSettingsUpdate(original: original, proposed: mine))
+            XCTFail("Expected operation to throw")
+        } catch let caughtError {
+            _ = caughtError
+        }
+        XCTAssertEqual(try fixture.fingerprint(), before)
     }
 }

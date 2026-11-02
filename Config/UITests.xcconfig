@@ -1,0 +1,9 @@
+// Shared Xcode settings. Environment selection is compile-time only.
+CODE_SIGN_STYLE = Automatic
+GENERATE_INFOPLIST_FILE = YES
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.PumpTallyUITests
+PRODUCT_NAME = $(TARGET_NAME)
+SWIFT_VERSION = 5.0
+TARGETED_DEVICE_FAMILY = 1
+TEST_TARGET_NAME = PumpTally

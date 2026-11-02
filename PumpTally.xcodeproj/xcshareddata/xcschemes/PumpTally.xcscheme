@@ -24,10 +24,10 @@
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Testing"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "NO">
       <Testables>
          <TestableReference
             skipped = "NO"
@@ -39,8 +39,20 @@
                BlueprintName = "PumpTallyTests"
                ReferencedContainer = "container:PumpTally.xcodeproj">
             </BuildableReference>
+            <SkippedTests>
+               <Test Identifier="SyncPerformanceTests"/>
+               <Test Identifier="StartupCachePerformanceTests"/>
+               <Test Identifier="CSVImportPerformanceTests"/>
+            </SkippedTests>
+         </TestableReference>
+         <TestableReference skipped="NO" parallelizable="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="UI0000000000000000000005" BuildableName="PumpTallyUITests.xctest" BlueprintName="PumpTallyUITests" ReferencedContainer="container:PumpTally.xcodeproj"/>
          </TestableReference>
       </Testables>
+      <CommandLineArguments>
+         <CommandLineArgument argument="-com.apple.CoreData.ConcurrencyDebug" isEnabled="YES"/>
+         <CommandLineArgument argument="1" isEnabled="YES"/>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Release"
@@ -65,7 +77,7 @@
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
-      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldUseLaunchSchemeArgsEnv = "NO"
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">

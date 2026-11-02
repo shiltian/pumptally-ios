@@ -1,23 +1,26 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 import UniformTypeIdentifiers
 import os
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var writer: OwnedModelStore
     @EnvironmentObject private var cloudSyncService: CloudSyncService
     @Query(sort: \Vehicle.createdAt, order: .reverse) private var vehicles: [Vehicle]
 
     // Binding from PumpTallyApp for incoming file URLs
-    @Binding var importedFileURL: URL?
+    @Binding var importedFile: CSVImportFile?
 
     @State private var showingAddVehicle = false
-    @State private var navigationPath = NavigationPath()
+    @State private var createdVehicleID: UUID?
+    @State private var navigationPath: [UUID] = []
     @State private var hasPerformedInitialNavigation = false
 
+    private var vehicleIDs: [UUID] { vehicles.map(\.id) }
+
     // CSV Import state
-    @State private var showingCSVImport = false
     @State private var importedRecordsCount = 0
+    @State private var pendingImportedCount: Int?
     @State private var showingImportSuccess = false
 
     // Store the last viewed vehicle ID
@@ -35,104 +38,66 @@ struct ContentView: View {
                     )
                 }
             }
-            .navigationDestination(for: Vehicle.self) { vehicle in
-                VehicleDetailView(vehicle: vehicle)
-                    .onAppear {
-                        // Save this vehicle as the last viewed
-                        lastViewedVehicleID = vehicle.id.uuidString
-                    }
-            }
-            .sheet(isPresented: $showingAddVehicle) {
-                AddVehicleView()
-            }
-            .sheet(isPresented: $showingCSVImport, onDismiss: {
-                // Clear the imported file URL when sheet is dismissed
-                importedFileURL = nil
-            }) {
-                CSVImportView(
-                    fileURL: importedFileURL,
-                    vehicles: vehicles,
-                    onImport: handleCSVImport
-                )
-            }
-            .onAppear {
-                navigateToLastVehicleIfNeeded()
-                // Check if there's a pending file to import on appear
-                if importedFileURL != nil {
-                    showingCSVImport = true
+            .navigationDestination(for: UUID.self) { vehicleID in
+                if let vehicle = vehicles.first(where: { $0.id == vehicleID }) {
+                    VehicleDetailView(vehicle: vehicle)
+                        .onAppear {
+                            if lastViewedVehicleID != vehicleID.uuidString {
+                                lastViewedVehicleID = vehicleID.uuidString
+                            }
+                        }
                 }
             }
-            .onChange(of: vehicles) { oldVehicles, newVehicles in
-                // If a new vehicle was added and we were empty before, navigate to it
-                guard !hasPerformedInitialNavigation else { return }
-                if oldVehicles.isEmpty && !newVehicles.isEmpty {
-                    if let first = newVehicles.first {
-                        navigationPath.append(first)
-                        hasPerformedInitialNavigation = true
+            .onChange(of: vehicleIDs, initial: true) { _, currentIDs in
+                reconcileNavigation(with: currentIDs)
+            }
+            .sheet(
+                isPresented: $showingAddVehicle,
+                onDismiss: {
+                    if let id = createdVehicleID { navigationPath = [id] }
+                    createdVehicleID = nil
+                }
+            ) {
+                AddVehicleView { createdVehicleID = $0 }
+            }
+            .sheet(
+                item: $importedFile,
+                onDismiss: {
+                    if let count = pendingImportedCount {
+                        importedRecordsCount = count
+                        pendingImportedCount = nil
+                        showingImportSuccess = true
                     }
                 }
-            }
-            .onChange(of: importedFileURL) { oldValue, newValue in
-                // Show import sheet when a new file URL is set
-                if newValue != nil {
-                    showingCSVImport = true
-                }
+            ) { file in
+                CSVImportView(fileURL: file.url, vehicles: vehicles, onImport: handleCSVImport)
             }
         }
         .alert("Import Successful", isPresented: $showingImportSuccess) {
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {}
         } message: {
             Text("\(importedRecordsCount) record(s) imported successfully")
         }
     }
 
-    private func handleCSVImport(
-        records: [CSVImportRecordSnapshot],
-        targetVehicle: Vehicle
-    ) throws {
-        do {
-            try cloudSyncService.withLocalPushesSuspended {
-                _ = try CSVImportService.importRecords(
-                    records,
-                    into: targetVehicle,
-                    context: modelContext
-                )
-            }
-
-            importedRecordsCount = records.count
-            Task {
-                await cloudSyncService.pushPendingLocalChanges()
-            }
-            // Delay showing alert to ensure sheet is fully dismissed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                showingImportSuccess = true
-            }
-        } catch {
-            Logger(subsystem: Bundle.main.bundleIdentifier ?? "me.tianshilei.fuelio", category: "CSVImport")
-                .error("Failed to save imported records: \(error)")
-            if let importError = error as? CSVImportError {
-                throw importError
-            }
-            throw CSVImportError.persistenceFailed
-        }
+    private func handleCSVImport(count: Int) {
+        pendingImportedCount = count
     }
 
-    private func navigateToLastVehicleIfNeeded() {
-        // Only auto-navigate once on initial app launch
-        guard !hasPerformedInitialNavigation else { return }
-        guard !vehicles.isEmpty else { return }
-
-        hasPerformedInitialNavigation = true
-
-        // Try to find the last viewed vehicle
-        if !lastViewedVehicleID.isEmpty,
-           let lastID = UUID(uuidString: lastViewedVehicleID),
-           let lastVehicle = vehicles.first(where: { $0.id == lastID }) {
-            navigationPath.append(lastVehicle)
-        } else if let firstVehicle = vehicles.first {
-            // Fallback to the first vehicle if no last viewed or it no longer exists
-            navigationPath.append(firstVehicle)
+    /// Navigation follows stable IDs rather than the lifetime of SwiftData
+    /// instances. A refresh can replace an object without replacing its route.
+    private func reconcileNavigation(with currentIDs: [UUID]) {
+        let availableIDs = Set(currentIDs)
+        let updatedPath: [UUID]
+        if hasPerformedInitialNavigation {
+            updatedPath = navigationPath.filter { availableIDs.contains($0) }
+        } else {
+            hasPerformedInitialNavigation = true
+            let rememberedID = UUID(uuidString: lastViewedVehicleID)
+            let selected = rememberedID.flatMap { availableIDs.contains($0) ? $0 : nil } ?? currentIDs.first
+            updatedPath = selected.map { [$0] } ?? []
         }
+        if navigationPath != updatedPath { navigationPath = updatedPath }
     }
 }
 
@@ -184,8 +149,15 @@ struct EmptyVehicleView: View {
 }
 
 #Preview {
-    ContentView(importedFileURL: .constant(nil))
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
-        .environmentObject(CloudSyncService())
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return ContentView(importedFile: .constant(nil))
+        .modelContainer(container)
+        .environmentObject(CloudSyncService(writer: writer))
+        .environmentObject(writer)
 }
-

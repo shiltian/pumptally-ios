@@ -1,13 +1,16 @@
 import CloudKit
 import SwiftData
 
-/// Applies CloudKit records to SwiftData while preserving the distinct contracts
-/// of initial merge and incremental pull.
-@MainActor
-struct CloudReconciliationService {
-    struct RemoteApplyResult {
+/// Validates and reconciles incoming data through one implementation. Callers
+/// select the full-merge upload policy or the incremental journal/cache boundary.
+struct CloudReconciliationService: Sendable {
+    struct RemoteApplyResult: Sendable {
         var recordsToUpload: [CKRecord] = []
         var unresolvedChildIDs: [UUID] = []
+        var deferredRecordNames: Set<String> = []
+        var affectedVehicleIDs: Set<UUID> = []
+        var indexedVehicleCount = 0
+        var indexedFuelingRecordCount = 0
     }
 
     private struct LocalIndexes {
@@ -17,190 +20,234 @@ struct CloudReconciliationService {
 
     private let codec: CloudRecordCodec
 
-    init(codec: CloudRecordCodec) {
-        self.codec = codec
-    }
+    init(codec: CloudRecordCodec) { self.codec = codec }
 
-    /// Initial full merge. Mutates the context in memory and returns records that
-    /// must be uploaded, but deliberately does not save or rebuild caches.
+    /// Stages a complete merge without saving or rebuilding caches. Local-only
+    /// data is eligible for upload, except where incoming data is quarantined.
     func reconcileMerge(
-        vehicleCKRecords: [CKRecord],
-        fuelingCKRecords: [CKRecord],
-        context: ModelContext
+        vehicleCKRecords: [CKRecord], fuelingCKRecords: [CKRecord], context: ModelContext
     ) throws -> [CKRecord] {
-        let local = try makeLocalIndexes(context: context)
-        var cloudVehicleMap: [UUID: CKRecord] = [:]
-        var ckRecordIDToVehicle: [CKRecord.ID: Vehicle] = [:]
-        var recordsToUpload: [CKRecord] = []
-
-        for ckRecord in vehicleCKRecords {
-            guard let uuid = vehicleID(from: ckRecord) else { continue }
-            cloudVehicleMap[uuid] = ckRecord
-
-            if let localVehicle = local.vehicles[uuid] {
-                switch resolveVehicleConflict(cloudRecord: ckRecord, localVehicle: localVehicle) {
-                case .cloud:
-                    codec.updateVehicle(localVehicle, from: ckRecord)
-                case .local:
-                    recordsToUpload.append(codec.vehicleToCKRecord(localVehicle))
-                case .tie:
-                    break
-                }
-                ckRecordIDToVehicle[ckRecord.recordID] = localVehicle
-            } else {
-                let vehicle = codec.vehicleFromCKRecord(ckRecord)
-                context.insert(vehicle)
-                ckRecordIDToVehicle[ckRecord.recordID] = vehicle
-            }
-        }
-
-        // Full merge uploads local-only vehicles. Incremental pull intentionally
-        // does not scan unrelated local data.
-        for (uuid, vehicle) in local.vehicles where cloudVehicleMap[uuid] == nil {
-            let ckRecord = codec.vehicleToCKRecord(vehicle)
-            recordsToUpload.append(ckRecord)
-            ckRecordIDToVehicle[ckRecord.recordID] = vehicle
-        }
-
-        var vehicleByUUID: [UUID: Vehicle] = [:]
-        for vehicle in ckRecordIDToVehicle.values {
-            vehicleByUUID[vehicle.id] = vehicle
-        }
-
-        var cloudRecordMap: [UUID: CKRecord] = [:]
-        for ckRecord in fuelingCKRecords {
-            guard let uuid = fuelingRecordID(from: ckRecord) else { continue }
-            cloudRecordMap[uuid] = ckRecord
-
-            if let localRecord = local.records[uuid] {
-                switch resolveFuelingRecordConflict(cloudRecord: ckRecord, localRecord: localRecord) {
-                case .cloud:
-                    codec.updateFuelingRecord(localRecord, from: ckRecord)
-                case .local:
-                    recordsToUpload.append(codec.fuelingRecordToCKRecord(
-                        localRecord,
-                        vehicleRecordID: recordID(for: localRecord.vehicle.id)
-                    ))
-                case .tie:
-                    break
-                }
-            } else if let vehicleUUID = parentVehicleID(from: ckRecord),
-                      let vehicle = local.vehicles[vehicleUUID] ?? vehicleByUUID[vehicleUUID] {
-                context.insert(codec.fuelingRecordFromCKRecord(ckRecord, vehicle: vehicle))
-            }
-            // Full merge preserves the current behavior of silently skipping a
-            // cloud-only child whose parent cannot be resolved.
-        }
-
-        // Full merge uploads local-only fueling records.
-        for (uuid, record) in local.records where cloudRecordMap[uuid] == nil {
-            recordsToUpload.append(codec.fuelingRecordToCKRecord(
-                record,
-                vehicleRecordID: recordID(for: record.vehicle.id)
-            ))
-        }
-
-        return recordsToUpload
+        try stageInitialMerge(
+            vehicleCKRecords: vehicleCKRecords, fuelingCKRecords: fuelingCKRecords,
+            context: context
+        ).recordsToUpload
     }
 
-    /// Incremental delta apply. This method deliberately owns its save and forced
-    /// cache rebuild, preserving the existing direct-call persistence contract.
-    func applyRemoteChanges(
-        changedRecords: [CKRecord],
-        deletedRecordIDs: [CKRecord.ID],
-        context: ModelContext
+    /// Returns affected owners as well as uploads so initial enable can commit
+    /// cache changes in its own transaction without rebuilding unrelated history.
+    func stageInitialMerge(
+        vehicleCKRecords: [CKRecord], fuelingCKRecords: [CKRecord], context: ModelContext
     ) throws -> RemoteApplyResult {
-        var result = RemoteApplyResult()
         let local = try makeLocalIndexes(context: context)
-        var vehicleMap = local.vehicles
-        var recordMap = local.records
-
-        // Pass 1: vehicles first so children in the same change window can resolve.
-        for ckRecord in changedRecords where ckRecord.recordType == CloudRecordCodec.RecordType.vehicle {
-            guard let uuid = vehicleID(from: ckRecord) else { continue }
-
-            if let existing = vehicleMap[uuid] {
-                switch resolveVehicleConflict(cloudRecord: ckRecord, localVehicle: existing) {
-                case .cloud:
-                    codec.updateVehicle(existing, from: ckRecord)
-                case .local:
-                    result.recordsToUpload.append(codec.vehicleToCKRecord(existing))
-                case .tie:
-                    break
-                }
-            } else {
-                let vehicle = codec.vehicleFromCKRecord(ckRecord)
-                context.insert(vehicle)
-                vehicleMap[uuid] = vehicle
-            }
+        var result = try reconcile(
+            changedRecords: vehicleCKRecords + fuelingCKRecords,
+            deletedRecordIDs: [], local: local, context: context)
+        let cloudVehicleNames = Set(vehicleCKRecords.map { $0.recordID.recordName })
+        let cloudRecordNames = Set(fuelingCKRecords.map { $0.recordID.recordName })
+        var uploads = result.recordsToUpload
+        for vehicle in local.vehicles.values where !cloudVehicleNames.contains(vehicle.id.uuidString) {
+            uploads.append(codec.vehicleToCKRecord(vehicle))
         }
-
-        // Pass 2: fueling records after all changed parent vehicles.
-        for ckRecord in changedRecords where ckRecord.recordType == CloudRecordCodec.RecordType.fuelingRecord {
-            guard let uuid = fuelingRecordID(from: ckRecord) else { continue }
-
-            if let existing = recordMap[uuid] {
-                switch resolveFuelingRecordConflict(cloudRecord: ckRecord, localRecord: existing) {
-                case .cloud:
-                    codec.updateFuelingRecord(existing, from: ckRecord)
-                case .local:
-                    result.recordsToUpload.append(codec.fuelingRecordToCKRecord(
-                        existing,
-                        vehicleRecordID: recordID(for: existing.vehicle.id)
-                    ))
-                case .tie:
-                    break
-                }
-            } else if let vehicleUUID = parentVehicleID(from: ckRecord),
-                      let vehicle = vehicleMap[vehicleUUID] {
-                let record = codec.fuelingRecordFromCKRecord(ckRecord, vehicle: vehicle)
-                context.insert(record)
-                recordMap[uuid] = record
-            } else {
-                result.unresolvedChildIDs.append(uuid)
-            }
+        for record in local.records.values where !cloudRecordNames.contains(record.id.uuidString) {
+            uploads.append(codec.fuelingRecordToCKRecord(record, vehicleRecordID: recordID(for: record.vehicle.id)))
         }
-
-        // Existing policy is delete-wins because CloudKit deletion events do not
-        // include timestamps and this schema intentionally has no tombstones.
-        for deletedID in deletedRecordIDs {
-            guard let uuid = UUID(uuidString: deletedID.recordName) else { continue }
-            if let vehicle = vehicleMap[uuid] {
-                context.delete(vehicle)
-            } else if let record = recordMap[uuid] {
-                context.delete(record)
-            }
+        let blockedVehicles = Set(
+            vehicleCKRecords.filter {
+                result.deferredRecordNames.contains($0.recordID.recordName)
+            }.map { $0.recordID.recordName })
+        result.recordsToUpload = uploads.filter { record in
+            let owner =
+                record.recordType == CloudRecordCodec.RecordType.vehicle
+                ? record.recordID.recordName
+                : record[CloudRecordCodec.CloudFieldKey.FuelingRecord.vehicleRef] as? String
+            return !result.deferredRecordNames.contains(record.recordID.recordName)
+                && owner.map { !blockedVehicles.contains($0) } == true
         }
+        return result
+    }
 
-        // Keep a local winner durable until CloudKit acknowledges it. Queue it
-        // before saving the reconciled models so a crash cannot leave the local
-        // winner persisted without the corresponding upload request.
+    /// Stages model changes, durable local winners, and only affected caches.
+    /// The caller owns the save so an engine event can commit acknowledgements
+    /// and conflict resolution together.
+    func stageRemoteChanges(
+        changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID], context: ModelContext
+    ) throws -> RemoteApplyResult {
+        let result = try reconcile(
+            changedRecords: changedRecords, deletedRecordIDs: deletedRecordIDs,
+            local: makeIncrementalIndexes(
+                changedRecords: changedRecords, deletedRecordIDs: deletedRecordIDs, context: context),
+            context: context)
         for record in result.recordsToUpload {
-            let recordType: SyncChangeJournal.RecordType
+            let type: SyncChangeJournal.RecordType
             switch record.recordType {
-            case CloudRecordCodec.RecordType.vehicle:
-                recordType = .vehicle
-            case CloudRecordCodec.RecordType.fuelingRecord:
-                recordType = .fuelingRecord
-            default:
-                continue
+            case CloudRecordCodec.RecordType.vehicle: type = .vehicle
+            case CloudRecordCodec.RecordType.fuelingRecord: type = .fuelingRecord
+            default: continue
             }
             try SyncChangeJournal.enqueue(
                 recordName: record.recordID.recordName,
-                recordType: recordType,
-                operation: .save,
-                in: context
-            )
+                recordType: type, operation: .save, in: context)
+        }
+        if !result.affectedVehicleIDs.isEmpty {
+            context.processPendingChanges()
+            let ids = Array(result.affectedVehicleIDs)
+            for vehicle in try context.fetch(FetchDescriptor<Vehicle>(predicate: #Predicate { ids.contains($0.id) })) {
+                StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+            }
+        }
+        return result
+    }
+
+    private func reconcile(
+        changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID],
+        local: LocalIndexes, context: ModelContext
+    ) throws -> RemoteApplyResult {
+        var result = RemoteApplyResult()
+        result.indexedVehicleCount = local.vehicles.count
+        result.indexedFuelingRecordCount = local.records.count
+        var vehicleMap = local.vehicles
+        var recordMap = local.records
+
+        for record in changedRecords
+        where record.recordType != CloudRecordCodec.RecordType.vehicle
+            && record.recordType != CloudRecordCodec.RecordType.fuelingRecord
+        {
+            try deferRecord(record, in: context)
+            result.deferredRecordNames.insert(record.recordID.recordName)
         }
 
-        try context.save()
-        StatisticsCacheService.rebuildCacheForAllVehicles(in: context, force: true)
+        // Parents precede children, including parents inserted in this batch.
+        for cloud in changedRecords where cloud.recordType == CloudRecordCodec.RecordType.vehicle {
+            let snapshot: CloudSnapshotValidator.VehicleSnapshot
+            do {
+                snapshot = try CloudSnapshotValidator().validate(vehicleRecords: [cloud], fuelingRecordRecords: [])
+                    .vehicles[0]
+            } catch {
+                try deferRecord(cloud, in: context)
+                result.deferredRecordNames.insert(cloud.recordID.recordName)
+                continue
+            }
+            if let existing = vehicleMap[snapshot.id] {
+                guard existing.unitSystem == snapshot.unitSystem else {
+                    try deferRecord(cloud, in: context)
+                    result.deferredRecordNames.insert(cloud.recordID.recordName)
+                    continue
+                }
+                switch resolveVehicleConflict(cloudRecord: cloud, localVehicle: existing) {
+                case .cloud: codec.updateVehicle(existing, from: snapshot)
+                case .local: result.recordsToUpload.append(codec.vehicleToCKRecord(existing))
+                case .tie: break
+                }
+            } else {
+                let vehicle = codec.vehicle(from: snapshot)
+                context.insert(vehicle)
+                vehicleMap[snapshot.id] = vehicle
+                result.affectedVehicleIDs.insert(snapshot.id)
+            }
+        }
+
+        for cloud in changedRecords where cloud.recordType == CloudRecordCodec.RecordType.fuelingRecord {
+            guard let id = UUID(uuidString: cloud.recordID.recordName), fuelingRecordID(from: cloud) == id else {
+                try deferRecord(cloud, in: context)
+                result.deferredRecordNames.insert(cloud.recordID.recordName)
+                continue
+            }
+            guard let ownerID = parentVehicleID(from: cloud), let owner = vehicleMap[ownerID] else {
+                try deferRecord(cloud, in: context)
+                result.unresolvedChildIDs.append(id)
+                result.deferredRecordNames.insert(cloud.recordID.recordName)
+                continue
+            }
+            let snapshot: CloudSnapshotValidator.FuelingRecordSnapshot
+            do { snapshot = try codec.decodeFuelingRecord(cloud, owner: owner, existing: recordMap[id]) } catch {
+                try deferRecord(cloud, in: context)
+                result.deferredRecordNames.insert(cloud.recordID.recordName)
+                continue
+            }
+            if let existing = recordMap[id] {
+                switch resolveFuelingRecordConflict(cloudRecord: cloud, localRecord: existing) {
+                case .cloud:
+                    if statisticsDiffer(existing, from: snapshot) {
+                        result.affectedVehicleIDs.insert(owner.id)
+                    }
+                    codec.updateFuelingRecord(existing, from: snapshot)
+                case .local:
+                    result.recordsToUpload.append(
+                        codec.fuelingRecordToCKRecord(
+                            existing,
+                            vehicleRecordID: recordID(for: existing.vehicle.id)))
+                case .tie: break
+                }
+            } else {
+                let record = codec.fuelingRecord(from: snapshot, vehicle: owner)
+                context.insert(record)
+                recordMap[id] = record
+                result.affectedVehicleIDs.insert(owner.id)
+            }
+        }
+
+        // CloudKit deletions carry no timestamps; the existing policy is delete-wins.
+        for deletedID in deletedRecordIDs {
+            guard let id = UUID(uuidString: deletedID.recordName) else { continue }
+            if let vehicle = vehicleMap[id] {
+                context.delete(vehicle)
+            } else if let record = recordMap[id] {
+                result.affectedVehicleIDs.insert(record.vehicle.id)
+                context.delete(record)
+            }
+        }
         return result
+    }
+
+    private func deferRecord(_ record: CKRecord, in context: ModelContext) throws {
+        try SyncPersistenceStore.stageInbound(
+            .init(
+                kind: .modification, recordName: record.recordID.recordName, recordType: record.recordType,
+                archivedRecord: try CloudRecordCodec.archiveFullRecord(record)
+            ), in: context)
     }
 
     private func makeLocalIndexes(context: ModelContext) throws -> LocalIndexes {
         let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
         let records = try context.fetch(FetchDescriptor<FuelingRecord>())
+        return makeIndexes(vehicles: vehicles, records: records)
+    }
+
+    /// Include incoming owners and existing owners: the latter are required to
+    /// reject ownership reassignment and rebuild the owner of a deleted child.
+    /// Relationships load chronology only if that owner's statistics change.
+    private func makeIncrementalIndexes(
+        changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID], context: ModelContext
+    ) throws -> LocalIndexes {
+        let deletedIDs = deletedRecordIDs.compactMap { UUID(uuidString: $0.recordName) }
+        let recordIDs = Array(
+            Set(
+                deletedIDs
+                    + changedRecords.filter {
+                        $0.recordType == CloudRecordCodec.RecordType.fuelingRecord
+                    }.compactMap { UUID(uuidString: $0.recordID.recordName) }))
+        let records =
+            try recordIDs.isEmpty
+            ? []
+            : context.fetch(
+                FetchDescriptor<FuelingRecord>(predicate: #Predicate { recordIDs.contains($0.id) }))
+        let vehicleIDs = Array(
+            Set(
+                deletedIDs
+                    + changedRecords.filter {
+                        $0.recordType == CloudRecordCodec.RecordType.vehicle
+                    }.compactMap { UUID(uuidString: $0.recordID.recordName) }
+                    + changedRecords.compactMap(parentVehicleID(from:))
+                    + records.map { $0.vehicle.id }))
+        let vehicles =
+            try vehicleIDs.isEmpty
+            ? []
+            : context.fetch(
+                FetchDescriptor<Vehicle>(predicate: #Predicate { vehicleIDs.contains($0.id) }))
+        return makeIndexes(vehicles: vehicles, records: records)
+    }
+
+    private func makeIndexes(vehicles: [Vehicle], records: [FuelingRecord]) -> LocalIndexes {
         var vehiclesByID: [UUID: Vehicle] = [:]
         var recordsByID: [UUID: FuelingRecord] = [:]
         for vehicle in vehicles {
@@ -212,11 +259,12 @@ struct CloudReconciliationService {
         return LocalIndexes(vehicles: vehiclesByID, records: recordsByID)
     }
 
-    private func vehicleID(from record: CKRecord) -> UUID? {
-        guard let idString = record[CloudRecordCodec.CloudFieldKey.Vehicle.id] as? String else {
-            return nil
-        }
-        return UUID(uuidString: idString)
+    private func statisticsDiffer(
+        _ record: FuelingRecord, from snapshot: CloudSnapshotValidator.FuelingRecordSnapshot
+    ) -> Bool {
+        record.date != snapshot.date || record.odometer != snapshot.odometer
+            || record.pricePerFuelUnit != snapshot.pricePerFuelUnit || record.fuelAmount != snapshot.fuelAmount
+            || record.totalCost != snapshot.totalCost || record.fillUpType != snapshot.fillUpType
     }
 
     private func fuelingRecordID(from record: CKRecord) -> UUID? {

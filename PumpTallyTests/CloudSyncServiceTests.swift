@@ -22,7 +22,7 @@ final class CloudSyncServiceTests: XCTestCase {
     private let t3 = Date(timeIntervalSince1970: 3_000_000)
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV3.self)
+        let schema = Schema(versionedSchema: SchemaV4.self)
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
@@ -34,8 +34,8 @@ final class CloudSyncServiceTests: XCTestCase {
         return context
     }
 
-    private func makeService() -> CloudSyncService {
-        CloudSyncService(stateManager: SyncStateManager())
+    private func makeService() -> CloudSyncMappingHarness {
+        CloudSyncMappingHarness()
     }
 
     private func makeVehicle(
@@ -133,7 +133,8 @@ final class CloudSyncServiceTests: XCTestCase {
                 "notes",
                 "fuelingCreatedAt",
                 "fuelingModifiedAt",
-                "vehicleOwnerID"
+                "vehicleOwnerID",
+                "measurementsV1"
             ]),
             file: file,
             line: line
@@ -288,7 +289,8 @@ final class CloudSyncServiceTests: XCTestCase {
                 "totalCost",
                 "fillUpTypeRaw",
                 "fuelingCreatedAt",
-                "vehicleOwnerID"
+                "vehicleOwnerID",
+                "measurementsV1"
             ])
         )
     }
@@ -399,7 +401,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let service = makeService()
         let vehicle = makeVehicle(name: "Malformed", createdAt: t1, modifiedAt: t2)
         let malformed = service.vehicleToCKRecord(vehicle)
-        malformed[CloudSyncService.CloudFieldKey.Vehicle.name] = nil
+        malformed[CloudRecordCodec.CloudFieldKey.Vehicle.name] = nil
 
         try assertReplacementRejectedWithoutMutation(
             vehicleRecords: [malformed],
@@ -424,7 +426,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         let vehicleCK = service.vehicleToCKRecord(vehicle)
         let malformed = service.fuelingRecordToCKRecord(record, vehicleRecordID: vehicleCK.recordID)
-        malformed[CloudSyncService.CloudFieldKey.FuelingRecord.totalCost] = nil
+        malformed[CloudRecordCodec.CloudFieldKey.FuelingRecord.totalCost] = nil
 
         try assertReplacementRejectedWithoutMutation(
             vehicleRecords: [vehicleCK],
@@ -449,7 +451,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let service = makeService()
         let vehicle = makeVehicle(name: "Mismatch", createdAt: t1, modifiedAt: t2)
         let mismatched = service.vehicleToCKRecord(vehicle)
-        mismatched[CloudSyncService.CloudFieldKey.Vehicle.id] = UUID().uuidString
+        mismatched[CloudRecordCodec.CloudFieldKey.Vehicle.id] = UUID().uuidString
 
         try assertReplacementRejectedWithoutMutation(
             vehicleRecords: [mismatched],
@@ -466,7 +468,7 @@ final class CloudSyncServiceTests: XCTestCase {
             record,
             vehicleRecordID: vehicleCK.recordID
         )
-        nonFinite[CloudSyncService.CloudFieldKey.FuelingRecord.fuelAmount] = Double.infinity
+        nonFinite[CloudRecordCodec.CloudFieldKey.FuelingRecord.fuelAmount] = Double.infinity
 
         try assertReplacementRejectedWithoutMutation(
             vehicleRecords: [vehicleCK],
@@ -478,32 +480,37 @@ final class CloudSyncServiceTests: XCTestCase {
 
     func testResolveConflict_cloudModifiedNewer_cloudWins() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: t3, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: t3, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
             .cloud
         )
     }
 
     func testResolveConflict_localModifiedNewer_localWins() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t3, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t3, localCreatedAt: t1),
             .local
         )
     }
 
     func testResolveConflict_equalModified_isTie() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
             .tie
         )
     }
 
     func testResolveConflict_nilModified_fallsBackToCreatedAt() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: nil, cloudCreatedAt: t2, localModifiedAt: nil, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: nil, cloudCreatedAt: t2, localModifiedAt: nil, localCreatedAt: t1),
             .cloud
         )
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: nil, cloudCreatedAt: t1, localModifiedAt: nil, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: nil, cloudCreatedAt: t1, localModifiedAt: nil, localCreatedAt: t1),
             .tie
         )
     }
@@ -511,21 +518,24 @@ final class CloudSyncServiceTests: XCTestCase {
     func testResolveConflict_legacyLocalNilModified_vs_cloudEdit_cloudWins() {
         // Legacy local record (never edited → nil modifiedAt) vs a genuine remote edit.
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: nil, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: nil, localCreatedAt: t1),
             .cloud
         )
     }
 
     func testResolveConflict_localEdit_vs_legacyCloudNilModified_localWins() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: nil, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: nil, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
             .local
         )
     }
 
     func testResolveConflict_allNil_isTie() {
         XCTAssertEqual(
-            CloudSyncService.resolveConflict(cloudModifiedAt: nil, cloudCreatedAt: nil, localModifiedAt: nil, localCreatedAt: nil),
+            SyncConflictResolver.resolve(
+                cloudModifiedAt: nil, cloudCreatedAt: nil, localModifiedAt: nil, localCreatedAt: nil),
             .tie
         )
     }
@@ -594,6 +604,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
         // Older cloud copy (t1) with a different name.
         let cloudCopy = makeVehicle(id: local.id, name: "Old Cloud Name", createdAt: t1, modifiedAt: t1)
+        cloudCopy.unitSystem = local.unitSystem
         let cloudCK = service.vehicleToCKRecord(cloudCopy)
 
         let result = try service.applyRemoteChanges(changedRecords: [cloudCK], deletedRecordIDs: [], context: context)
@@ -635,8 +646,9 @@ final class CloudSyncServiceTests: XCTestCase {
             model: "Cloud Model",
             year: 2026,
             createdAt: t1,
-            unitSystem: .metric
+            unitSystem: .imperial
         )
+        cloudCopy.displayUnitSystem = .metric
         cloudCopy.modifiedAt = t3
         let cloudCK = service.vehicleToCKRecord(cloudCopy)
 
@@ -647,7 +659,7 @@ final class CloudSyncServiceTests: XCTestCase {
         XCTAssertEqual(vehicles.first?.make, "Cloud Make")
         XCTAssertEqual(vehicles.first?.model, "Cloud Model")
         XCTAssertEqual(vehicles.first?.year, 2026)
-        XCTAssertEqual(vehicles.first?.unitSystem, .metric)
+        XCTAssertEqual(vehicles.first?.displayUnitSystem, .metric)
         XCTAssertEqual(vehicles.first?.modifiedAt, t3)
         XCTAssertTrue(result.recordsToUpload.isEmpty, "When the cloud copy wins there is nothing to push back")
     }
@@ -827,59 +839,6 @@ final class CloudSyncServiceTests: XCTestCase {
 
     // MARK: - Pull orchestration: the change token advances only when the window applied safely
 
-    /// End-to-end (network-free) check that the pull sequence
-    /// `applyRemoteChanges` → `commitPullOutcome` holds the stored change token
-    /// when a child's parent could not be resolved, so the record is retried
-    /// rather than skipped forever.
-    func testPullOrchestration_unresolvedChild_holdsStoredToken() throws {
-        let stateManager = SyncStateManager()
-        stateManager.serverChangeToken = nil // known clean starting state
-        let service = CloudSyncService(stateManager: stateManager)
-        let context = try makeContext()
-
-        // A fueling record whose parent vehicle is absent from both the local
-        // store and the change set (mimics the parent's fetch failing).
-        let absentVehicle = makeVehicle(name: "Absent", createdAt: t1, modifiedAt: t1)
-        let orphan = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
-        let orphanCK = service.fuelingRecordToCKRecord(
-            orphan,
-            vehicleRecordID: CKRecord.ID(recordName: absentVehicle.id.uuidString)
-        )
-
-        // Drive the same post-fetch sequence pullRemoteChanges uses.
-        let applyResult = try service.applyRemoteChanges(
-            changedRecords: [orphanCK],
-            deletedRecordIDs: [],
-            context: context
-        )
-        let didAdvance = service.commitPullOutcome(
-            fetchedToken: nil,
-            hadFetchFailure: false,
-            unresolvedChildIDs: applyResult.unresolvedChildIDs
-        )
-
-        XCTAssertEqual(applyResult.unresolvedChildIDs, [orphan.id])
-        XCTAssertFalse(didAdvance, "Token must not advance while a child's parent is unresolved")
-        XCTAssertNil(stateManager.serverChangeToken, "Stored change token must remain unchanged for unresolved children")
-        XCTAssertEqual(stateManager.syncStatus, .error(String(localized: "Pull incomplete — will retry")))
-    }
-
-    func testCommitPullOutcome_advancesOnlyWhenWindowFullyApplied() {
-        let stateManager = SyncStateManager()
-        stateManager.serverChangeToken = nil
-        let service = CloudSyncService(stateManager: stateManager)
-
-        // Held on unresolved children, on fetch failure, or on both.
-        XCTAssertFalse(service.commitPullOutcome(fetchedToken: nil, hadFetchFailure: false, unresolvedChildIDs: [UUID()]))
-        XCTAssertNil(stateManager.serverChangeToken)
-        XCTAssertFalse(service.commitPullOutcome(fetchedToken: nil, hadFetchFailure: true, unresolvedChildIDs: []))
-        XCTAssertFalse(service.commitPullOutcome(fetchedToken: nil, hadFetchFailure: true, unresolvedChildIDs: [UUID()]))
-
-        // Advances only when the window applied cleanly.
-        XCTAssertTrue(service.commitPullOutcome(fetchedToken: nil, hadFetchFailure: false, unresolvedChildIDs: []))
-        XCTAssertEqual(stateManager.syncStatus, .synced)
-    }
-
     // MARK: - #1: merge must upload local-newer matched records
 
     func testReconcileMerge_localNewerRecordsAreUploaded_andLocalPreserved() throws {
@@ -909,15 +868,17 @@ final class CloudSyncServiceTests: XCTestCase {
         // ID-only assertion while silently overwriting the newer data.
         let uploadedVehicle = uploads.first { $0.recordID.recordName == vehicle.id.uuidString }
         XCTAssertNotNil(uploadedVehicle, "Local-newer vehicle must be queued for upload")
-        XCTAssertEqual(uploadedVehicle?[CloudSyncService.CloudFieldKey.Vehicle.name] as? String, "Local Car")
-        XCTAssertEqual(uploadedVehicle?[CloudSyncService.CloudFieldKey.Vehicle.modifiedAt] as? Date, t2)
+        XCTAssertEqual(uploadedVehicle?[CloudRecordCodec.CloudFieldKey.Vehicle.name] as? String, "Local Car")
+        XCTAssertEqual(uploadedVehicle?[CloudRecordCodec.CloudFieldKey.Vehicle.modifiedAt] as? Date, t2)
 
         let uploadedRecord = uploads.first { $0.recordID.recordName == record.id.uuidString }
         XCTAssertNotNil(uploadedRecord, "Local-newer record must be queued for upload")
-        XCTAssertEqual(uploadedRecord?[CloudSyncService.CloudFieldKey.FuelingRecord.odometer] as? Double, 100,
+        XCTAssertEqual(
+            uploadedRecord?[CloudRecordCodec.CloudFieldKey.FuelingRecord.odometer] as? Double, 100,
                        "Uploaded record must have the local odometer (100), not the older cloud value (999)")
-        XCTAssertEqual(uploadedRecord?[CloudSyncService.CloudFieldKey.FuelingRecord.modifiedAt] as? Date, t2)
-        XCTAssertEqual(uploadedRecord?[CloudSyncService.CloudFieldKey.FuelingRecord.vehicleRef] as? String, vehicle.id.uuidString,
+        XCTAssertEqual(uploadedRecord?[CloudRecordCodec.CloudFieldKey.FuelingRecord.modifiedAt] as? Date, t2)
+        XCTAssertEqual(
+            uploadedRecord?[CloudRecordCodec.CloudFieldKey.FuelingRecord.vehicleRef] as? String, vehicle.id.uuidString,
                        "Uploaded record must still reference its parent vehicle")
 
         // Local (newer) values must be preserved, not overwritten by the older cloud copy.
@@ -1081,7 +1042,7 @@ final class CloudSyncServiceTests: XCTestCase {
         XCTAssertEqual(records.first?.vehicle.id, cloudVehicle.id)
     }
 
-    func testReconcileMerge_cloudOnlyOrphanIsSilentlySkipped() throws {
+    func testReconcileMerge_cloudOnlyOrphanIsRetainedForReplay() throws {
         let service = makeService()
         let context = try makeContext()
         let absentVehicle = makeVehicle(name: "Absent", createdAt: t1, modifiedAt: t1)
@@ -1099,7 +1060,12 @@ final class CloudSyncServiceTests: XCTestCase {
 
         XCTAssertTrue(uploads.isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<FuelingRecord>()).isEmpty)
-        XCTAssertFalse(context.hasChanges)
+        XCTAssertTrue(context.hasChanges)
+        try context.save()
+        let fresh = ModelContext(context.container)
+        let pending = try XCTUnwrap(fresh.fetch(FetchDescriptor<PendingRemoteChange>()).first)
+        let payload = try SyncPersistenceStore.PendingPayload.decode(pending.recordData)
+        XCTAssertEqual(try payload.record()?.recordID, orphanCK.recordID)
     }
 
     func testReconcileMerge_leavesSaveOwnershipWithCaller() throws {

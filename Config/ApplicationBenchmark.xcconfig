@@ -1,0 +1,4 @@
+#include "ApplicationTesting.xcconfig"
+
+INFOPLIST_KEY_CFBundleDisplayName = PumpTally Benchmarks
+PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.benchmark

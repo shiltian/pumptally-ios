@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 enum HistorySortOrder: String, CaseIterable, Sendable {
     case dateDescending = "Newest First"
@@ -17,7 +17,7 @@ enum HistorySortOrder: String, CaseIterable, Sendable {
     }
 }
 
-struct HistoryRecordSnapshot: Sendable {
+struct HistoryRecordSnapshot: Equatable, Sendable {
     let id: UUID
     let date: Date
     let totalCost: Double
@@ -29,7 +29,7 @@ struct HistoryRecordSnapshot: Sendable {
         id = record.id
         date = record.date
         totalCost = record.totalCost
-        odometer = record.odometer
+        odometer = record.vehicle.displayUnitSystem.distanceValue(record.odometer, from: record.vehicle.unitSystem)
         notes = record.notes
     }
 
@@ -98,19 +98,21 @@ enum HistoryRecordsQuery {
 
 struct HistoryView: View {
     let vehicle: Vehicle
+    let records: [FuelingRecord]
 
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var writer: OwnedModelStore
     @AppStorage private var metricEfficiencyFormatRaw: String
-    @State private var recordToEdit: FuelingRecord?
+    @State private var recordToEdit: FuelingRecordEditSelection?
     @State private var showingDeleteAlert = false
     @State private var showingDeleteError = false
-    @State private var recordToDelete: FuelingRecord?
+    @State private var recordToDelete: UUID?
     @State private var searchText = ""
     @State private var sortOrder: HistorySortOrder = .dateDescending
-    @State private var displayedRecords: [FuelingRecord] = []
+    @State private var displayedRecordIDs: [UUID] = []
 
-    init(vehicle: Vehicle) {
+    init(vehicle: Vehicle, records: [FuelingRecord]) {
         self.vehicle = vehicle
+        self.records = records
         _metricEfficiencyFormatRaw = AppStorage(
             wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
             MetricEfficiencyFormat.storageKey(for: vehicle.id)
@@ -122,26 +124,23 @@ struct HistoryView: View {
     }
 
     private var hasRecords: Bool {
-        vehicle.displayRecordCount > 0
+        !records.isEmpty
     }
 
     private struct QueryKey: Equatable, Sendable {
-        let revision: String
+        let records: [HistoryRecordSnapshot]
         let searchText: String
         let sortOrder: HistorySortOrder
     }
 
     private var queryKey: QueryKey {
-        let recordCount = vehicle.fuelingRecords?.count ?? 0
-        let cacheTimestamp = vehicle.cacheLastUpdated?.timeIntervalSince1970 ?? 0
-        return QueryKey(
-            revision: "\(recordCount)-\(cacheTimestamp)",
-            searchText: searchText,
-            sortOrder: sortOrder
-        )
+        QueryKey(
+            records: records.map(HistoryRecordSnapshot.init(record:)), searchText: searchText, sortOrder: sortOrder)
     }
 
     var body: some View {
+        let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+        let displayedRecords = displayedRecordIDs.compactMap { recordsByID[$0] }
         Group {
             if !hasRecords {
                 EmptyHistoryView()
@@ -163,30 +162,32 @@ struct HistoryView: View {
                         ForEach(displayedRecords) { record in
                             FuelingRecordRow(
                                 record: record,
-                                previousOdometer: record.getPreviousOdometer(),
-                                efficiencyRaw: record.cachedEfficiency ?? 0,
-                                unitSystem: vehicle.unitSystem,
+                                previousOdometer: vehicle.displayUnitSystem.distanceValue(
+                                    record.getPreviousOdometer(), from: vehicle.unitSystem),
+                                efficiencyRaw: vehicle.displayUnitSystem.efficiencyValue(
+                                    record.cachedEfficiency ?? 0, from: vehicle.unitSystem),
+                                unitSystem: vehicle.displayUnitSystem,
                                 metricEfficiencyFormat: metricEfficiencyFormat
                             )
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    recordToEdit = record
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                recordToEdit = FuelingRecordEditSelection(record: record)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    recordToDelete = record.id
+                                    showingDeleteAlert = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button(role: .destructive) {
-                                        recordToDelete = record
-                                        showingDeleteAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
 
-                                    Button {
-                                        recordToEdit = record
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                    }
-                                    .tint(.blue)
+                                Button {
+                                    recordToEdit = FuelingRecordEditSelection(record: record)
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
                                 }
+                                .tint(.blue)
+                            }
                         }
                     } header: {
                         Text("\(displayedRecords.count) records")
@@ -201,7 +202,7 @@ struct HistoryView: View {
             await refreshDisplayedRecords(for: queryKey)
         }
         .sheet(item: $recordToEdit) { record in
-            EditRecordView(record: record, vehicle: vehicle)
+            EditRecordView(selection: record, vehicle: vehicle, records: records)
         }
         .alert("Delete Record", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) {
@@ -209,7 +210,7 @@ struct HistoryView: View {
             }
             Button("Delete", role: .destructive) {
                 if let record = recordToDelete {
-                    deleteRecord(record)
+                    Task { await deleteRecord(record) }
                 }
             }
         } message: {
@@ -234,9 +235,7 @@ struct HistoryView: View {
             }
         }
 
-        let liveRecords = vehicle.fuelingRecords ?? []
-        let recordsByID = Dictionary(uniqueKeysWithValues: liveRecords.map { ($0.id, $0) })
-        let snapshots = liveRecords.map(HistoryRecordSnapshot.init(record:))
+        let snapshots = key.records
         let sortedIDs = await Task.detached(priority: .userInitiated) {
             HistoryRecordsQuery.recordIDs(
                 from: snapshots,
@@ -246,18 +245,12 @@ struct HistoryView: View {
         }.value
 
         guard !Task.isCancelled, key == queryKey else { return }
-        displayedRecords = sortedIDs.compactMap { recordsByID[$0] }
+        displayedRecordIDs = sortedIDs
     }
 
-    private func deleteRecord(_ record: FuelingRecord) {
+    private func deleteRecord(_ recordID: UUID) async {
         do {
-            try withAnimation {
-                try FuelingRecordPersistenceService.delete(
-                    record,
-                    from: vehicle,
-                    context: modelContext
-                )
-            }
+            try await FuelingRecordPersistenceService(writer: writer).delete(recordID: recordID)
             recordToDelete = nil
         } catch {
             recordToDelete = nil
@@ -281,7 +274,7 @@ struct FuelingRecordRow: View {
     }
 
     private var distanceDriven: Double {
-        record.getDistanceDriven()
+        unitSystem.distanceValue(record.getDistanceDriven(), from: record.vehicle.unitSystem)
     }
 
     private var hasEfficiency: Bool {
@@ -314,13 +307,15 @@ struct FuelingRecordRow: View {
             HStack(spacing: 16) {
                 DetailChip(
                     icon: "fuelpump.fill",
-                    value: "\(record.fuelAmount.formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)",
+                    value:
+                        "\(unitSystem.fuelValue(record.fuelAmount, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)",
                     color: .green
                 )
 
                 DetailChip(
                     icon: "dollarsign",
-                    value: "\(record.pricePerFuelUnit.formatted(.number.precision(.fractionLength(3))))\(unitSystem.pricePerFuelShort)",
+                    value:
+                        "\(unitSystem.priceValue(record.pricePerFuelUnit, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(3))))\(unitSystem.pricePerFuelShort)",
                     color: .orange
                 )
 
@@ -328,7 +323,8 @@ struct FuelingRecordRow: View {
                 if hasEfficiency {
                     DetailChip(
                         icon: "gauge",
-                        value: "\(efficiencyDisplay.formatted(.number.precision(.fractionLength(1)))) \(unitSystem.efficiencyUnit(for: metricEfficiencyFormat))",
+                        value:
+                            "\(efficiencyDisplay.formatted(.number.precision(.fractionLength(1)))) \(unitSystem.efficiencyUnit(for: metricEfficiencyFormat))",
                         color: .purple
                     )
                 }
@@ -343,17 +339,23 @@ struct FuelingRecordRow: View {
                     .foregroundColor(.secondary)
 
                 if previousOdometer > 0 {
-                    Text("\(previousOdometer.formatted(.number.precision(.fractionLength(0)))) \u{2192} \(record.odometer.formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceUnit)")
-                        .font(.appCaption)
-                        .foregroundColor(.secondary)
+                    Text(
+                        "\(previousOdometer.formatted(.number.precision(.fractionLength(0)))) \u{2192} \(unitSystem.distanceValue(record.odometer, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceUnit)"
+                    )
+                    .font(.appCaption)
+                    .foregroundColor(.secondary)
 
-                    Text("(\(distanceDriven.formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceName.lowercased()))")
-                        .font(.appCaption)
-                        .foregroundColor(.secondary.opacity(0.8))
+                    Text(
+                        "(\(distanceDriven.formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceName.lowercased()))"
+                    )
+                    .font(.appCaption)
+                    .foregroundColor(.secondary.opacity(0.8))
                 } else {
-                    Text("\(record.odometer.formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceUnit)")
-                        .font(.appCaption)
-                        .foregroundColor(.secondary)
+                    Text(
+                        "\(unitSystem.distanceValue(record.odometer, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(0)))) \(unitSystem.distanceUnit)"
+                    )
+                    .font(.appCaption)
+                    .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -454,8 +456,16 @@ struct EmptyHistoryView: View {
 }
 
 #Preview {
-    NavigationStack {
-        HistoryView(vehicle: Vehicle(name: "Test Car"))
+    let schema = Schema(versionedSchema: SchemaV4.self)
+    let container = try! ModelContainer(
+        for: schema,
+        configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    let writer = OwnedModelStore(container: container)
+    return NavigationStack {
+        HistoryView(vehicle: Vehicle(name: "Test Car"), records: [])
     }
-        .modelContainer(for: [Vehicle.self, FuelingRecord.self, SyncChange.self, CloudRecordMetadata.self, PendingRemoteChange.self], inMemory: true)
+    .modelContainer(container)
+    .environmentObject(writer)
 }

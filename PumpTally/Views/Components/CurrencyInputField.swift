@@ -9,21 +9,25 @@ struct CurrencyInputField: View {
     @Binding var value: Int  // Value in smallest units (cents for 2 decimals, mills for 3)
     let decimalPlaces: Int
     let width: CGFloat
+    let accessibilityIdentifier: String
 
     init(
         value: Binding<Int>,
         decimalPlaces: Int = 2,
-        width: CGFloat = 100
+        width: CGFloat = 100,
+        accessibilityIdentifier: String = ""
     ) {
         self._value = value
         self.decimalPlaces = decimalPlaces
         self.width = width
+        self.accessibilityIdentifier = accessibilityIdentifier
     }
 
     var body: some View {
         CurrencyTextFieldRepresentable(
             value: $value,
-            decimalPlaces: decimalPlaces
+            decimalPlaces: decimalPlaces,
+            accessibilityIdentifier: accessibilityIdentifier
         )
         .frame(width: width, height: 22)
     }
@@ -53,6 +57,7 @@ private func formatValue(_ value: Int, decimalPlaces: Int) -> String {
 private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
     @Binding var value: Int
     let decimalPlaces: Int
+    let accessibilityIdentifier: String
 
     func makeUIView(context: Context) -> UITextField {
         let textField = UITextField()
@@ -61,6 +66,7 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
         textField.font = UIFont(name: "Avenir Next", size: 16)
         textField.text = formatValue(value, decimalPlaces: decimalPlaces)
         textField.delegate = context.coordinator
+        textField.accessibilityIdentifier = accessibilityIdentifier
 
         return textField
     }
@@ -181,10 +187,9 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
                 return newValue
             } else {
                 // Normal mode: right-to-left entry
-                let newValue = value * 10 + digit
-
-                // Prevent overflow
-                if newValue <= 999_999_999 && newValue >= value {
+                let (shifted, multiplicationOverflow) = value.multipliedReportingOverflow(by: 10)
+                let (newValue, additionOverflow) = shifted.addingReportingOverflow(digit)
+                if !multiplicationOverflow, !additionOverflow, newValue <= 999_999_999, newValue >= value {
                     return newValue
                 }
                 return value
@@ -199,10 +204,8 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
             }
 
             // Switch to decimal mode: current value becomes integer part
-            let newValue = value * multiplier
-
-            // Check for overflow
-            if newValue <= 999_999_999 && (value == 0 || newValue / multiplier == value) {
+            let (newValue, overflow) = value.multipliedReportingOverflow(by: multiplier)
+            if !overflow, newValue <= 999_999_999 {
                 isDecimalMode = true
                 decimalPosition = 0
                 return newValue

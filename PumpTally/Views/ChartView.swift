@@ -17,10 +17,13 @@ struct ChartRecordSnapshot: Sendable {
     init(record: FuelingRecord) {
         id = record.id
         date = record.date
-        odometer = record.odometer
-        cachedEfficiency = record.cachedEfficiency
+        odometer = record.vehicle.displayUnitSystem.distanceValue(record.odometer, from: record.vehicle.unitSystem)
+        cachedEfficiency = record.cachedEfficiency.map {
+            record.vehicle.displayUnitSystem.efficiencyValue($0, from: record.vehicle.unitSystem)
+        }
         totalCost = record.totalCost
-        pricePerFuelUnit = record.pricePerFuelUnit
+        pricePerFuelUnit = record.vehicle.displayUnitSystem.priceValue(
+            record.pricePerFuelUnit, from: record.vehicle.unitSystem)
     }
 
     init(

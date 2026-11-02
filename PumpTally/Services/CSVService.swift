@@ -1,6 +1,6 @@
 import Foundation
 
-/// CSV export plus the low-level field parser shared by strict imports.
+/// The backward-compatible seven-column CSV exchange format.
 enum CSVService {
     static let csvHeader =
         "date,odometer,pricePerFuelUnit,fuelAmount,totalCost,fillUpType,notes"
@@ -49,37 +49,4 @@ enum CSVService {
         return ([csvHeader] + rows).joined(separator: "\n") + "\n"
     }
 
-    /// Parse a CSV line handling quoted fields
-    /// - Parameter line: Single CSV line
-    /// - Returns: Array of field values
-    static func parseCSVLine(_ line: String) -> [String] {
-        var result: [String] = []
-        var current = ""
-        var insideQuotes = false
-        let characters = Array(line)
-        var index = 0
-
-        while index < characters.count {
-            let char = characters[index]
-            if char == "\"" {
-                if insideQuotes,
-                   index + 1 < characters.count,
-                   characters[index + 1] == "\"" {
-                    current.append("\"")
-                    index += 2
-                    continue
-                }
-                insideQuotes.toggle()
-            } else if char == "," && !insideQuotes {
-                result.append(current.trimmingCharacters(in: .whitespaces))
-                current = ""
-            } else {
-                current.append(char)
-            }
-            index += 1
-        }
-        result.append(current.trimmingCharacters(in: .whitespaces))
-
-        return result
-    }
 }
