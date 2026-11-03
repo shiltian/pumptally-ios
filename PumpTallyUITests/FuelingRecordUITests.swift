@@ -21,6 +21,45 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testSpanishRecoveryReviewIsLocalized() {
+        assertLocalizedRecoveryReview(
+            language: "es", locale: "es_ES",
+            reviewTitle: "Revisar eliminaciones anteriores", countText: "1 solicitud de eliminación",
+            keepTitle: "Conservar copias de iCloud", finishedText: "No hay eliminaciones anteriores que revisar.")
+    }
+
+    func testSimplifiedChineseRecoveryReviewIsLocalized() {
+        assertLocalizedRecoveryReview(
+            language: "zh-Hans", locale: "zh_CN",
+            reviewTitle: "检查之前的删除请求", countText: "1 条删除请求",
+            keepTitle: "保留 iCloud 副本", finishedText: "没有需要检查的历史删除请求。")
+    }
+
+    private func assertLocalizedRecoveryReview(
+        language: String, locale: String, reviewTitle: String,
+        countText: String, keepTitle: String, finishedText: String
+    ) {
+        let app = launch(arguments: [
+            "--ui-testing-legacy-deletion",
+            "-AppleLanguages", "(\(language))", "-AppleLocale", locale,
+        ])
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        back.tap()
+        app.buttons["app.settings"].tap()
+        let review = app.buttons["sync.recovery.deletions"]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertEqual(review.label, reviewTitle)
+        review.tap()
+        let explanation = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", countText)).firstMatch
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5))
+        app.buttons[reviewTitle].tap()
+        let keep = app.buttons[keepTitle]
+        XCTAssertTrue(keep.waitForExistence(timeout: 5))
+        keep.tap()
+        XCTAssertTrue(app.staticTexts[finishedText].waitForExistence(timeout: 5))
+    }
+
     func testZeroFuelRecordAllowsNotesEditThroughTheForm() throws {
         let app = launch(arguments: ["--ui-testing-zero-fuel"])
         let history = app.tabBars.buttons["History"]
