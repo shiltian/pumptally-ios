@@ -18,7 +18,7 @@ private final class PersistenceFixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         url = directory.appendingPathComponent("store")
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = ModelContext(container)
@@ -172,7 +172,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("statistics-copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         var expected: [String: [String: String]] = [:]
         func business(_ fingerprint: [String: [String: String]]) -> [String: [String: String]] {
@@ -215,7 +215,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("csv-copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         var expected: [String: [String: String]] = [:]
         do {
@@ -251,7 +251,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         var expected: [String: [String: String]] = [:]
         do {
             let container = try ModelContainer(
@@ -429,7 +429,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
     func testRealReadOnlyStoreRejectsEveryRecordCommandWithoutChangingData() async throws {
         let fixture = try PersistenceFixture()
         let before = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -557,7 +557,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
         try await SyncPersistenceStore(container: fixture.container).capture(modifications: [incoming], deletions: [])
         let item = try XCTUnwrap(SyncReviewService.items(in: context).first)
         let original = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -594,7 +594,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
         context.insert(childDecision)
         try context.save()
         let original = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -742,7 +742,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
     func testRealReadOnlyStoreRejectsEveryVehicleCommandWithoutChangingData() async throws {
         let fixture = try PersistenceFixture()
         let before = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [

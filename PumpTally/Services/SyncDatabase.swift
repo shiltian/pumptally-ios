@@ -6,6 +6,7 @@ import os
 /// commits once; SDK scheduling and UI state consume only the returned values.
 struct SyncDatabase: Sendable {
     let codec: CloudRecordCodec
+    var generation: String = CloudSyncControl.baselineGeneration
     private var zoneID: CKRecordZone.ID { codec.zoneID }
     private var reconciliationService: CloudReconciliationService { CloudReconciliationService(codec: codec) }
     private typealias RecordType = CloudRecordCodec.RecordType
@@ -50,7 +51,10 @@ struct SyncDatabase: Sendable {
         -> Effects
     {
         var effects = Effects()
-        for record in sent.savedRecords { try storeSystemFields(from: record, in: context) }
+        for record in sent.savedRecords {
+            try CloudSyncControl.validateBusinessRecord(record, generation: generation)
+            try storeSystemFields(from: record, in: context)
+        }
         for id in sent.deletedRecordIDs { try deleteSystemFields(for: id, in: context) }
         for id in sent.savedRecords.map(\.recordID) + sent.deletedRecordIDs {
             try acknowledge(id, generations: generations, effects: &effects, in: context)
@@ -59,6 +63,7 @@ struct SyncDatabase: Sendable {
             if failure.error.code == .serverRecordChanged,
                 let server = failure.error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
             {
+                try CloudSyncControl.validateBusinessRecord(server, generation: generation)
                 try storeSystemFields(from: server, in: context)
                 let result = try reconciliationService.stageRemoteChanges(
                     changedRecords: [server], deletedRecordIDs: [], context: context)
@@ -84,16 +89,6 @@ struct SyncDatabase: Sendable {
             }
         }
         return effects
-    }
-
-    func stageDeletedZone(in context: ModelContext) throws {
-        try clearCloudMetadata(in: context)
-        for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) {
-            try SyncChangeJournal.enqueue(vehicle, in: context)
-        }
-        for record in try context.fetch(FetchDescriptor<FuelingRecord>()) {
-            try SyncChangeJournal.enqueue(record, in: context)
-        }
     }
 
     private func acknowledge(
@@ -171,12 +166,25 @@ struct SyncDatabase: Sendable {
             .filter { $0.change.recordID.zoneID == zoneID }
         guard !entries.isEmpty else { return effects }
 
+        for entry in entries {
+            switch entry.change {
+            case .modification(let record) where record.recordType == CloudSyncControl.recordType:
+                try CloudSyncControl(record: record, zone: zoneID).requireReady(generation: generation)
+            case .modification(let record)
+            where record.recordType == RecordType.vehicle || record.recordType == RecordType.fuelingRecord:
+                try CloudSyncControl.validateBusinessRecord(record, generation: generation)
+            case .deletion(let id, _) where id == CloudSyncControl.recordID(in: zoneID):
+                throw CloudRecoveryError.generationChanged
+            default: break
+            }
+        }
+
         var modificationsByID: [CKRecord.ID: CKRecord] = [:]
         var deletionsByID: [CKRecord.ID: String] = [:]
         for entry in entries {
             switch entry.change {
             case .modification(let record):
-                modificationsByID[record.recordID] = record
+                if record.recordType != CloudSyncControl.recordType { modificationsByID[record.recordID] = record }
             case .deletion(let recordID, let recordType):
                 deletionsByID[recordID] = recordType
             }
@@ -193,6 +201,27 @@ struct SyncDatabase: Sendable {
         let changedRecords = modificationsByID.values.filter { record in
             let key = metadataKey(type: record.recordType, recordName: record.recordID.recordName)
             return !deletedKeys.contains(key) && !localDeleteKeys.contains(key)
+        }
+        // An echo of the acknowledged server base cannot overwrite a newer
+        // pending local edit, even when device clocks disagree. Compare before
+        // replacing the metadata with the incoming system fields.
+        var echoedBases = Set<CKRecord.ID>()
+        for record in changedRecords {
+            guard let incomingTag = record.recordChangeTag,
+                let entry = try journalEntry(for: record.recordID, context: context), entry.operationRaw == "save"
+            else { continue }
+            let key = metadataKey(type: record.recordType, recordName: record.recordID.recordName)
+            if let data = try context.fetch(
+                FetchDescriptor<CloudRecordMetadata>(predicate: #Predicate { $0.key == key })
+            ).first?.systemFieldsData {
+                let decoder = try NSKeyedUnarchiver(forReadingFrom: data)
+                decoder.requiresSecureCoding = true
+                let known = CKRecord(coder: decoder)
+                decoder.finishDecoding()
+                if known?.recordID == record.recordID, known?.recordChangeTag == incomingTag {
+                    echoedBases.insert(record.recordID)
+                }
+            }
         }
         let deletedRecordIDs = Array(deletionsByID.keys)
         var discardedInboxKeys = Set<String>()
@@ -217,7 +246,7 @@ struct SyncDatabase: Sendable {
         }
 
         let result = try reconciliationService.stageRemoteChanges(
-            changedRecords: changedRecords,
+            changedRecords: changedRecords.filter { !echoedBases.contains($0.recordID) },
             deletedRecordIDs: deletedRecordIDs,
             context: context
         )

@@ -2,32 +2,6 @@ import CloudKit
 import SwiftData
 import os
 
-enum SyncPersistenceError: LocalizedError, Equatable {
-    case recoveryRequired
-    case unsynchronizedChanges
-    case accountChanged
-    case accountDataNeedsReview
-
-    var errorDescription: String? {
-        switch self {
-        case .recoveryRequired:
-            return String(localized: "Sync paused because changes could not be saved. Retry when storage is available.")
-        case .unsynchronizedChanges:
-            return String(
-                localized:
-                    "This device has unsynchronized changes. Sync them before removing the local copy, or keep local data."
-            )
-        case .accountChanged:
-            return String(
-                localized: "The iCloud account changed. Enable sync again to choose how to reconcile your data.")
-        case .accountDataNeedsReview:
-            return String(
-                localized:
-                    "Changes from the previous iCloud account need review before enabling sync with another account.")
-        }
-    }
-}
-
 /// Durable sync bookkeeping uses operation-scoped contexts. A failed commit
 /// invalidates this session; a new session replays from its last saved checkpoint.
 @MainActor
@@ -85,6 +59,14 @@ final class SyncPersistenceStore {
                 throw SyncPersistenceError.accountChanged
             }
             if state.accountID == nil { state.accountID = accountID }
+        }
+    }
+
+    func bindGeneration(_ control: CloudSyncControl) async throws {
+        try await transaction { actor in
+            let checkpoint = try Self.checkpoint(in: actor.modelContext)
+            try control.requireReady(generation: checkpoint.cloudGeneration ?? CloudSyncControl.baselineGeneration)
+            if checkpoint.cloudGeneration != control.generation { checkpoint.cloudGeneration = control.generation }
         }
     }
 
@@ -181,7 +163,8 @@ final class SyncPersistenceStore {
     /// Reconciliation and activation are one durable store transaction. A failed
     /// commit retains the old account, inbox, checkpoint, records and outbox.
     func activate(
-        accountID: String, reconciling operation: @escaping @Sendable (isolated ModelStoreActor) throws -> Void
+        accountID: String, generation: String = CloudSyncControl.baselineGeneration,
+        reconciling operation: @escaping @Sendable (isolated ModelStoreActor) throws -> Void
     ) async throws {
         try await transaction { actor in
             let context = actor.modelContext
@@ -193,6 +176,7 @@ final class SyncPersistenceStore {
             }
             try operation(actor)
             state.accountID = accountID
+            state.cloudGeneration = generation
             state.engineState = nil
             state.bootstrapCompleted = true
             state.detached = false
@@ -207,6 +191,19 @@ final class SyncPersistenceStore {
         get async throws {
             try await transaction {
                 try $0.modelContext.fetch(FetchDescriptor<SyncCheckpoint>()).first?.detached == true
+            }
+        }
+    }
+
+    /// Preferences may not have been written when the process stopped after
+    /// activation. The store is authoritative; disabling records detachment.
+    var committedAccountID: String? {
+        get async throws {
+            try await transaction { actor in
+                guard let state = try actor.modelContext.fetch(FetchDescriptor<SyncCheckpoint>()).first,
+                    state.bootstrapCompleted == true, state.detached != true
+                else { return nil }
+                return state.accountID
             }
         }
     }

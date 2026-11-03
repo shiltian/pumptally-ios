@@ -243,7 +243,7 @@ final class SyncSafetyTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("sync.store")
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         let checkpoint = Data("opaque committed engine state".utf8)
         var recordName = ""
@@ -433,7 +433,7 @@ final class SyncSafetyTests: XCTestCase {
     }
 
     private func store() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         return try ModelContainer(
             for: schema,
             configurations: [

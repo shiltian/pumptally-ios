@@ -64,7 +64,7 @@ final class PersistenceObservationTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("store")
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = container.mainContext
@@ -132,7 +132,7 @@ final class PersistenceObservationTests: XCTestCase {
 
     func testRealReadOnlyStoreSaveFailureLeavesTheSavedGraphIntact() throws {
         let (_, _, url) = try fixture()
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, url: url, allowsSave: false, cloudKitDatabase: .none)])

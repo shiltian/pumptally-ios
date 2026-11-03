@@ -12,7 +12,7 @@ final class CloudReconciliationValidationTests: XCTestCase {
     private let newerDate = Date(timeIntervalSince1970: 2_000_000)
 
     private func fixture() throws -> (ModelContext, FuelingRecord) {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [

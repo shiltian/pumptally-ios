@@ -4,6 +4,8 @@ import CloudKit
 /// while the application runs its real startup, persistence and event handling.
 @MainActor
 final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
+    var recordZoneID = NativeCloudSyncEnvironment.zoneID
+    var scopeIdentifier = "isolated-test-container/FuelioZone/private"
     var records = CloudSyncSnapshot()
     var status = CKAccountStatus.available
     var userID = "isolated-test-account"
@@ -13,12 +15,10 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
     var driverError: Error?
     var snapshotHandler: (() async throws -> CloudSyncSnapshot)?
     var zoneHandler: (() async throws -> Void)?
-    var replacementHandler: (() async throws -> Void)?
     var automaticDelivery = true
     private(set) var snapshotReads = 0
     private(set) var accountReads = 0
     private(set) var zonePreparations = 0
-    private(set) var zoneReplacements = 0
     private(set) var restoredStates: [Data?] = []
     private(set) var drivers: [TestingSyncEngineDriver] = []
 
@@ -46,21 +46,64 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
         return records
     }
 
-    func recreateZone() async throws {
-        zoneReplacements += 1
-        if let zoneError { throw zoneError }
-        records = CloudSyncSnapshot()
-        try await replacementHandler?()
-    }
+    func controlRecord() async throws -> CKRecord? { records.control }
 
-    func makeDriver(state: Data?, receiver: any SyncEngineReceiver) throws -> any SyncEngineDriver {
+    func makeDriver(state: Data?, receiver: any SyncEngineReceiver, automaticallySync: Bool) throws
+        -> any SyncEngineDriver
+    {
         if let driverError { throw driverError }
         restoredStates.append(state)
         let driver = TestingSyncEngineDriver(receiver: receiver)
         driver.automaticDelivery = automaticDelivery
         driver.snapshot = records
+        driver.commitBatch = { [weak self, weak driver] batch in
+            guard let self else { throw CancellationError() }
+            let result = try await self.apply(batch)
+            driver?.snapshot = self.records
+            return result
+        }
         drivers.append(driver)
         return driver
+    }
+
+    var batchHandler: ((CKSyncEngine.RecordZoneChangeBatch) async throws -> Void)?
+    var afterBatch: ((CKSyncEngine.RecordZoneChangeBatch) async throws -> Void)?
+    private func apply(_ batch: CKSyncEngine.RecordZoneChangeBatch) async throws -> SyncEngineSentChanges {
+        try await batchHandler?(batch)
+        let guardID = CloudSyncControl.recordID(in: NativeCloudSyncEnvironment.zoneID)
+        if let guardRecord = batch.recordsToSave.first(where: { $0.recordID == guardID }),
+            let current = records.control,
+            guardRecord["testServerTag"] as? String != current["testServerTag"] as? String
+        {
+            let conflict = CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: current])
+            return SyncEngineSentChanges(
+                failedSaves: batch.recordsToSave.map {
+                    ($0, $0.recordID == guardID ? conflict : CKError(.batchRequestFailed))
+                },
+                failedDeletes: Dictionary(
+                    uniqueKeysWithValues: batch.recordIDsToDelete.map { ($0, CKError(.batchRequestFailed)) }))
+        }
+        var business = Dictionary(uniqueKeysWithValues: records.businessRecords.map { ($0.recordID, $0) })
+        var saved: [CKRecord] = []
+        for record in batch.recordsToSave {
+            let copy = record.copy() as! CKRecord
+            if copy.recordID == guardID {
+                copy["testServerTag"] = UUID().uuidString
+                records.control = copy
+            } else {
+                business[copy.recordID] = copy
+            }
+            saved.append(copy)
+        }
+        for id in batch.recordIDsToDelete { business.removeValue(forKey: id) }
+        records.vehicles = business.values.filter { $0.recordType == CloudRecordCodec.RecordType.vehicle }
+        records.fuelingRecords = business.values.filter { $0.recordType == CloudRecordCodec.RecordType.fuelingRecord }
+        records.otherRecords = business.values.filter {
+            $0.recordType != CloudRecordCodec.RecordType.vehicle
+                && $0.recordType != CloudRecordCodec.RecordType.fuelingRecord
+        }
+        try await afterBatch?(batch)
+        return SyncEngineSentChanges(savedRecords: saved, deletedRecordIDs: batch.recordIDsToDelete)
     }
 }
 
@@ -77,6 +120,7 @@ final class TestingSyncEngineDriver: SyncEngineDriver {
     var fetchError: Error?
     var sendError: Error?
     var registrationObserver: (() -> Void)?
+    var commitBatch: ((CKSyncEngine.RecordZoneChangeBatch) async throws -> SyncEngineSentChanges)?
 
     init(receiver: any SyncEngineReceiver) { self.receiver = receiver }
 
@@ -110,7 +154,9 @@ final class TestingSyncEngineDriver: SyncEngineDriver {
         if let fetchError { throw fetchError }
         guard automaticDelivery else { return }
         await emit(.willFetch)
-        await emit(.fetchedRecords(modifications: snapshot.vehicles + snapshot.fuelingRecords, deletions: []))
+        await emit(
+            .fetchedRecords(
+                modifications: snapshot.businessRecords + (snapshot.control.map { [$0] } ?? []), deletions: []))
         await emit(.fetchedZone(NativeCloudSyncEnvironment.zoneID, error: nil))
         await emit(.didFetch)
     }
@@ -119,16 +165,16 @@ final class TestingSyncEngineDriver: SyncEngineDriver {
         if let sendError { throw sendError }
         guard automaticDelivery else { return }
         await emit(.willSend)
-        if let batch = await batch() {
-            let changes =
-                batch.recordsToSave.map { CKSyncEngine.PendingRecordZoneChange.saveRecord($0.recordID) }
-                + batch.recordIDsToDelete.map { .deleteRecord($0) }
-            remove(pendingRecordZoneChanges: changes)
-            await emit(
-                .sentRecords(
-                    SyncEngineSentChanges(
-                        savedRecords: batch.recordsToSave,
-                        deletedRecordIDs: batch.recordIDsToDelete)))
+        while let batch = await batch() {
+            let result =
+                try await commitBatch?(batch)
+                ?? SyncEngineSentChanges(
+                    savedRecords: batch.recordsToSave,
+                    deletedRecordIDs: batch.recordIDsToDelete)
+            remove(
+                pendingRecordZoneChanges: result.savedRecords.map { .saveRecord($0.recordID) }
+                    + result.deletedRecordIDs.map { .deleteRecord($0) })
+            await emit(.sentRecords(result))
         }
         pendingDatabaseChanges.removeAll()
         await emit(.didSend)

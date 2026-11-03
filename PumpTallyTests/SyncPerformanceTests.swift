@@ -19,7 +19,7 @@ final class SyncPerformanceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // Model executors release SQLite handles asynchronously. Keep these
         // isolated files in the test app temporary directory until its cleanup.
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [
@@ -84,7 +84,9 @@ final class SyncPerformanceTests: XCTestCase {
                 container: fixture.container,
                 codec: CloudRecordCodec(zoneID: NativeCloudSyncEnvironment.zoneID), blockedParents: [])
             do {
-                _ = try await preparation.build(pendingChanges: driver.pendingRecordZoneChanges)
+                _ = try await preparation.build(
+                    pendingChanges: driver.pendingRecordZoneChanges,
+                    control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
                 let asyncResult1 = (await preparation.metrics).journalEntriesRead
                 XCTAssertEqual(asyncResult1, 1)
                 let asyncResult2 = (await preparation.metrics).fuelingRecordsRead
@@ -103,7 +105,7 @@ final class SyncPerformanceTests: XCTestCase {
             let prepared = expectation(description: "Prepare one upload")
             Task {
                 let batch = await driver.batch()
-                XCTAssertEqual(batch?.recordsToSave.map(\.recordID.recordName), [fixture.recordID.uuidString])
+                XCTAssertEqual(batch?.businessRecordsToSave.map(\.recordID.recordName), [fixture.recordID.uuidString])
                 prepared.fulfill()
             }
             wait(for: [prepared], timeout: 30)

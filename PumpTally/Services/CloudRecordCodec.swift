@@ -6,10 +6,7 @@ import Foundation
 /// The field names and record types in this file are compatibility-critical: CloudKit
 /// has no rollback, and released app versions continue to read and write these values.
 struct CloudRecordCodec: Sendable {
-    enum RecordType {
-        static let vehicle = "Vehicle"
-        static let fuelingRecord = "FuelingRecord"
-    }
+    typealias RecordType = CloudRecordType
 
     enum CloudFieldKey {
         enum Vehicle {

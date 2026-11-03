@@ -4,6 +4,9 @@ import Foundation
 struct CloudSyncSnapshot: Sendable {
     var vehicles: [CKRecord] = []
     var fuelingRecords: [CKRecord] = []
+    var control: CKRecord?
+    var otherRecords: [CKRecord] = []
+    var businessRecords: [CKRecord] { vehicles + fuelingRecords + otherRecords }
 }
 
 struct SyncEngineSentChanges: Sendable {
@@ -49,12 +52,21 @@ protocol SyncEngineDriver: AnyObject {
 
 @MainActor
 protocol CloudSyncEnvironment {
+    var scopeIdentifier: String { get }
+    var recordZoneID: CKRecordZone.ID { get }
     func accountStatus() async throws -> CKAccountStatus
     func accountID() async throws -> String
     func ensureZone() async throws
     func snapshot() async throws -> CloudSyncSnapshot
-    func recreateZone() async throws
-    func makeDriver(state: Data?, receiver: any SyncEngineReceiver) throws -> any SyncEngineDriver
+    func controlRecord() async throws -> CKRecord?
+    func makeDriver(state: Data?, receiver: any SyncEngineReceiver, automaticallySync: Bool) throws
+        -> any SyncEngineDriver
+}
+
+extension CloudSyncEnvironment {
+    func makeDriver(state: Data?, receiver: any SyncEngineReceiver) throws -> any SyncEngineDriver {
+        try makeDriver(state: state, receiver: receiver, automaticallySync: true)
+    }
 }
 
 enum CloudSyncAdapterError: Error {
@@ -67,55 +79,74 @@ enum CloudSyncAdapterError: Error {
 /// local use never opens a CloudKit container.
 @MainActor
 final class NativeCloudSyncEnvironment: CloudSyncEnvironment {
-    static let zoneID = CKRecordZone.ID(zoneName: "FuelioZone", ownerName: CKCurrentUserDefaultName)
-    private lazy var container = CKContainer.default()
+    nonisolated static let zoneID = CKRecordZone.ID(zoneName: "FuelioZone", ownerName: CKCurrentUserDefaultName)
+    private let suppliedContainer: CKContainer?
+    let recordZoneID: CKRecordZone.ID
+    private lazy var container = suppliedContainer ?? CKContainer.default()
+
+    init(container: CKContainer? = nil, zoneID: CKRecordZone.ID = NativeCloudSyncEnvironment.zoneID) {
+        suppliedContainer = container
+        recordZoneID = zoneID
+    }
     private var database: CKDatabase { container.privateCloudDatabase }
+    var scopeIdentifier: String { "\(container.containerIdentifier ?? "")/\(recordZoneID.zoneName)/private" }
 
     func accountStatus() async throws -> CKAccountStatus { try await container.accountStatus() }
     func accountID() async throws -> String { try await container.userRecordID().recordName }
 
     func ensureZone() async throws {
-        let results = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: Self.zoneID)], deleting: [])
-        guard let result = results.saveResults[Self.zoneID] else { throw CloudSyncAdapterError.missingZoneResult }
+        let results = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: recordZoneID)], deleting: [])
+        guard let result = results.saveResults[recordZoneID] else { throw CloudSyncAdapterError.missingZoneResult }
         _ = try result.get()
     }
 
-    func recreateZone() async throws {
-        let results = try await database.modifyRecordZones(saving: [], deleting: [Self.zoneID])
-        guard let result = results.deleteResults[Self.zoneID] else { throw CloudSyncAdapterError.missingZoneResult }
-        _ = try result.get()
-        try await ensureZone()
+    func controlRecord() async throws -> CKRecord? {
+        do { return try await database.record(for: CloudSyncControl.recordID(in: recordZoneID)) } catch let error
+            as CKError where error.code == .unknownItem || error.code == .zoneNotFound
+        { return nil }
     }
 
     func snapshot() async throws -> CloudSyncSnapshot {
         var vehicles: [CKRecord.ID: CKRecord] = [:]
         var records: [CKRecord.ID: CKRecord] = [:]
+        var other: [CKRecord.ID: CKRecord] = [:]
+        var control: CKRecord?
         var token: CKServerChangeToken?
         var moreComing = true
         while moreComing {
-            let page = try await database.recordZoneChanges(inZoneWith: Self.zoneID, since: token)
+            let page = try await database.recordZoneChanges(inZoneWith: recordZoneID, since: token)
             for (id, result) in page.modificationResultsByID {
                 let record = try result.get().record
                 switch record.recordType {
-                case CloudRecordCodec.RecordType.vehicle: vehicles[id] = record
-                case CloudRecordCodec.RecordType.fuelingRecord: records[id] = record
-                default: throw CloudSyncAdapterError.unsupportedRecordType(record.recordType)
+                case CloudRecordType.vehicle: vehicles[id] = record
+                case CloudRecordType.fuelingRecord: records[id] = record
+                case CloudSyncControl.recordType:
+                    _ = try CloudSyncControl(record: record, zone: recordZoneID)
+                    control = record
+                default: other[id] = record
                 }
             }
             for deletion in page.deletions {
                 vehicles.removeValue(forKey: deletion.recordID)
                 records.removeValue(forKey: deletion.recordID)
+                other.removeValue(forKey: deletion.recordID)
+                if deletion.recordID == control?.recordID { control = nil }
             }
             token = page.changeToken
             moreComing = page.moreComing
         }
-        return CloudSyncSnapshot(vehicles: Array(vehicles.values), fuelingRecords: Array(records.values))
+        return CloudSyncSnapshot(
+            vehicles: Array(vehicles.values), fuelingRecords: Array(records.values),
+            control: control, otherRecords: Array(other.values))
     }
 
-    func makeDriver(state: Data?, receiver: any SyncEngineReceiver) throws -> any SyncEngineDriver {
+    func makeDriver(state: Data?, receiver: any SyncEngineReceiver, automaticallySync: Bool) throws
+        -> any SyncEngineDriver
+    {
         let serialization = try state.map { try JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: $0) }
         return NativeSyncEngineDriver(
-            database: database, zoneID: Self.zoneID, serialization: serialization, receiver: receiver)
+            database: database, zoneID: recordZoneID, serialization: serialization, receiver: receiver,
+            automaticallySync: automaticallySync)
     }
 }
 
@@ -126,21 +157,24 @@ final class NativeSyncEngineDriver: SyncEngineDriver, CKSyncEngineDelegate {
     private let zoneID: CKRecordZone.ID
     private let serialization: CKSyncEngine.State.Serialization?
     private weak var receiver: (any SyncEngineReceiver)?
+    private let automaticallySync: Bool
     private lazy var engine: CKSyncEngine = {
         var configuration = CKSyncEngine.Configuration(
             database: database, stateSerialization: serialization, delegate: self)
         configuration.subscriptionID = "FuelioZoneChanges"
+        configuration.automaticallySync = automaticallySync
         return CKSyncEngine(configuration)
     }()
 
     init(
         database: CKDatabase, zoneID: CKRecordZone.ID, serialization: CKSyncEngine.State.Serialization?,
-        receiver: any SyncEngineReceiver
+        receiver: any SyncEngineReceiver, automaticallySync: Bool = true
     ) {
         self.database = database
         self.zoneID = zoneID
         self.serialization = serialization
         self.receiver = receiver
+        self.automaticallySync = automaticallySync
     }
 
     var pendingRecordZoneChanges: [CKSyncEngine.PendingRecordZoneChange] { engine.state.pendingRecordZoneChanges }

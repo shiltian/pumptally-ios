@@ -144,7 +144,7 @@ final class FuelingRecordDraftTests: XCTestCase {
 @MainActor
 final class FuelingRecordEditingPersistenceTests: XCTestCase {
     private func makeStore(at url: URL? = nil) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let configuration =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)

@@ -7,6 +7,7 @@ protocol ApplicationSync: AnyObject {
     func checkiCloudAvailability() async -> Bool
     func startMonitoring() async
     func synchronizeNow() async
+    func resumeRecoveryIfNeeded() async throws
 }
 
 extension CloudSyncService: ApplicationSync {}
@@ -57,11 +58,6 @@ final class ApplicationLifecycleCoordinator: ObservableObject {
         startup = .ready
         let state = syncService.stateManager
         state.syncStatus = .idle
-        if state.iCloudSyncEnabled && !state.initialSyncCompleted {
-            state.iCloudSyncEnabled = false
-            state.syncStatus = .idle
-            return
-        }
         await synchronizeCloudChanges()
     }
 
@@ -72,6 +68,14 @@ final class ApplicationLifecycleCoordinator: ObservableObject {
 
     private func synchronizeCloudChanges() async {
         let state = syncService.stateManager
+        do { try await syncService.resumeRecoveryIfNeeded() } catch {
+            state.syncStatus = .error(error.localizedDescription); return
+        }
+        if state.iCloudSyncEnabled && !state.initialSyncCompleted {
+            state.iCloudSyncEnabled = false
+            state.syncStatus = .idle
+            return
+        }
         guard state.iCloudSyncEnabled && state.initialSyncCompleted,
             await syncService.checkiCloudAvailability(),
             state.iCloudSyncEnabled && state.initialSyncCompleted

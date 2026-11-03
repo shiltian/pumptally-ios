@@ -21,27 +21,51 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     private let environment: any CloudSyncEnvironment
     private let writer: OwnedModelStore
     private let makePersistenceStore: @MainActor (OwnedModelStore) -> SyncPersistenceStore
-    private let zoneID = NativeCloudSyncEnvironment.zoneID
+    private let zoneID: CKRecordZone.ID
     private var activity = SyncActivity()
 
     private var saveObserver: AnyCancellable?
     private var stateForwardingObserver: AnyCancellable?
+    private final class Runtime {
+        let driver: any SyncEngineDriver
+        let store: SyncPersistenceStore
+        let accountID: String
+        var control: CloudSyncControl
+        init(driver: any SyncEngineDriver, store: SyncPersistenceStore, accountID: String, control: CloudSyncControl) {
+            self.driver = driver
+            self.store = store
+            self.accountID = accountID
+            self.control = control
+        }
+    }
     private enum Session {
         case stopped
-        case starting(UUID)
-        case stopping
-        case running(any SyncEngineDriver)
+        case starting(UUID, SyncPersistenceStore)
+        case stopping, recovering
+        case running(Runtime)
         case recoveryRequired
     }
     private var session: Session = .stopped
     private func ownsStartup(_ attempt: UUID) -> Bool {
-        guard case .starting(let current) = session else { return false }
+        guard case .starting(let current, _) = session else { return false }
         return current == attempt
     }
-    private var syncStore: SyncPersistenceStore?
-    private var syncEngine: (any SyncEngineDriver)? {
-        get { if case .running(let engine) = session { return engine }; return nil }
-        set { session = newValue.map(Session.running) ?? .stopped }
+    private var runtime: Runtime? {
+        guard case .running(let runtime) = session else { return nil }
+        return runtime
+    }
+    private var syncStore: SyncPersistenceStore? {
+        switch session {
+        case .starting(_, let store): return store
+        case .running(let runtime): return runtime.store
+        default: return nil
+        }
+    }
+    private var syncEngine: (any SyncEngineDriver)? { runtime?.driver }
+    private func recoveryCoordinator() -> CloudRecoveryCoordinator {
+        CloudRecoveryCoordinator(
+            environment: environment,
+            store: CloudRecoveryStore(persistence: makePersistenceStore(writer)), codec: recordCodec)
     }
     private let operationCoordinator = SyncOperationCoordinator()
     private var inFlightGenerations: [String: String] = [:]
@@ -72,7 +96,9 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     ) {
         self.writer = writer
         self.stateManager = stateManager
-        self.environment = environment ?? NativeCloudSyncEnvironment()
+        let selectedEnvironment = environment ?? NativeCloudSyncEnvironment()
+        self.environment = selectedEnvironment
+        self.zoneID = selectedEnvironment.recordZoneID
         self.makePersistenceStore = makePersistenceStore
 
         // Forward stateManager's change notifications so that views observing
@@ -127,17 +153,22 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 let accountID = try await environment.accountID()
                 let store = makePersistenceStore(writer)
                 try await store.validateActivation(accountID: accountID)
+                try await store.transaction { try CloudRecoveryStore.requireNoPendingRecovery(in: $0.modelContext) }
                 try await ensureZoneExists()
                 let snapshot = try await environment.snapshot()
                 try await verifyAccount(accountID)
                 try requireInitialEnable()
+                let control =
+                    try snapshot.control.map { try CloudSyncControl(record: $0, zone: zoneID) }
+                    ?? CloudSyncControl.baseline(in: zoneID)
+                try control.requireReady(generation: control.generation)
                 stateManager.syncStatus = .idle
                 return InitialSyncProposal(
                     accountID: accountID, containerID: ObjectIdentifier(container),
-                    hasCloudData: !snapshot.vehicles.isEmpty || !snapshot.fuelingRecords.isEmpty,
+                    hasCloudData: !snapshot.businessRecords.isEmpty,
                     localChanges: try await writer.transaction {
                         try InitialSyncProposal.localChanges(in: $0.modelContext)
-                    })
+                    }, cloudGeneration: control.generation)
             } catch {
                 stateManager.syncStatus = .error(error.localizedDescription)
                 throw error
@@ -161,37 +192,34 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 try await verifyAccount(proposal.accountID)
                 let store = makePersistenceStore(writer)
                 try await store.validateActivation(accountID: proposal.accountID)
+                if case .replaceCloud = strategy {
+                    try await performRecovery(
+                        accountID: proposal.accountID, expectedGeneration: proposal.cloudGeneration,
+                        expectedLocalChanges: proposal.localChanges)
+                    return
+                }
+                let snapshot = try await environment.snapshot()
+                let control =
+                    try snapshot.control.map { try CloudSyncControl(record: $0, zone: zoneID) }
+                    ?? CloudSyncControl.baseline(in: zoneID)
+                try control.requireReady(generation: proposal.cloudGeneration)
+                for record in snapshot.businessRecords {
+                    try CloudSyncControl.validateBusinessRecord(record, generation: control.generation)
+                }
                 let reconciler = InitialSyncReconciler(codec: recordCodec)
                 let plan: InitialSyncReconciler.Plan
-                switch strategy {
-                case .merge:
-                    plan = .merge(try await environment.snapshot())
-                case .useCloud:
-                    let snapshot = try await environment.snapshot()
+                if case .useCloud = strategy {
+                    guard snapshot.otherRecords.isEmpty else { throw CloudRecoveryError.invalidControl }
                     plan = .useCloud(
                         snapshot,
                         try CloudSnapshotValidator().validate(
                             vehicleRecords: snapshot.vehicles, fuelingRecordRecords: snapshot.fuelingRecords))
-                case .replaceCloud:
-                    plan = .replaceCloud(
-                        try await writer.transaction { try reconciler.uploadSnapshot(in: $0.modelContext) },
-                        capturedChanges: proposal.localChanges)
+                } else {
+                    plan = .merge(snapshot)
                 }
                 try await verifyAccount(proposal.accountID)
-                // Legacy recovery stays isolated here until the native recovery
-                // protocol and durable receipt pass their separate release gate.
-                if case .replaceCloud = plan {
-                    guard
-                        try await writer.transaction({ try InitialSyncProposal.localChanges(in: $0.modelContext) })
-                            == proposal.localChanges
-                    else {
-                        throw InitialSyncError.localDataChanged
-                    }
-                    try await environment.recreateZone()
-                    try await verifyAccount(proposal.accountID)
-                }
                 try Task.checkCancellation()
-                try await store.activate(accountID: proposal.accountID) { actor in
+                try await store.activate(accountID: proposal.accountID, generation: control.generation) { actor in
                     let context = actor.modelContext
                     if case .useCloud = strategy {
                         guard try InitialSyncProposal.localChanges(in: context) == proposal.localChanges else {
@@ -207,7 +235,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 stateManager.syncStatus = .syncing
                 await synchronizeNow()
             } catch {
-                stateManager.syncStatus = .error(error.localizedDescription)
+                recordRecoveryFailure(error)
                 throw error
             }
         }
@@ -226,51 +254,81 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         guard current == expected else { throw SyncPersistenceError.accountChanged }
     }
 
-    // MARK: - Delete All Cloud Data
+    // MARK: - Durable cloud replacement
 
-    /// Atomically reserves the sync pipeline for the complete destructive
-    /// delete-and-upload sequence so no automatic pull or push can observe the
-    /// temporary empty cloud zone.
     func replaceCloudDataWithLocal() async throws {
         try await operationCoordinator.runExclusive {
-            do { try await performReplaceCloudDataWithLocal() } catch {
-                stateManager.syncStatus = .error(error.localizedDescription); throw error
+            do {
+                let accountID = try await environment.accountID()
+                try await performRecovery(accountID: accountID)
+            } catch {
+                recordRecoveryFailure(error)
+                throw error
             }
         }
     }
 
-    private func performReplaceCloudDataWithLocal() async throws {
-        let reconciler = InitialSyncReconciler(codec: recordCodec)
-        let records = try await writer.transaction { try reconciler.uploadSnapshot(in: $0.modelContext) }
-        stateManager.syncStatus = .syncing
-        let wasMonitoring = syncEngine != nil
+    /// Called at startup even when a crash occurred before enabling preferences.
+    /// The persisted receipt, rather than a preference flag, owns resumption.
+    func resumeRecoveryIfNeeded() async throws {
+        var resumed = false
+        try await operationCoordinator.runExclusive {
+            let coordinator = recoveryCoordinator()
+            guard try await coordinator.store.pending() != nil else {
+                if !stateManager.iCloudSyncEnabled || !stateManager.initialSyncCompleted,
+                    let account = try await coordinator.store.persistence.committedAccountID,
+                    try await environment.accountID() == account
+                {
+                    finishRecoveryIntent()
+                    resumed = true
+                }
+                return
+            }
+            await stopMonitoring()
+            session = .recovering
+            stateManager.syncStatus = .syncing
+            do {
+                _ = try await coordinator.resumeIfNeeded()
+                finishRecoveryIntent()
+                resumed = true
+            } catch {
+                recordRecoveryFailure(error)
+                throw error
+            }
+        }
+        if resumed { await synchronizeNow() }
+    }
+
+    private func performRecovery(
+        accountID: String, expectedGeneration: String? = nil,
+        expectedLocalChanges: [String: String]? = nil
+    ) async throws {
         await stopMonitoring()
-        let store = makePersistenceStore(writer)
-        do {
-            try await store.resetCheckpoint()
-            try await performDeleteAllCloudData()
-            let database = SyncDatabase(codec: recordCodec)
-            try await store.transaction { actor in
-                try database.clearCloudMetadata(in: actor.modelContext)
-                try reconciler.stageUploads(records, in: actor.modelContext)
-            }
-            if stateManager.iCloudSyncEnabled && stateManager.initialSyncCompleted {
-                await startMonitoring()
-                await synchronizeNow()
-            }
-        } catch {
-            stateManager.syncStatus = .error(String(localized: "Sync failed"))
-            if wasMonitoring && stateManager.iCloudSyncEnabled && stateManager.initialSyncCompleted {
-                await startMonitoring()
-            }
-            throw error
-        }
+        session = .recovering
+        stateManager.syncStatus = .syncing
+        try await recoveryCoordinator().replace(
+            accountID: accountID, expectedGeneration: expectedGeneration,
+            expectedLocalChanges: expectedLocalChanges)
+        finishRecoveryIntent()
+        await synchronizeNow()
     }
 
-    private func performDeleteAllCloudData() async throws {
+    private func finishRecoveryIntent() {
+        session = .stopped
+        stateManager.initialSyncCompleted = true
+        stateManager.iCloudSyncEnabled = true
         stateManager.syncStatus = .syncing
+    }
 
-        try await environment.recreateZone()
+    private func recordRecoveryFailure(_ error: Error) {
+        session = .recoveryRequired
+        switch error {
+        case CloudRecoveryError.generationChanged, SyncPersistenceError.accountChanged:
+            stateManager.iCloudSyncEnabled = false
+            stateManager.initialSyncCompleted = false
+        default: break
+        }
+        stateManager.syncStatus = .error(error.localizedDescription)
     }
 
     // MARK: - Cloud Record Counts
@@ -303,16 +361,15 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     /// Start CKSyncEngine and monitor durable journal changes.
     func startMonitoring() async {
         switch session {
-        case .running, .starting, .stopping: return
+        case .running, .starting, .stopping, .recovering: return
         case .stopped, .recoveryRequired: break
         }
         let attempt = UUID()
-        session = .starting(attempt)
+        let store = makePersistenceStore(writer)
+        session = .starting(attempt, store)
         saveObserver?.cancel()
-
         do {
-            let store = makePersistenceStore(writer)
-            syncStore = store
+            try await store.transaction { try CloudRecoveryStore.requireNoPendingRecovery(in: $0.modelContext) }
             let detached = try await store.isDetached
             guard ownsStartup(attempt) else { return }
             guard !detached else {
@@ -325,42 +382,29 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
             try await store.prepare(accountID: accountID)
             guard ownsStartup(attempt), stateManager.iCloudSyncEnabled else { return }
             try await ensureZoneExists()
+            let control = try await loadControl()
             guard ownsStartup(attempt) else { return }
-            try await bootstrapSyncEngineIfNeeded(accountID: accountID)
+            try await store.bindGeneration(control)
+            guard ownsStartup(attempt) else { return }
+            try await bootstrapSyncEngineIfNeeded(accountID: accountID, store: store, control: control)
             guard ownsStartup(attempt) else { return }
             try await verifyAccount(accountID)
             guard ownsStartup(attempt) else { return }
-            let database = SyncDatabase(codec: recordCodec)
+            let database = SyncDatabase(codec: recordCodec, generation: control.generation)
             _ = try await store.transaction { try database.applyInbox(in: $0.modelContext) }
+            guard ownsStartup(attempt) else { return }
+            let encoded = try await store.loadEncodedState()
+            guard ownsStartup(attempt), stateManager.iCloudSyncEnabled else { return }
+            let driver = try environment.makeDriver(state: encoded, receiver: self)
+            activity = SyncActivity()
+            session = .running(Runtime(driver: driver, store: store, accountID: accountID, control: control))
+            driver.start()
         } catch {
             guard ownsStartup(attempt) else { return }
-            session = .recoveryRequired
-            if (error as? SyncPersistenceError) == .accountChanged {
-                stateManager.iCloudSyncEnabled = false
-                stateManager.initialSyncCompleted = false
-            }
+            recordRecoveryFailure(error)
             Self.logger.error("CloudKit sync bootstrap failed: \(error)")
-            stateManager.syncStatus = .error(String(localized: "Sync failed"))
+            await store.close()
             return
-        }
-
-        if syncEngine == nil {
-            do {
-                guard ownsStartup(attempt), stateManager.iCloudSyncEnabled, let syncStore else {
-                    if ownsStartup(attempt) { session = .stopped }
-                    return
-                }
-                let encoded = try await syncStore.loadEncodedState()
-                guard ownsStartup(attempt), stateManager.iCloudSyncEnabled else { return }
-                let driver = try environment.makeDriver(state: encoded, receiver: self)
-                activity = SyncActivity()
-                self.syncEngine = driver
-                driver.start()
-            } catch {
-                session = .recoveryRequired
-                stateManager.syncStatus = .error(error.localizedDescription)
-                return
-            }
         }
 
         saveObserver = NotificationCenter.default.publisher(for: ModelContext.didSave)
@@ -383,15 +427,31 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     /// On the first launch after the manual-sync migration, reconcile a complete
     /// cloud snapshot before CKSyncEngine starts. This recovers previously
     /// unsent local inserts/edits and preserves the existing conflict policy.
-    private func bootstrapSyncEngineIfNeeded(accountID: String) async throws {
-        guard let syncStore, try await !syncStore.bootstrapCompleted else { return }
+    private func bootstrapSyncEngineIfNeeded(accountID: String, store: SyncPersistenceStore, control: CloudSyncControl)
+        async throws
+    {
+        guard try await !store.bootstrapCompleted else { return }
         let snapshot = try await environment.snapshot()
         try await verifyAccount(accountID)
-        guard self.syncStore === syncStore, stateManager.iCloudSyncEnabled else { throw CancellationError() }
+        guard self.syncStore === store, stateManager.iCloudSyncEnabled else { throw CancellationError() }
+        let current =
+            try snapshot.control.map { try CloudSyncControl(record: $0, zone: zoneID) }
+            ?? CloudSyncControl.baseline(in: zoneID)
+        try current.requireReady(generation: control.generation)
+        for record in snapshot.businessRecords {
+            try CloudSyncControl.validateBusinessRecord(record, generation: control.generation)
+        }
         let reconciler = InitialSyncReconciler(codec: recordCodec)
-        try await syncStore.activate(accountID: accountID) { actor in
+        try await store.activate(accountID: accountID, generation: control.generation) { actor in
             try reconciler.stageMerge(snapshot, in: actor.modelContext)
         }
+    }
+
+    private func loadControl() async throws -> CloudSyncControl {
+        if let record = try await environment.controlRecord() {
+            return try CloudSyncControl(record: record, zone: zoneID)
+        }
+        return try CloudSyncControl.baseline(in: zoneID)
     }
 
     /// The save-time value is captured before debounce. This keeps a save made
@@ -430,6 +490,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
 
     private func performDisable(_ policy: DisablePolicy) async throws {
         let store = makePersistenceStore(writer)
+        try await store.transaction { try CloudRecoveryStore.requireNoPendingRecovery(in: $0.modelContext) }
         if case .removeLocalCopy = policy {
             let pending = try await writer.transaction { try $0.modelContext.fetchCount(FetchDescriptor<SyncChange>()) }
             guard pending == 0 else { throw SyncPersistenceError.unsynchronizedChanges }
@@ -451,7 +512,6 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         let previousStore = syncStore
         session = .stopping
         inFlightGenerations.removeAll()
-        syncStore = nil
         await previousStore?.close()
         await previousEngine?.cancelOperations()
         if case .stopping = session { session = .stopped }
@@ -539,7 +599,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         scope: CKSyncEngine.SendChangesOptions.Scope,
         from syncEngine: any SyncEngineDriver
     ) async -> CKSyncEngine.RecordZoneChangeBatch? {
-        guard self.syncEngine === syncEngine, syncStore?.health == .ready,
+        guard let bound = runtime, bound.driver === syncEngine, bound.store.health == .ready,
             stateManager.iCloudSyncEnabled
         else { return nil }
         do {
@@ -558,7 +618,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
             let blocked = try await writer.transaction { try database.blockedVehicleNames(in: $0.modelContext) }
             let builder = await CloudChangeBatchBuilder.make(
                 container: writer.container, codec: recordCodec, blockedParents: blocked)
-            let prepared = try await builder.build(pendingChanges: pending)
+            let prepared = try await builder.build(pendingChanges: pending, control: bound.control)
             let metrics = await builder.metrics
             guard self.syncEngine === syncEngine, syncStore?.health == .ready,
                 stateManager.iCloudSyncEnabled, let prepared
@@ -579,9 +639,10 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
 
     func receive(_ event: SyncEngineEvent, from driver: any SyncEngineDriver) async {
         guard stateManager.iCloudSyncEnabled && stateManager.initialSyncCompleted,
-            self.syncEngine === driver, let store = syncStore, store.health == .ready
+            let bound = runtime, bound.driver === driver, bound.store.health == .ready
         else { return }
-        let database = SyncDatabase(codec: recordCodec)
+        let store = bound.store
+        let database = SyncDatabase(codec: recordCodec, generation: bound.control.generation)
         do {
             switch event {
             case .checkpoint(let data):
@@ -594,19 +655,45 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 try await store.capture(
                     modifications: modifications.filter { $0.recordID.zoneID == zoneID },
                     deletions: deletions.filter { $0.recordID.zoneID == zoneID })
+                guard self.syncEngine === driver else { return }
+                for record in modifications
+                where record.recordType == CloudSyncControl.recordType && record.recordID.zoneID == zoneID {
+                    let incoming = try CloudSyncControl(record: record, zone: zoneID)
+                    try incoming.requireReady(generation: bound.control.generation)
+                    bound.control = incoming
+                }
             case .fetchedZone(let id, let error):
                 guard id == zoneID else { break }
                 if let error {
                     activity.failed(.fetch, error: error)
                 } else {
+                    let control = try await loadControl()
+                    try control.requireReady(generation: bound.control.generation)
+                    try await verifyAccount(bound.accountID)
+                    guard self.syncEngine === driver else { return }
+                    bound.control = control
                     let effects = try await store.transaction { try database.applyInbox(in: $0.modelContext) }
                     guard self.syncEngine === driver else { return }
                     apply(effects, to: driver)
                 }
             case .sentRecords(let sent):
+                try await verifyAccount(bound.accountID)
+                guard self.syncEngine === driver else { return }
+                let outcome = try bound.control.outcome(of: sent)
+                bound.control = outcome.control
                 let generations = inFlightGenerations
                 let effects = try await store.transaction {
-                    try database.stageSent(sent, generations: generations, in: $0.modelContext)
+                    let context = $0.modelContext
+                    var effects = try database.stageSent(outcome.business, generations: generations, in: context)
+                    if !outcome.retryIDs.isEmpty {
+                        effects.additions += try database.pendingChanges(in: context).filter { change in
+                            switch change {
+                            case .saveRecord(let id), .deleteRecord(let id): return outcome.retryIDs.contains(id)
+                            @unknown default: return false
+                            }
+                        }
+                    }
+                    return effects
                 }
                 guard self.syncEngine === driver else { return }
                 apply(effects, to: driver)
@@ -614,9 +701,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
             case .didSend: activity.finished(.send)
             case .deletedZones(let ids):
                 guard ids.contains(zoneID) else { break }
-                try await store.transaction { try database.stageDeletedZone(in: $0.modelContext) }
-                guard self.syncEngine === driver else { return }
-                driver.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+                throw CloudRecoveryError.generationChanged
             case .sentZones(let errors):
                 for error in errors { activity.failed(.send, error: error) }
             case .accountChanged(let change):
@@ -625,6 +710,8 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 if verified {
                     await enqueuePendingJournalChanges()
                 } else {
+                    try await store.detach()
+                    guard self.syncEngine === driver else { return }
                     stateManager.iCloudSyncEnabled = false
                     stateManager.initialSyncCompleted = false
                     stateManager.syncStatus = .unavailable
@@ -632,7 +719,6 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                     saveObserver = nil
                     inFlightGenerations.removeAll()
                     session = .stopped
-                    syncStore = nil
                     await store.close()
                     Task { await driver.cancelOperations() }
                 }
@@ -643,8 +729,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         } catch {
             guard self.syncEngine === driver else { return }
             Self.logger.error("Failed to persist or apply CloudKit changes: \(error)")
-            stateManager.syncStatus = .error(error.localizedDescription)
-            session = .recoveryRequired
+            recordRecoveryFailure(error)
             await store.close()
             Task { await driver.cancelOperations() }
         }

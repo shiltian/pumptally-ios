@@ -55,7 +55,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
     }
 
     private func runtime(url: URL? = nil) throws -> Runtime {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let configuration =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -98,6 +98,56 @@ final class CloudSyncRuntimeTests: XCTestCase {
             recordID: record.id, vehicleID: vehicle.id, fault: fault)
     }
 
+    func testAdvancedGenerationRejectsPreparedOrdinarySaveAndDeleteWithoutAcknowledgingIntent() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        let context = runtime.context
+        let removed = try runtime.record(in: context)
+        try SyncChangeJournal.enqueue(removed, operation: .delete, in: context)
+        context.delete(removed)
+        let inserted = Vehicle(name: "Later local vehicle")
+        context.insert(inserted)
+        try SyncChangeJournal.enqueue(inserted, in: context)
+        try context.save()
+        await runtime.service.pushPendingLocalChanges()
+        let before = try runtime.journal().map { $0.key + $0.generation }.sorted()
+        runtime.environment.batchHandler = { batch in
+            XCTAssertTrue(batch.atomicByZone)
+            XCTAssertEqual(batch.recordIDsToDelete, [runtime.cloudID])
+            XCTAssertEqual(batch.businessRecordsToSave.map(\.recordID.recordName), [inserted.id.uuidString])
+            let replacement = try CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID)
+                .changing(generation: UUID().uuidString, phase: .ready).record
+            replacement["testServerTag"] = "advanced-on-another-device"
+            runtime.environment.records.control = replacement
+        }
+        runtime.driver.automaticDelivery = true
+        try await runtime.driver.sendChanges()
+        XCTAssertEqual(try runtime.journal().map { $0.key + $0.generation }.sorted(), before)
+        XCTAssertEqual(runtime.environment.records.fuelingRecords.map(\.recordID), [runtime.cloudID])
+        XCTAssertFalse(
+            runtime.environment.records.vehicles.contains { $0.recordID.recordName == inserted.id.uuidString })
+        XCTAssertFalse(runtime.state.iCloudSyncEnabled)
+        XCTAssertFalse(runtime.state.initialSyncCompleted)
+        guard case .error = runtime.state.syncStatus else { return XCTFail("A changed generation must pause sync") }
+    }
+
+    func testNewGenerationInboundDeletionIsRetainedWithoutDeletingLocalData() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        let generation = try CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID)
+            .changing(generation: UUID().uuidString, phase: .ready)
+        runtime.environment.records.control = generation.record
+        await runtime.driver.emit(
+            .fetchedRecords(
+                modifications: [generation.record],
+                deletions: [
+                    (recordID: runtime.cloudID, recordType: CloudRecordType.fuelingRecord)
+                ]))
+        XCTAssertEqual(try runtime.record(in: runtime.context).notes, "baseline")
+        XCTAssertEqual(try runtime.context.fetchCount(FetchDescriptor<PendingRemoteChange>()), 2)
+        XCTAssertFalse(runtime.state.iCloudSyncEnabled)
+    }
+
     func testInitialUploadCommitsIntentBeforeAnEngineExists() async throws {
         let runtime = try runtime()
         runtime.state.iCloudSyncEnabled = false
@@ -109,7 +159,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.state.syncStatus, .syncing)
         XCTAssertEqual(runtime.driver.pendingRecordZoneChanges.count, 2)
         let batch = await runtime.driver.batch()
-        XCTAssertEqual(batch?.recordsToSave.count, 2)
+        XCTAssertEqual(batch?.businessRecordsToSave.count, 2)
     }
 
     func testBackgroundSaveCapturesPushSuppressionBeforeMainRunLoopDelivery() async throws {
@@ -141,7 +191,8 @@ final class CloudSyncRuntimeTests: XCTestCase {
         XCTAssertEqual(try runtime.journal().map(\.recordName), [runtime.recordID.uuidString])
         let batch = await runtime.driver.batch()
         XCTAssertEqual(
-            batch?.recordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String, "local winner")
+            batch?.businessRecordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String,
+            "local winner")
         XCTAssertEqual(runtime.state.syncStatus, .syncing)
     }
 
@@ -151,22 +202,22 @@ final class CloudSyncRuntimeTests: XCTestCase {
         try await runtime.edit(notes: "first edit")
         await runtime.service.pushPendingLocalChanges()
         let firstBatch = await runtime.driver.batch()
-        let first = try XCTUnwrap(firstBatch?.recordsToSave.first)
+        _ = try XCTUnwrap(firstBatch?.businessRecordsToSave.first)
         let firstGeneration = try XCTUnwrap(runtime.journal().first?.generation)
         try await runtime.edit(notes: "second edit")
         let secondGeneration = try XCTUnwrap(runtime.journal().first?.generation)
         XCTAssertNotEqual(firstGeneration, secondGeneration)
         runtime.driver.remove(pendingRecordZoneChanges: [.saveRecord(runtime.cloudID)])
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [first])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(firstBatch).recordsToSave)))
         XCTAssertEqual(try runtime.journal().first?.generation, secondGeneration)
         XCTAssertEqual(runtime.driver.pendingRecordZoneChanges, [.saveRecord(runtime.cloudID)])
         let secondBatch = await runtime.driver.batch()
-        let second = try XCTUnwrap(secondBatch?.recordsToSave.first)
+        let second = try XCTUnwrap(secondBatch?.businessRecordsToSave.first)
         XCTAssertEqual(second[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String, "second edit")
         runtime.driver.remove(pendingRecordZoneChanges: [.saveRecord(runtime.cloudID)])
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [second])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(secondBatch).recordsToSave)))
         XCTAssertTrue(try runtime.journal().isEmpty)
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [second])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(secondBatch).recordsToSave)))
         XCTAssertTrue(try runtime.journal().isEmpty)
     }
 
@@ -176,14 +227,14 @@ final class CloudSyncRuntimeTests: XCTestCase {
         try await runtime.edit(notes: "save in flight")
         await runtime.service.pushPendingLocalChanges()
         let batch = await runtime.driver.batch()
-        let saved = try XCTUnwrap(batch?.recordsToSave.first)
+        _ = try XCTUnwrap(batch?.businessRecordsToSave.first)
         let context = runtime.context
         let record = try runtime.record(in: context)
         try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
         context.delete(record)
         try context.save()
         runtime.driver.remove(pendingRecordZoneChanges: [.saveRecord(runtime.cloudID)])
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [saved])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(batch).recordsToSave)))
         XCTAssertEqual(try runtime.journal().first?.operationRaw, "delete")
         let deleteBatch = await runtime.driver.batch()
         XCTAssertEqual(deleteBatch?.recordIDsToDelete, [runtime.cloudID])
@@ -277,9 +328,9 @@ final class CloudSyncRuntimeTests: XCTestCase {
         try await runtime.edit(notes: "keep me")
         await runtime.service.pushPendingLocalChanges()
         let batch = await runtime.driver.batch()
-        let record = try XCTUnwrap(batch?.recordsToSave.first)
+        _ = try XCTUnwrap(batch?.businessRecordsToSave.first)
         runtime.fault.enabled = true
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [record])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(batch).recordsToSave)))
         runtime.fault.enabled = false
         XCTAssertEqual(try runtime.journal().count, 1)
         await runtime.driver.emit(.checkpoint(Data("late checkpoint".utf8)))
@@ -319,6 +370,10 @@ final class CloudSyncRuntimeTests: XCTestCase {
         let asyncResult5 = try await SyncPersistenceStore(container: runtime.container).loadEncodedState()
         XCTAssertNil(asyncResult5)
         XCTAssertEqual(try runtime.context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
+        // Returning to the prior account still requires a new source choice.
+        try await runtime.service.resumeRecoveryIfNeeded()
+        XCTAssertFalse(runtime.state.iCloudSyncEnabled)
+        XCTAssertFalse(runtime.state.initialSyncCompleted)
     }
 
     func testStartupZoneFailureNeverStartsAnEngineOrChangesBusinessValues() async throws {
@@ -345,7 +400,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
         let excluded = await runtime.driver.batch(scope: .recordIDs([legacyID]))
         XCTAssertNil(excluded)
         let included = await runtime.driver.batch(scope: .recordIDs([runtime.cloudID]))
-        XCTAssertEqual(included?.recordsToSave.map(\.recordID), [runtime.cloudID])
+        XCTAssertEqual(included?.businessRecordsToSave.map(\.recordID), [runtime.cloudID])
         XCTAssertTrue(included?.recordIDsToDelete.isEmpty == true)
     }
 
@@ -355,7 +410,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
         try await runtime.edit(notes: "trusted local")
         await runtime.service.pushPendingLocalChanges()
         let batch = await runtime.driver.batch()
-        let submitted = try XCTUnwrap(batch?.recordsToSave.first)
+        let submitted = try XCTUnwrap(batch?.businessRecordsToSave.first)
         let malformed = CKRecord(recordType: "FuelingRecord", recordID: runtime.cloudID)
         let conflict = CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: malformed])
         await runtime.driver.emit(.sentRecords(.init(failedSaves: [(submitted, conflict)])))
@@ -385,7 +440,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
         await runtime.service.pushPendingLocalChanges()
         runtime.driver.add(pendingRecordZoneChanges: [.deleteRecord(runtime.cloudID)])
         let batch = await runtime.driver.batch()
-        XCTAssertEqual(batch?.recordsToSave.map(\.recordID), [runtime.cloudID])
+        XCTAssertEqual(batch?.businessRecordsToSave.map(\.recordID), [runtime.cloudID])
         XCTAssertTrue(batch?.recordIDsToDelete.isEmpty == true)
     }
 
@@ -393,8 +448,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
         let runtime = try runtime()
         runtime.environment.automaticDelivery = true
         try await runtime.service.replaceCloudDataWithLocal()
-        XCTAssertEqual(runtime.environment.zoneReplacements, 1)
-        XCTAssertEqual(runtime.environment.drivers.count, 1)
+        XCTAssertGreaterThan(runtime.environment.drivers.count, 1)
         XCTAssertTrue(try runtime.journal().isEmpty)
         XCTAssertEqual(runtime.state.syncStatus, .synced)
         XCTAssertEqual(try runtime.record(in: runtime.context).odometer.bitPattern, 1000.123456789.bitPattern)
@@ -409,7 +463,6 @@ final class CloudSyncRuntimeTests: XCTestCase {
             try await runtime.service.replaceCloudDataWithLocal()
             XCTFail("Invalid snapshot must fail before deleting cloud data")
         } catch {
-            XCTAssertEqual(runtime.environment.zoneReplacements, 0)
             XCTAssertEqual(runtime.environment.zonePreparations, 0)
             XCTAssertTrue(runtime.environment.drivers.isEmpty)
         }
@@ -438,12 +491,12 @@ final class CloudSyncRuntimeTests: XCTestCase {
         try await runtime.edit(notes: "submitted value")
         await runtime.service.pushPendingLocalChanges()
         let batch = await runtime.driver.batch()
-        let submitted = try XCTUnwrap(batch?.recordsToSave.first)
+        _ = try XCTUnwrap(batch?.businessRecordsToSave.first)
         let uiContext = runtime.container.mainContext
         uiContext.autosaveEnabled = false
         let unsaved = try runtime.record(in: uiContext)
         unsaved.notes = "unsaved UI draft"
-        await runtime.driver.emit(.sentRecords(.init(savedRecords: [submitted])))
+        await runtime.driver.emit(.sentRecords(.init(savedRecords: try XCTUnwrap(batch).recordsToSave)))
         XCTAssertTrue(uiContext.hasChanges)
         XCTAssertEqual(try runtime.record(in: runtime.context).notes, "submitted value")
         XCTAssertTrue(try runtime.journal().isEmpty)
@@ -453,8 +506,16 @@ final class CloudSyncRuntimeTests: XCTestCase {
         let runtime = try runtime()
         runtime.state.iCloudSyncEnabled = false
         runtime.state.initialSyncCompleted = false
+        runtime.environment.automaticDelivery = true
+        runtime.environment.afterBatch = { batch in
+            if batch.recordsToSave.first?["phase"] as? String == "ready" {
+                runtime.environment.automaticDelivery = false
+            }
+        }
         let proposal = try await runtime.service.prepareInitialSync()
         try await runtime.service.enableSync(strategy: .replaceCloud, proposal: proposal)
+        try await runtime.edit(notes: "later local edit")
+        await runtime.service.pushPendingLocalChanges()
         let driver = runtime.driver
         let batch = await driver.batch()
         let saved = try XCTUnwrap(batch?.recordsToSave)
@@ -539,7 +600,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
             await runtime.driver.emit(.checkpoint(state))
             await runtime.service.stopMonitoring()
         }
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let reopened = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let environment = TestingCloudSyncEnvironment()

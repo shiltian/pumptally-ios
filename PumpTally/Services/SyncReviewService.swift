@@ -123,6 +123,9 @@ enum SyncReviewService {
     ) throws -> Disposition {
         let validator = CloudSnapshotValidator()
         switch record.recordType {
+        case CloudSyncControl.recordType:
+            _ = try CloudSyncControl(record: record, zone: record.recordID.zoneID)
+            return .automatic
         case CloudRecordCodec.RecordType.vehicle:
             let snapshot = try validator.validate(vehicleRecords: [record], fuelingRecordRecords: []).vehicles[0]
             guard let local = vehicles[snapshot.id], local.unitSystem != snapshot.unitSystem else { return .automatic }
@@ -146,6 +149,7 @@ enum SyncReviewService {
     static func resolveLegacyDeletions(apply: Bool, writer: OwnedModelStore) async throws {
         try await writer.transaction { actor in
             let context = actor.modelContext
+            try CloudRecoveryStore.requireNoPendingRecovery(in: context)
             let pending = try context.fetch(
                 FetchDescriptor<SyncChange>(
                     predicate: #Predicate {
@@ -192,6 +196,7 @@ enum SyncReviewService {
     static func confirm(_ item: Item, sourceUnit: UnitSystem, writer: OwnedModelStore) async throws {
         try await writer.transaction { actor in
             let context = actor.modelContext
+            try CloudRecoveryStore.requireNoPendingRecovery(in: context)
             guard let current = try items(in: context).first(where: { $0.id == item.id }),
                 current.archivedPayload == item.archivedPayload
             else { throw FuelingRecordEditingError.recordChanged }

@@ -42,7 +42,9 @@ struct iCloudSyncDetailView: View {
             } footer: {
                 if let vc = cloudVehicleCount, let rc = cloudRecordCount,
                    (vc != vehicles.count || rc != totalRecordCount) {
-                    Text("Counts differ from local data. Use \"Force Re-sync from Local\" to wipe iCloud and re-upload all local data.")
+                    Text(
+                        "Counts can differ while changes are pending. Replace iCloud data only when this device has the copy you want to keep."
+                    )
                         .font(.appCaption)
                         .foregroundColor(.orange)
                 }
@@ -69,7 +71,7 @@ struct iCloudSyncDetailView: View {
                     showingForceResyncAlert = true
                 } label: {
                     HStack {
-                        Label("Force Re-sync from Local", systemImage: "arrow.triangle.2.circlepath")
+                        Label("Replace iCloud Data", systemImage: "arrow.triangle.2.circlepath")
                             .font(.appBody)
                         Spacer()
                         if isResyncing {
@@ -83,7 +85,9 @@ struct iCloudSyncDetailView: View {
                 Text("Actions")
                     .font(.appCaption)
             } footer: {
-                Text("Force re-sync will delete all iCloud data and re-upload everything from this device.")
+                Text(
+                    "Replacement publishes a saved snapshot from this device. Interrupted replacements can resume; later local edits sync afterward."
+                )
                     .font(.appCaption)
             }
 
@@ -100,13 +104,15 @@ struct iCloudSyncDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("iCloud Sync Details")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Force Re-sync?", isPresented: $showingForceResyncAlert) {
+        .alert("Replace iCloud Data?", isPresented: $showingForceResyncAlert) {
             Button("Cancel", role: .cancel) { }
-            Button("Re-sync", role: .destructive) {
+            Button("Replace", role: .destructive) {
                 forceResyncFromLocal()
             }
         } message: {
-            Text("This will delete all data in iCloud and re-upload all local data (\(vehicles.count) vehicle(s), \(totalRecordCount) record(s)). This may take a moment.")
+            Text(
+                "Use this device's \(vehicles.count) vehicle(s) and \(totalRecordCount) record(s) to replace the iCloud copy? Update or close PumpTally on your other devices until replacement finishes. Older versions cannot coordinate replacement."
+            )
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }

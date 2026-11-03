@@ -1,8 +1,37 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "$" : {
+    "--" : {
 
+    },
+    "—" : {
+
+    },
+    "... and %lld more rows" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "... y %lld filas más"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "...还有%lld行"
+          }
+        }
+      }
+    },
+    "(%@ %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "(%1$@ %2$@)"
+          }
+        }
+      }
     },
     "%@ %@" : {
       "localizations" : {
@@ -10,6 +39,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ → %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ → %2$@ %3$@"
           }
         }
       }
@@ -46,18 +85,60 @@
         }
       }
     },
-    "%@ → %@ %@" : {
+    "%lld" : {
+
+    },
+    "%lld possible duplicate rows" : {
       "localizations" : {
         "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ → %2$@ %3$@"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld possible duplicate row"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld possible duplicate rows"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld posible fila duplicada"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld posibles filas duplicadas"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 行可能重复"
+                }
+              }
+            }
           }
         }
       }
-    },
-    "%lld" : {
-
     },
     "%lld record(s) imported successfully" : {
       "localizations" : {
@@ -107,34 +188,63 @@
         }
       }
     },
-    "(%@ %@)" : {
+    "%lld records will be imported." : {
       "localizations" : {
         "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "(%1$@ %2$@)"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld record will be imported."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld records will be imported."
+                }
+              }
+            }
           }
-        }
-      }
-    },
-    "--" : {
-
-    },
-    "... and %lld more rows" : {
-      "localizations" : {
+        },
         "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "... y %lld filas más"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Se importará %lld registro."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Se importarán %lld registros."
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "...还有%lld行"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "将导入 %lld 条记录。"
+                }
+              }
+            }
           }
         }
       }
+    },
+    "© 2026 Shilei Tian" : {
+
+    },
+    "$" : {
+
     },
     "Actions" : {
       "localizations" : {
@@ -168,6 +278,22 @@
         }
       }
     },
+    "Add notes (optional)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agregar notas (opcional)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加备注（可选）"
+          }
+        }
+      }
+    },
     "Add Vehicle" : {
       "localizations" : {
         "es" : {
@@ -196,22 +322,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加您的第一辆车"
-          }
-        }
-      }
-    },
-    "Add notes (optional)" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agregar notas (opcional)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加备注（可选）"
           }
         }
       }
@@ -285,22 +395,6 @@
     "Apply these changes using the units you selected? Your other records will keep their physical distances and fuel volumes." : {
 
     },
-    "Are You Sure?" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Estás seguro?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "确定吗？"
-          }
-        }
-      }
-    },
     "Are you sure you want to delete this fueling record? This action cannot be undone." : {
       "localizations" : {
         "es" : {
@@ -333,6 +427,22 @@
         }
       }
     },
+    "Are You Sure?" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Estás seguro?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定吗？"
+          }
+        }
+      }
+    },
     "Average" : {
       "localizations" : {
         "es" : {
@@ -349,18 +459,18 @@
         }
       }
     },
-    "Avg $/Mile" : {
+    "Avg %@" : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prom. $/Milla"
+            "value" : "Prom. %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平均$/英里"
+            "value" : "平均%@"
           }
         }
       }
@@ -381,18 +491,18 @@
         }
       }
     },
-    "Avg %@" : {
+    "Avg $/Mile" : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prom. %@"
+            "value" : "Prom. $/Milla"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平均%@"
+            "value" : "平均$/英里"
           }
         }
       }
@@ -467,54 +577,6 @@
         }
       }
     },
-    "CSV Units" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unidades del CSV"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV 单位"
-          }
-        }
-      }
-    },
-    "CSV file saved successfully." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Archivo CSV guardado correctamente."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV文件保存成功。"
-          }
-        }
-      }
-    },
-    "CSV files do not include measurement units. Choose the units used by the original records." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los archivos CSV no incluyen unidades de medida. Elige las unidades de los registros originales."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV 文件不包含计量单位。请选择原始记录使用的单位。"
-          }
-        }
-      }
-    },
     "Cancel" : {
       "localizations" : {
         "es" : {
@@ -553,6 +615,22 @@
         }
       }
     },
+    "Choose an Action" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige una acción"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择操作"
+          }
+        }
+      }
+    },
     "Choose File" : {
       "localizations" : {
         "es" : {
@@ -571,22 +649,6 @@
     },
     "Choose Units" : {
 
-    },
-    "Choose an Action" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige una acción"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择操作"
-          }
-        }
-      }
     },
     "Choose which vehicle to import the records to:" : {
       "localizations" : {
@@ -680,22 +742,6 @@
         }
       }
     },
-    "Cost per Mile" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Costo por Milla"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每英里费用"
-          }
-        }
-      }
-    },
     "Cost per km" : {
       "localizations" : {
         "es" : {
@@ -712,7 +758,40 @@
         }
       }
     },
+    "Cost per Mile" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Costo por Milla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每英里费用"
+          }
+        }
+      }
+    },
+    "Counts can differ while changes are pending. Replace iCloud data only when this device has the copy you want to keep." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los recuentos pueden diferir mientras haya cambios pendientes. Reemplaza los datos de iCloud solo si este dispositivo tiene la copia que quieres conservar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有待同步的更改时，记录数量可能不同。仅当此设备上的副本是你想保留的数据时，才替换 iCloud 数据。"
+          }
+        }
+      }
+    },
     "Counts differ from local data. Use \"Force Re-sync from Local\" to wipe iCloud and re-upload all local data." : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -724,6 +803,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "数量与本地数据不一致。使用「从本地强制重新同步」来清除iCloud并重新上传所有本地数据。"
+          }
+        }
+      }
+    },
+    "CSV file saved successfully." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archivo CSV guardado correctamente."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CSV文件保存成功。"
+          }
+        }
+      }
+    },
+    "CSV files do not include measurement units. Choose the units used by the original records." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los archivos CSV no incluyen unidades de medida. Elige las unidades de los registros originales."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CSV 文件不包含计量单位。请选择原始记录使用的单位。"
+          }
+        }
+      }
+    },
+    "CSV Units" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unidades del CSV"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CSV 单位"
           }
         }
       }
@@ -1134,6 +1261,9 @@
         }
       }
     },
+    "expected between 5 and 7 columns" : {
+
+    },
     "Export %lld records as a CSV file" : {
       "localizations" : {
         "es" : {
@@ -1262,6 +1392,9 @@
         }
       }
     },
+    "fill-up type must be full, partial, or reset" : {
+
+    },
     "Filled the tank completely" : {
       "localizations" : {
         "es" : {
@@ -1278,7 +1411,24 @@
         }
       }
     },
+    "Finish the pending iCloud replacement before changing sync settings." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completa el reemplazo pendiente de iCloud antes de cambiar los ajustes de sincronización."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成待处理的 iCloud 数据替换，再更改同步设置。"
+          }
+        }
+      }
+    },
     "Force Re-sync from Local" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -1294,23 +1444,8 @@
         }
       }
     },
-    "Force Re-sync?" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Forzar Re-sincronización?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "强制重新同步？"
-          }
-        }
-      }
-    },
     "Force re-sync will delete all iCloud data and re-upload everything from this device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -1326,7 +1461,27 @@
         }
       }
     },
+    "Force Re-sync?" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Forzar Re-sincronización?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强制重新同步？"
+          }
+        }
+      }
+    },
     "Fuel" : {
+
+    },
+    "fuel amount" : {
 
     },
     "Fuel Details" : {
@@ -1508,6 +1663,186 @@
         }
       }
     },
+    "iCloud" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        }
+      }
+    },
+    "iCloud already contains fueling data. How would you like to handle this?" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud ya contiene datos de combustible. ¿Cómo deseas manejar esto?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud中已有加油数据。您希望如何处理？"
+          }
+        }
+      }
+    },
+    "iCloud already contains fueling data. How would you like to handle this? Before using local data, update or close PumpTally on your other devices until replacement finishes." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud ya contiene datos de combustible. ¿Cómo quieres proceder? Antes de usar los datos locales, actualiza o cierra PumpTally en tus otros dispositivos hasta que termine el reemplazo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 中已有加油数据。你想如何处理？使用本地数据前，请更新其他设备上的 PumpTally，或将其关闭直到替换完成。"
+          }
+        }
+      }
+    },
+    "iCloud Data" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datos de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud数据"
+          }
+        }
+      }
+    },
+    "iCloud Data Found" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datos de iCloud Encontrados"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发现iCloud数据"
+          }
+        }
+      }
+    },
+    "iCloud data is being replaced. Try syncing again after replacement finishes." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se están reemplazando los datos de iCloud. Vuelve a sincronizar cuando termine el reemplazo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在替换 iCloud 数据。请在替换完成后重试同步。"
+          }
+        }
+      }
+    },
+    "iCloud data was replaced on another device. Enable sync again to choose which data to use." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos de iCloud se reemplazaron en otro dispositivo. Activa la sincronización de nuevo para elegir qué datos usar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一台设备已替换 iCloud 数据。请重新启用同步并选择要使用的数据。"
+          }
+        }
+      }
+    },
+    "iCloud Error" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud错误"
+          }
+        }
+      }
+    },
+    "iCloud Sync" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronización de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud同步"
+          }
+        }
+      }
+    },
+    "iCloud Sync Details" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detalles de Sincronización de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud同步详情"
+          }
+        }
+      }
+    },
+    "iCloud sync is already enabled." : {
+
+    },
+    "iCloud Unavailable" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud No Disponible"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud不可用"
+          }
+        }
+      }
+    },
     "Imperial" : {
       "localizations" : {
         "es" : {
@@ -1645,6 +1980,9 @@
         }
       }
     },
+    "Keep iCloud Copies" : {
+
+    },
     "Keep Local Data" : {
       "localizations" : {
         "es" : {
@@ -1660,9 +1998,6 @@
           }
         }
       }
-    },
-    "Keep iCloud Copies" : {
-
     },
     "Kilometers" : {
       "localizations" : {
@@ -1712,22 +2047,6 @@
         }
       }
     },
-    "Kilometers, Liters, L/100km" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kilómetros, Litros, L/100km"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "公里、升、L/100km"
-          }
-        }
-      }
-    },
     "Kilometers, Liters, km/L" : {
       "localizations" : {
         "es" : {
@@ -1740,6 +2059,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "公里、升、km/L"
+          }
+        }
+      }
+    },
+    "Kilometers, Liters, L/100km" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kilómetros, Litros, L/100km"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公里、升、L/100km"
           }
         }
       }
@@ -1948,22 +2283,6 @@
         }
       }
     },
-    "Miles Per Gallon" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Millas por Galón"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "英里/加仑"
-          }
-        }
-      }
-    },
     "Miles and US Gallons" : {
       "localizations" : {
         "es" : {
@@ -1976,6 +2295,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "英里和美制加仑"
+          }
+        }
+      }
+    },
+    "Miles Per Gallon" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Millas por Galón"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "英里/加仑"
           }
         }
       }
@@ -2140,22 +2475,6 @@
         }
       }
     },
-    "No Vehicles Found" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Se Encontraron Vehículos"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到车辆"
-          }
-        }
-      }
-    },
     "No fueling records yet" : {
       "localizations" : {
         "es" : {
@@ -2194,6 +2513,22 @@
         }
       }
     },
+    "No Vehicles Found" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Se Encontraron Vehículos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到车辆"
+          }
+        }
+      }
+    },
     "Not Syncing" : {
       "localizations" : {
         "es" : {
@@ -2226,21 +2561,8 @@
         }
       }
     },
-    "OK" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "好"
-          }
-        }
-      }
+    "odometer" : {
+
     },
     "Odometer" : {
       "localizations" : {
@@ -2254,22 +2576,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "里程表"
-          }
-        }
-      }
-    },
-    "Odometer Reading" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lectura del Odómetro"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "里程表读数"
           }
         }
       }
@@ -2318,6 +2624,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "里程表读数必须小于下一条读数（%1$@ %2$@）。"
+          }
+        }
+      }
+    },
+    "Odometer Reading" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lectura del Odómetro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里程表读数"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "好"
           }
         }
       }
@@ -2514,6 +2852,9 @@
         }
       }
     },
+    "price per fuel unit" : {
+
+    },
     "Price per Gallon" : {
       "localizations" : {
         "es" : {
@@ -2579,6 +2920,7 @@
       }
     },
     "Re-sync" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -2629,6 +2971,70 @@
         }
       }
     },
+    "Replace" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reemplazar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换"
+          }
+        }
+      }
+    },
+    "Replace iCloud Data" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reemplazar datos de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换 iCloud 数据"
+          }
+        }
+      }
+    },
+    "Replace iCloud Data?" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Reemplazar los datos de iCloud?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换 iCloud 数据？"
+          }
+        }
+      }
+    },
+    "Replacement publishes a saved snapshot from this device. Interrupted replacements can resume; later local edits sync afterward." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reemplazo publica una copia guardada de este dispositivo. Si se interrumpe, puedes reanudarlo; los cambios locales posteriores se sincronizan después."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换将上传此设备已保存的数据快照。替换中断后可继续，之后的本地编辑会在替换完成后同步。"
+          }
+        }
+      }
+    },
     "Required" : {
       "localizations" : {
         "es" : {
@@ -2641,6 +3047,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "必填"
+          }
+        }
+      }
+    },
+    "Resume iCloud Replacement" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar reemplazo de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续替换 iCloud 数据"
           }
         }
       }
@@ -2753,22 +3175,6 @@
         }
       }
     },
-    "Select Vehicle" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seleccionar Vehículo"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择车辆"
-          }
-        }
-      }
-    },
     "Select a CSV file to import fueling records" : {
       "localizations" : {
         "es" : {
@@ -2781,6 +3187,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择CSV文件以导入加油记录"
+          }
+        }
+      }
+    },
+    "Select Vehicle" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleccionar Vehículo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择车辆"
           }
         }
       }
@@ -2884,7 +3306,26 @@
         }
       }
     },
+    "Sync failed" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error de sincronización"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步失败"
+          }
+        }
+      }
+    },
     "Sync Needs Attention" : {
+
+    },
+    "Sync paused because changes could not be saved. Retry when storage is available." : {
 
     },
     "Sync Status" : {
@@ -2902,25 +3343,6 @@
           }
         }
       }
-    },
-    "Sync failed" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error de sincronización"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同步失败"
-          }
-        }
-      }
-    },
-    "Sync paused because changes could not be saved. Retry when storage is available." : {
-
     },
     "Sync your fueling data across all your devices using iCloud." : {
       "localizations" : {
@@ -3008,6 +3430,9 @@
     "The CSV header must contain date, odometer, price, fuel amount, and total cost columns." : {
 
     },
+    "the date is invalid" : {
+
+    },
     "The file contains no importable records" : {
 
     },
@@ -3046,7 +3471,64 @@
     "The iCloud account changed. Enable sync again to choose how to reconcile your data." : {
 
     },
+    "The iCloud changes could not be confirmed. Try syncing again. Your saved data has been kept." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron confirmar los cambios de iCloud. Intenta sincronizar de nuevo. Tus datos guardados se han conservado."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确认 iCloud 更改。请重试同步。已保存的数据已保留。"
+          }
+        }
+      }
+    },
+    "The iCloud replacement could not be verified. Your saved snapshot is available to resume." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo verificar el reemplazo de iCloud. La copia guardada está disponible para reanudarlo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法验证 iCloud 替换结果。已保存的快照可用于继续替换。"
+          }
+        }
+      }
+    },
+    "The iCloud sync format is not supported. Update PumpTally before syncing." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El formato de sincronización de iCloud no es compatible. Actualiza PumpTally antes de sincronizar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持此 iCloud 同步格式。请先更新 PumpTally 再同步。"
+          }
+        }
+      }
+    },
     "The local store changed. Enable iCloud sync again to review your choices." : {
+
+    },
+    "the reading must be a positive finite number" : {
+
+    },
+    "the reading must be greater than %@" : {
+
+    },
+    "the reading must be less than %@" : {
 
     },
     "The record could not be deleted. No data was changed. Please try again." : {
@@ -3061,6 +3543,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法删除该记录。未更改任何数据。请重试。"
+          }
+        }
+      }
+    },
+    "The saved iCloud replacement could not be read. Your original data has been kept." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer el reemplazo de iCloud guardado. Tus datos originales se han conservado."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的 iCloud 替换任务。原始数据已保留。"
           }
         }
       }
@@ -3156,6 +3654,22 @@
     "This vehicle changed while you were editing. Reopen it to review the latest values." : {
 
     },
+    "This vehicle has invalid dates or odometer readings. Review its history before importing." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este vehículo tiene fechas o lecturas del odómetro no válidas. Revisa su historial antes de importar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此车辆包含无效的日期或里程表读数。请在导入前检查其历史记录。"
+          }
+        }
+      }
+    },
     "This vehicle is no longer available." : {
 
     },
@@ -3179,6 +3693,7 @@
       }
     },
     "This will delete all data in iCloud and re-upload all local data (%lld vehicle(s), %lld record(s)). This may take a moment." : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -3273,6 +3788,9 @@
           }
         }
       }
+    },
+    "total cost" : {
+
     },
     "Total Cost" : {
       "localizations" : {
@@ -3405,38 +3923,6 @@
         }
       }
     },
-    "Unable to Prepare Your Data" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudieron preparar tus datos"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法准备你的数据"
-          }
-        }
-      }
-    },
-    "Unable to Save" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se puede guardar"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法保存"
-          }
-        }
-      }
-    },
     "Unable to import the selected records." : {
 
     },
@@ -3452,6 +3938,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法打开所选文件。请重试。"
+          }
+        }
+      }
+    },
+    "Unable to Prepare Your Data" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron preparar tus datos"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备你的数据"
           }
         }
       }
@@ -3484,6 +3986,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法读取所选文件。请确保它是有效的CSV文件。"
+          }
+        }
+      }
+    },
+    "Unable to Save" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se puede guardar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存"
           }
         }
       }
@@ -3539,6 +4057,22 @@
         }
       }
     },
+    "Use iCloud Data" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar Datos de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用iCloud数据"
+          }
+        }
+      }
+    },
     "Use Local Data" : {
       "localizations" : {
         "es" : {
@@ -3555,18 +4089,18 @@
         }
       }
     },
-    "Use iCloud Data" : {
+    "Use this device's %lld vehicle(s) and %lld record(s) to replace the iCloud copy? Update or close PumpTally on your other devices until replacement finishes. Older versions cannot coordinate replacement." : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Usar Datos de iCloud"
+            "value" : "¿Usar los %1$lld vehículos y %2$lld registros de este dispositivo para reemplazar la copia de iCloud? Actualiza o cierra PumpTally en tus otros dispositivos hasta que termine el reemplazo. Las versiones anteriores no pueden coordinarlo."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用iCloud数据"
+            "value" : "使用此设备的 %1$lld 辆车和 %2$lld 条记录替换 iCloud 副本？请更新其他设备上的 PumpTally，或将其关闭直到替换完成。旧版本无法协调数据替换。"
           }
         }
       }
@@ -3797,293 +4331,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "车辆或记录已更改。请在保存前重新检查导入数据。"
-          }
-        }
-      }
-    },
-    "expected between 5 and 7 columns" : {
-
-    },
-    "fill-up type must be full, partial, or reset" : {
-
-    },
-    "fuel amount" : {
-
-    },
-    "iCloud" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud"
-          }
-        }
-      }
-    },
-    "iCloud Data" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datos de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud数据"
-          }
-        }
-      }
-    },
-    "iCloud Data Found" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datos de iCloud Encontrados"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "发现iCloud数据"
-          }
-        }
-      }
-    },
-    "iCloud Error" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud错误"
-          }
-        }
-      }
-    },
-    "iCloud Sync" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sincronización de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud同步"
-          }
-        }
-      }
-    },
-    "iCloud Sync Details" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Detalles de Sincronización de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud同步详情"
-          }
-        }
-      }
-    },
-    "iCloud Unavailable" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud No Disponible"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud不可用"
-          }
-        }
-      }
-    },
-    "iCloud already contains fueling data. How would you like to handle this?" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud ya contiene datos de combustible. ¿Cómo deseas manejar esto?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud中已有加油数据。您希望如何处理？"
-          }
-        }
-      }
-    },
-    "iCloud sync is already enabled." : {
-
-    },
-    "odometer" : {
-
-    },
-    "price per fuel unit" : {
-
-    },
-    "the date is invalid" : {
-
-    },
-    "the reading must be a positive finite number" : {
-
-    },
-    "the reading must be greater than %@" : {
-
-    },
-    "the reading must be less than %@" : {
-
-    },
-    "total cost" : {
-
-    },
-    "© 2026 Shilei Tian" : {
-
-    },
-    "—" : {
-
-    },
-    "%lld possible duplicate rows" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld possible duplicate row"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld possible duplicate rows"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld posible fila duplicada"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld posibles filas duplicadas"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 行可能重复"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld records will be imported." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld record will be imported."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld records will be imported."
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Se importará %lld registro."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Se importarán %lld registros."
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "将导入 %lld 条记录。"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "This vehicle has invalid dates or odometer readings. Review its history before importing." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este vehículo tiene fechas o lecturas del odómetro no válidas. Revisa su historial antes de importar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此车辆包含无效的日期或里程表读数。请在导入前检查其历史记录。"
           }
         }
       }

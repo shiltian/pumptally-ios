@@ -456,7 +456,7 @@ struct EmptyHistoryView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV4.self)
+    let schema = Schema(versionedSchema: SchemaV5.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

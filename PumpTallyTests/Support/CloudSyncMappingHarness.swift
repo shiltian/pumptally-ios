@@ -4,6 +4,13 @@ import XCTest
 
 @testable import PumpTally
 
+extension CKSyncEngine.RecordZoneChangeBatch {
+    /// Assertions about business work exclude the independent protocol guard.
+    var businessRecordsToSave: [CKRecord] {
+        recordsToSave.filter { $0.recordType != CloudSyncControl.recordType }
+    }
+}
+
 /// Compatibility assertions now exercise the staging components directly.
 /// The production sync service accepts only its injected writer and values.
 @MainActor

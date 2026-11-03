@@ -14,6 +14,7 @@ struct InitialSyncProposal: Sendable {
     let containerID: ObjectIdentifier
     let hasCloudData: Bool
     let localChanges: [String: String]
+    var cloudGeneration: String = CloudSyncControl.baselineGeneration
 
     static func localChanges(in context: ModelContext) throws -> [String: String] {
         try context.fetch(FetchDescriptor<SyncChange>()).reduce(into: [:]) { result, change in

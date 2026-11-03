@@ -1,11 +1,11 @@
 // Separate app and development container; never used by the PumpTally scheme.
-// Supply this identifier explicitly when running the live protocol suite.
+// The live suite accepts only this isolated development container.
 CLOUDKIT_TEST_CONTAINER_IDENTIFIER = iCloud.me.tianshilei.fuelio.CloudKitProbe
 CODE_SIGN_ENTITLEMENTS = CloudKitProtocolTests/Probe.entitlements
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM = F9M3UZ669L
-GENERATE_INFOPLIST_FILE = YES
-INFOPLIST_KEY_CloudKitTestContainer = $(CLOUDKIT_TEST_CONTAINER_IDENTIFIER)
+GENERATE_INFOPLIST_FILE = NO
+INFOPLIST_FILE = CloudKitProtocolTests/Probe-Info.plist
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.CloudKitProbe
 PRODUCT_NAME = $(TARGET_NAME)

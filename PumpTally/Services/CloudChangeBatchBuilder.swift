@@ -51,7 +51,9 @@ actor CloudChangeBatchBuilder: ModelActor {
         }.value
     }
 
-    func build(pendingChanges: [CKSyncEngine.PendingRecordZoneChange]) async throws -> PreparedBatch? {
+    func build(pendingChanges: [CKSyncEngine.PendingRecordZoneChange], control: CloudSyncControl) async throws
+        -> PreparedBatch?
+    {
         let keys = pendingChanges.flatMap { change -> [String] in
             let id: CKRecord.ID
             switch change {
@@ -78,18 +80,28 @@ actor CloudChangeBatchBuilder: ModelActor {
             }
         }
         guard !eligible.isEmpty else { return nil }
-        let batch = await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: eligible) { id in
-            await self.record(for: id)
+        let fence = control.batchRecord()
+        let batch = await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: [.saveRecord(fence.recordID)] + eligible) {
+            id in
+            if id == fence.recordID { return fence }
+            let record = await self.record(for: id)
+            record?[CloudSyncControl.businessGenerationField] = control.generation
+            return record
         }
         // The provider cannot throw. Fail the whole preparation if any requested
         // record is invalid, rather than sending a partially validated batch.
         if let failure { throw failure }
-        guard let batch else { return nil }
+        guard var prepared = batch else { return nil }
+        guard prepared.recordsToSave.contains(where: { $0.recordID == fence.recordID }) else {
+            throw CloudRecoveryError.invalidControl
+        }
+        guard prepared.recordsToSave.count + prepared.recordIDsToDelete.count > 1 else { return nil }
+        prepared.atomicByZone = true
         var generations: [String: String] = [:]
-        for id in batch.recordsToSave.map(\.recordID) + batch.recordIDsToDelete {
+        for id in prepared.recordsToSave.map(\.recordID) + prepared.recordIDsToDelete {
             if let intent = intent(for: id) { generations[intent.key] = intent.generation }
         }
-        return PreparedBatch(batch: batch, generations: generations)
+        return PreparedBatch(batch: prepared, generations: generations)
     }
 
     private func intent(for id: CKRecord.ID) -> Intent? {

@@ -101,6 +101,23 @@
 		Z300000129B60001 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = Z300000229B60001 /* Fixtures */; };
 		Z400000129B60001 /* SyncReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z400000229B60001 /* SyncReviewService.swift */; };
 		Z500000129B60001 /* SyncReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z500000229B60001 /* SyncReviewView.swift */; };
+		D44F96FA1510FEB7C4B05120 /* CloudSyncControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 349A869AB1EDAE1DDF862B5C /* CloudSyncControl.swift */; };
+		8CA321126F64FBE6FEDB62FF /* CloudRecoveryManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71AAE9DBFCF583B222C2EEC2 /* CloudRecoveryManifest.swift */; };
+		B775A4B0540DFD1D7BD2E00A /* CloudRecoveryReceipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DC47BB5957993E77A03AB8 /* CloudRecoveryReceipt.swift */; };
+		A501A95C28C843A74D393313 /* CloudRecoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13950B6A00054316D2128D44 /* CloudRecoveryStore.swift */; };
+		BB971782B329E4B11001AB6C /* GuardedCloudSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9D836BD3EE2F2CFE765D40 /* GuardedCloudSession.swift */; };
+		8DD5119DB6274A447E2F9FE5 /* CloudRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A5D6FFC0514D38A9E7B8BC /* CloudRecoveryCoordinator.swift */; };
+		DD8E59EC95C3298F77E554E2 /* CloudRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F5031CCADCD46AC2D4D9A9D /* CloudRecoveryTests.swift */; };
+		7B0A374646138CC58ABBE9BF /* CloudSyncControl.swift in Probe Sources */ = {isa = PBXBuildFile; fileRef = 349A869AB1EDAE1DDF862B5C /* CloudSyncControl.swift */; };
+		E3B05073305066732B47DAC4 /* CloudSyncDriver.swift in Probe Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000002 /* CloudSyncDriver.swift */; };
+		03A754102CDCC97D5F363276 /* GuardedCloudSession.swift in Probe Sources */ = {isa = PBXBuildFile; fileRef = BF9D836BD3EE2F2CFE765D40 /* GuardedCloudSession.swift */; };
+		A9C2C069C71AB42E7E4B9776 /* CloudRecordType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5042ACE77ED1557AE7F692D3 /* CloudRecordType.swift */; };
+		D6672DA35CBE5604F2AF2379 /* CloudRecordType.swift in Probe Sources */ = {isa = PBXBuildFile; fileRef = 5042ACE77ED1557AE7F692D3 /* CloudRecordType.swift */; };
+		C417E02B86436A1EA92FAE07 /* SyncPersistenceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C23A07F3B84219725651F2F /* SyncPersistenceError.swift */; };
+		C296145031AA605975074410 /* SyncPersistenceError.swift in Probe Sources */ = {isa = PBXBuildFile; fileRef = 7C23A07F3B84219725651F2F /* SyncPersistenceError.swift */; };
+		BE6E07F8FA3F5D2EF7BC67D5 /* TestingRecoveryScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BC26A2C161799C4B6A2C01A /* TestingRecoveryScenario.swift */; };
+		D3D5EBAB1E1AA1024FC33B43 /* CloudRecoveryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */; };
+		0F1C89468A9F4B739305CF43 /* CloudSyncControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -179,6 +196,7 @@
 		AF0000000000000000000019 /* CloudKitProbe.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CloudKitProbe.xcconfig; sourceTree = "<group>"; };
 		AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CloudKitProtocolTests.xcconfig; sourceTree = "<group>"; };
 		AF000000000000000000001B /* Probe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Probe.entitlements; sourceTree = "<group>"; };
+		AF000000000000000000001D /* Probe-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Probe-Info.plist"; sourceTree = "<group>"; };
 		B00000000000000000000001 /* ProjectBenchmark.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectBenchmark.xcconfig; sourceTree = "<group>"; };
 		B00000000000000000000002 /* ApplicationBenchmark.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ApplicationBenchmark.xcconfig; sourceTree = "<group>"; };
 		B1000000296B0001 /* PumpTallyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PumpTallyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -232,6 +250,18 @@
 		Z300000229B60001 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fixtures; sourceTree = "<group>"; };
 		Z400000229B60001 /* SyncReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReviewService.swift; sourceTree = "<group>"; };
 		Z500000229B60001 /* SyncReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReviewView.swift; sourceTree = "<group>"; };
+		349A869AB1EDAE1DDF862B5C /* CloudSyncControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncControl.swift; sourceTree = "<group>"; };
+		71AAE9DBFCF583B222C2EEC2 /* CloudRecoveryManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryManifest.swift; sourceTree = "<group>"; };
+		F3DC47BB5957993E77A03AB8 /* CloudRecoveryReceipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryReceipt.swift; sourceTree = "<group>"; };
+		13950B6A00054316D2128D44 /* CloudRecoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryStore.swift; sourceTree = "<group>"; };
+		BF9D836BD3EE2F2CFE765D40 /* GuardedCloudSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardedCloudSession.swift; sourceTree = "<group>"; };
+		64A5D6FFC0514D38A9E7B8BC /* CloudRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryCoordinator.swift; sourceTree = "<group>"; };
+		2F5031CCADCD46AC2D4D9A9D /* CloudRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryTests.swift; sourceTree = "<group>"; };
+		5042ACE77ED1557AE7F692D3 /* CloudRecordType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecordType.swift; sourceTree = "<group>"; };
+		7C23A07F3B84219725651F2F /* SyncPersistenceError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncPersistenceError.swift; sourceTree = "<group>"; };
+		2BC26A2C161799C4B6A2C01A /* TestingRecoveryScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingRecoveryScenario.swift; sourceTree = "<group>"; };
+		17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryUITests.swift; sourceTree = "<group>"; };
+		B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncControlTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -311,6 +341,7 @@
 		A1000002296A0002 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F3DC47BB5957993E77A03AB8 /* CloudRecoveryReceipt.swift */,
 				X100000229B40001 /* FuelingRecordDraft.swift */,
 				A100000A296A0001 /* Vehicle.swift */,
 				A100000C296A0001 /* FuelingRecord.swift */,
@@ -347,6 +378,13 @@
 		A1000005296A0002 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				7C23A07F3B84219725651F2F /* SyncPersistenceError.swift */,
+				5042ACE77ED1557AE7F692D3 /* CloudRecordType.swift */,
+				64A5D6FFC0514D38A9E7B8BC /* CloudRecoveryCoordinator.swift */,
+				BF9D836BD3EE2F2CFE765D40 /* GuardedCloudSession.swift */,
+				13950B6A00054316D2128D44 /* CloudRecoveryStore.swift */,
+				71AAE9DBFCF583B222C2EEC2 /* CloudRecoveryManifest.swift */,
+				349A869AB1EDAE1DDF862B5C /* CloudSyncControl.swift */,
 				BF0000000000000000000502 /* SyncDatabase.swift */,
 				BF0000000000000000000102 /* StatisticsCachePersistenceService.swift */,
 				Z400000229B60001 /* SyncReviewService.swift */,
@@ -408,6 +446,7 @@
 		AA0000000000000000000007 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				2BC26A2C161799C4B6A2C01A /* TestingRecoveryScenario.swift */,
 				BF0000000000000000000602 /* CloudSyncMappingHarness.swift */,
 				AA0000000000000000000006 /* TestingAppBootstrap.swift */,
 				AC0000000000000000000302 /* TestingCloudSyncEnvironment.swift */,
@@ -438,6 +477,7 @@
 				AF0000000000000000000001 /* ProbeApp.swift */,
 				AF0000000000000000000003 /* CloudKitProtocolTests.swift */,
 				AF000000000000000000001B /* Probe.entitlements */,
+				AF000000000000000000001D /* Probe-Info.plist */,
 			);
 			path = CloudKitProtocolTests;
 			sourceTree = "<group>";
@@ -445,6 +485,7 @@
 		B1000001296B0002 /* PumpTallyTests */ = {
 			isa = PBXGroup;
 			children = (
+				2F5031CCADCD46AC2D4D9A9D /* CloudRecoveryTests.swift */,
 				AA0000000000000000000007 /* Support */,
 				Z300000229B60001 /* Fixtures */,
 				X200000229B40001 /* FuelingRecordDraftTests.swift */,
@@ -463,6 +504,7 @@
 				AD0000000000000000000002 /* CloudSyncRuntimeTests.swift */,
 				BD0000000000000000000002 /* SyncPerformanceTests.swift */,
 				BE0000000000000000000002 /* PersistenceObservationTests.swift */,
+				B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */,
 				BD0000000000000000000022 /* CloudChangeBatchBuilderTests.swift */,
 				AD0000000000000000000102 /* ApplicationLifecycleTests.swift */,
 				AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */,
@@ -490,6 +532,7 @@
 		UI0000000000000000000004 /* PumpTallyUITests */ = {
 			isa = PBXGroup;
 			children = (
+				17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */,
 				UI0000000000000000000002 /* FuelingRecordUITests.swift */,
 			);
 			path = PumpTallyUITests;
@@ -694,12 +737,21 @@
 				BE0000000000000000000101 /* OwnedModelStore.swift in Sources */,
 				BD0000000000000000000011 /* CloudChangeBatchBuilder.swift in Sources */,
 				AC0000000000000000000001 /* CloudSyncDriver.swift in Sources */,
+				C417E02B86436A1EA92FAE07 /* SyncPersistenceError.swift in Sources */,
+				A9C2C069C71AB42E7E4B9776 /* CloudRecordType.swift in Sources */,
+				8DD5119DB6274A447E2F9FE5 /* CloudRecoveryCoordinator.swift in Sources */,
+				BB971782B329E4B11001AB6C /* GuardedCloudSession.swift in Sources */,
+				A501A95C28C843A74D393313 /* CloudRecoveryStore.swift in Sources */,
+				B775A4B0540DFD1D7BD2E00A /* CloudRecoveryReceipt.swift in Sources */,
+				8CA321126F64FBE6FEDB62FF /* CloudRecoveryManifest.swift in Sources */,
+				D44F96FA1510FEB7C4B05120 /* CloudSyncControl.swift in Sources */,
 				AC0000000000000000000101 /* SyncActivity.swift in Sources */,
 				AC0000000000000000000201 /* ApplicationLifecycleCoordinator.swift in Sources */,
 				AC0000000000000000000301 /* TestingCloudSyncEnvironment.swift in Sources */,
 				AA0000000000000000000001 /* ApplicationEnvironment.swift in Sources */,
 				AA0000000000000000000003 /* ProductionAppBootstrap.swift in Sources */,
 				AA0000000000000000000005 /* TestingAppBootstrap.swift in Sources */,
+				BE6E07F8FA3F5D2EF7BC67D5 /* TestingRecoveryScenario.swift in Sources */,
 				Z500000129B60001 /* SyncReviewView.swift in Sources */,
 				Z400000129B60001 /* SyncReviewService.swift in Sources */,
 				X100000129B40001 /* FuelingRecordDraft.swift in Sources */,
@@ -747,6 +799,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF0000000000000000000002 /* ProbeApp.swift in Sources */,
+				C296145031AA605975074410 /* SyncPersistenceError.swift in Probe Sources */,
+				D6672DA35CBE5604F2AF2379 /* CloudRecordType.swift in Probe Sources */,
+				03A754102CDCC97D5F363276 /* GuardedCloudSession.swift in Probe Sources */,
+				E3B05073305066732B47DAC4 /* CloudSyncDriver.swift in Probe Sources */,
+				7B0A374646138CC58ABBE9BF /* CloudSyncControl.swift in Probe Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -774,11 +831,13 @@
 				B100000B296B0001 /* ExtensionsTests.swift in Sources */,
 				E1000007296E0001 /* UnitSystemTests.swift in Sources */,
 				F0A00001297A0001 /* SchemaMigrationTests.swift in Sources */,
+				DD8E59EC95C3298F77E554E2 /* CloudRecoveryTests.swift in Sources */,
 				C1000001296B0001 /* CloudSyncServiceTests.swift in Sources */,
 				BC0000000000000000000002 /* InitialSyncCommandTests.swift in Sources */,
 				AD0000000000000000000001 /* CloudSyncRuntimeTests.swift in Sources */,
 				BD0000000000000000000001 /* SyncPerformanceTests.swift in Sources */,
 				BE0000000000000000000001 /* PersistenceObservationTests.swift in Sources */,
+				0F1C89468A9F4B739305CF43 /* CloudSyncControlTests.swift in Sources */,
 				BD0000000000000000000021 /* CloudChangeBatchBuilderTests.swift in Sources */,
 				AD0000000000000000000101 /* ApplicationLifecycleTests.swift in Sources */,
 				AB0000000000000000000001 /* CloudReconciliationValidationTests.swift in Sources */,
@@ -798,6 +857,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				UI0000000000000000000001 /* FuelingRecordUITests.swift in Sources */,
+				D3D5EBAB1E1AA1024FC33B43 /* CloudRecoveryUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

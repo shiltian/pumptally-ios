@@ -26,12 +26,13 @@ final class ApplicationLifecycleTests: XCTestCase {
             return await availability()
         }
 
+        func resumeRecoveryIfNeeded() async throws {}
         func startMonitoring() async { starts += 1 }
         func synchronizeNow() async { synchronizations += 1 }
     }
 
     private func container() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         return try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
@@ -41,7 +42,7 @@ final class ApplicationLifecycleTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("read-only.store")
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         do {
             let writable = try ModelContainer(
                 for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])

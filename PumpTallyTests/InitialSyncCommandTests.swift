@@ -82,7 +82,7 @@ final class InitialSyncCommandTests: XCTestCase {
     }
 
     private func fixture(url: URL? = nil) throws -> Fixture {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let config =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -129,7 +129,6 @@ final class InitialSyncCommandTests: XCTestCase {
             commits.afterSave = nil
             environment.snapshotHandler = nil
             environment.zoneHandler = nil
-            environment.replacementHandler = nil
             await service.stopMonitoring()
         }
         return Fixture(
@@ -212,7 +211,6 @@ final class InitialSyncCommandTests: XCTestCase {
                 XCTFail("A confirmation cannot apply to another account")
             } catch SyncPersistenceError.accountChanged {}
             XCTAssertEqual(fixture.environment.snapshotReads, 1)
-            XCTAssertEqual(fixture.environment.zoneReplacements, 0)
             XCTAssertEqual(fixture.commits.attempts, 0)
             XCTAssertTrue(fixture.environment.drivers.isEmpty)
             XCTAssertEqual(try fixture.record(in: fixture.context).notes, "original")
@@ -297,7 +295,7 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertTrue(fixture.state.iCloudSyncEnabled)
         XCTAssertTrue(fixture.state.initialSyncCompleted)
         let batch = await fixture.driver.batch()
-        XCTAssertEqual(batch?.recordsToSave.map(\.recordID.recordName), [localOnly.id.uuidString])
+        XCTAssertEqual(batch?.businessRecordsToSave.map(\.recordID.recordName), [localOnly.id.uuidString])
     }
 
     func testMergeCommitFailureRollsBackEveryPartOfActivation() async throws {
@@ -358,7 +356,6 @@ final class InitialSyncCommandTests: XCTestCase {
         try await fixture.service.enableSync(strategy: .useCloud, proposal: proposal)
         XCTAssertEqual(fixture.commits.attempts, 1)
         XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<FuelingRecord>()).map(\.id), [cloudSource.recordID])
-        XCTAssertEqual(fixture.environment.zoneReplacements, 0)
     }
 
     func testMalformedCloudReplacementLeavesLocalStoreIntact() async throws {
@@ -412,7 +409,7 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(fixture.commits.attempts, 1)
         let batch = await fixture.driver.batch()
         XCTAssertEqual(
-            batch?.recordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String,
+            batch?.businessRecordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String,
             "edit during fetch")
     }
 
@@ -486,7 +483,7 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<FuelingRecord>()), 0)
         let batch = await fixture.driver.batch()
         XCTAssertEqual(batch?.recordIDsToDelete.map(\.recordName), [fixture.recordID.uuidString])
-        XCTAssertTrue(batch?.recordsToSave.isEmpty == true)
+        XCTAssertTrue(batch?.businessRecordsToSave.isEmpty == true)
     }
 
     func testConfirmedVehicleDeletionAlsoQueuesChildrenFirstDiscoveredDuringInitialMerge() async throws {
@@ -509,7 +506,7 @@ final class InitialSyncCommandTests: XCTestCase {
         let batch = await fixture.driver.batch()
         XCTAssertEqual(batch?.recordIDsToDelete.count, 3)
         XCTAssertTrue(batch?.recordIDsToDelete.contains(discovered.recordID) == true)
-        XCTAssertTrue(batch?.recordsToSave.isEmpty == true)
+        XCTAssertTrue(batch?.businessRecordsToSave.isEmpty == true)
     }
 
     func testUnverifiedDeletionIsRetainedForReviewThroughInitialMerge() async throws {
@@ -617,7 +614,6 @@ final class InitialSyncCommandTests: XCTestCase {
             XCTFail("An already completed confirmation cannot replace data again")
         } catch InitialSyncError.alreadyEnabled {}
         XCTAssertEqual(fixture.commits.attempts, 1)
-        XCTAssertEqual(fixture.environment.zoneReplacements, 0)
         XCTAssertEqual(fixture.state.syncStatus, status)
     }
 
@@ -658,30 +654,29 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(try fixture.record(in: fixture.context).odometer.bitPattern, 1000.123456789.bitPattern)
     }
 
-    func testLegacyCloudReplacementStagesOneActivationAndUsesTheEngineOutbox() async throws {
+    func testLocalSourceChoicePublishesTheReceiptWithoutRecreatingTheZone() async throws {
         let fixture = try fixture()
         let cloudSource = try self.fixture()
         fixture.environment.records = cloudSource.environment.records
+        fixture.environment.automaticDelivery = true
         let proposal = try await fixture.service.prepareInitialSync()
-        fixture.commits.beforeSave = {
-            XCTAssertEqual(fixture.environment.zoneReplacements, 1)
-            XCTAssertTrue(fixture.environment.drivers.isEmpty)
-            XCTAssertFalse(fixture.state.iCloudSyncEnabled)
-        }
-        fixture.commits.observe = { actor in
-            let context = actor.modelContext
-            XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 2)
-            XCTAssertEqual(try context.fetchCount(FetchDescriptor<CloudRecordMetadata>()), 0)
-            XCTAssertEqual(try fixture.record(in: context).odometer.bitPattern, 1000.123456789.bitPattern)
-            XCTAssertTrue(try context.fetch(FetchDescriptor<SyncCheckpoint>()).first?.bootstrapCompleted == true)
+        var checkedReceipt = false
+        fixture.environment.batchHandler = { _ in
+            if !checkedReceipt {
+                let receipt = try XCTUnwrap(fixture.context.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first)
+                XCTAssertEqual(receipt.phaseRaw, "prepared")
+                XCTAssertFalse(fixture.state.iCloudSyncEnabled)
+                checkedReceipt = true
+            }
         }
         try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
-        XCTAssertEqual(fixture.commits.attempts, 1)
-        XCTAssertEqual(fixture.environment.snapshotReads, 1)
-        let batch = await fixture.driver.batch()
-        XCTAssertEqual(batch?.recordsToSave.count, 2)
-        XCTAssertTrue(batch?.recordIDsToDelete.isEmpty == true)
+        XCTAssertTrue(checkedReceipt)
+        XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first?.phaseRaw, "completed")
+        XCTAssertEqual(
+            fixture.environment.records.fuelingRecords.map(\.recordID.recordName), [fixture.recordID.uuidString])
+        XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<SyncChange>()), 0)
         XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<FuelingRecord>()).map(\.id), [fixture.recordID])
+        XCTAssertEqual(fixture.state.syncStatus, .synced)
     }
 
     func testInvalidLocalReplacementSourceIsRejectedBeforeDeletingCloudData() async throws {
@@ -694,23 +689,27 @@ final class InitialSyncCommandTests: XCTestCase {
             try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
             XCTFail("Validate the trusted local source before touching the cloud")
         } catch CloudSnapshotValidator.ValidationError.invalidVehicleRecord {}
-        XCTAssertEqual(fixture.environment.zoneReplacements, 0)
         XCTAssertEqual(fixture.commits.attempts, 0)
         XCTAssertFalse(fixture.state.iCloudSyncEnabled)
         XCTAssertTrue(fixture.environment.drivers.isEmpty)
     }
 
-    func testDeletionCommittedDuringLegacyReplacementRetainsItsExactGeneration() async throws {
+    func testDeletionAfterRecoverySnapshotRetainsItsExactGeneration() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
+        fixture.environment.automaticDelivery = true
         var generation: String?
-        fixture.environment.replacementHandler = {
-            let context = fixture.context
-            let record = try fixture.record(in: context)
-            try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
-            context.delete(record)
-            try context.save()
-            generation = try context.fetch(FetchDescriptor<SyncChange>()).first?.generation
+        var changed = false
+        fixture.environment.batchHandler = { _ in
+            guard !changed else { return }
+            changed = true
+            try await FuelingRecordPersistenceService(writer: fixture.writer).delete(recordID: fixture.recordID)
+            generation = try fixture.context.fetch(FetchDescriptor<SyncChange>()).first?.generation
+        }
+        fixture.environment.afterBatch = { batch in
+            if batch.recordsToSave.first?["phase"] as? String == "ready" {
+                fixture.environment.automaticDelivery = false
+            }
         }
         try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
         let journal = try XCTUnwrap(
@@ -719,23 +718,34 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(journal.operationRaw, "delete")
         let batch = await fixture.driver.batch()
         XCTAssertEqual(batch?.recordIDsToDelete.map(\.recordName), [fixture.recordID.uuidString])
-        XCTAssertFalse(batch?.recordsToSave.contains { $0.recordID.recordName == fixture.recordID.uuidString } == true)
+        XCTAssertFalse(
+            batch?.businessRecordsToSave.contains { $0.recordID.recordName == fixture.recordID.uuidString } == true)
     }
 
-    func testEditCommittedDuringLegacyReplacementRetainsItsExactGenerationAndValues() async throws {
+    func testEditAfterRecoverySnapshotRetainsItsExactGenerationAndValues() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
+        fixture.environment.automaticDelivery = true
         var generation: String?
-        fixture.environment.replacementHandler = {
+        var changed = false
+        fixture.environment.batchHandler = { _ in
+            guard !changed else { return }
+            changed = true
             try await fixture.edit(notes: "edit during replacement")
             generation = try fixture.context.fetch(FetchDescriptor<SyncChange>()).first?.generation
+        }
+        fixture.environment.afterBatch = { batch in
+            if batch.recordsToSave.first?["phase"] as? String == "ready" {
+                fixture.environment.automaticDelivery = false
+            }
         }
         try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
         let journal = try XCTUnwrap(
             fixture.context.fetch(FetchDescriptor<SyncChange>()).first { $0.recordName == fixture.recordID.uuidString })
         XCTAssertEqual(journal.generation, generation)
         let batch = await fixture.driver.batch()
-        let record = try XCTUnwrap(batch?.recordsToSave.first { $0.recordID.recordName == fixture.recordID.uuidString })
+        let record = try XCTUnwrap(
+            batch?.businessRecordsToSave.first { $0.recordID.recordName == fixture.recordID.uuidString })
         XCTAssertEqual(record[CloudRecordCodec.CloudFieldKey.FuelingRecord.notes] as? String, "edit during replacement")
     }
 
@@ -747,7 +757,7 @@ final class InitialSyncCommandTests: XCTestCase {
         let source = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         func businessValues(in context: ModelContext) throws -> [UUID: [UInt64]] {
             Dictionary(
@@ -834,7 +844,7 @@ final class InitialSyncCommandTests: XCTestCase {
             try await fixture.service.enableSync(strategy: .merge, proposal: proposal)
             await fixture.service.stopMonitoring()
         }
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let reopened = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let environment = TestingCloudSyncEnvironment()

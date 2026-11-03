@@ -149,7 +149,7 @@ final class StatisticsCacheServiceTests: XCTestCase {
     }
 
     func testHealthyFullRebuildDoesNotDirtyNativeModels() throws {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [
@@ -840,7 +840,7 @@ final class StatisticsMutationPerformanceTests: XCTestCase {
     private func fixture(_ count: Int) throws -> (ModelContainer, UUID, UUID) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [

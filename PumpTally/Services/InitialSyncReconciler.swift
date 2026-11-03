@@ -9,7 +9,6 @@ struct InitialSyncReconciler: Sendable {
     enum Plan: Sendable {
         case merge(CloudSyncSnapshot)
         case useCloud(CloudSyncSnapshot, CloudSnapshotValidator.Snapshot)
-        case replaceCloud([CKRecord], capturedChanges: [String: String])
     }
 
     func stage(_ plan: Plan, in context: ModelContext) throws {
@@ -21,18 +20,13 @@ struct InitialSyncReconciler: Sendable {
             for record in source.vehicles + source.fuelingRecords {
                 try SyncPersistenceStore.stageSystemFields(from: record, in: context)
             }
-        case .replaceCloud(let records, let capturedChanges):
-            for metadata in try context.fetch(FetchDescriptor<CloudRecordMetadata>()) { context.delete(metadata) }
-            let current = try InitialSyncProposal.localChanges(in: context)
-            let unchanged = records.filter { record in
-                let key = "\(record.recordType):\(record.recordID.recordName)"
-                return current[key] == capturedChanges[key]
-            }
-            try stageUploads(unchanged, in: context)
         }
     }
 
     func stageMerge(_ snapshot: CloudSyncSnapshot, in context: ModelContext) throws {
+        guard snapshot.otherRecords.isEmpty else {
+            throw CloudSyncAdapterError.unsupportedRecordType(snapshot.otherRecords[0].recordType)
+        }
         let deletions = try context.fetch(FetchDescriptor<SyncChange>()).filter { $0.operationRaw == "delete" }
         let deletedNames = Set(deletions.map(\.recordName))
         let result = try CloudReconciliationService(codec: codec).stageInitialMerge(

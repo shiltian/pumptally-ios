@@ -22,7 +22,7 @@ final class CloudSyncServiceTests: XCTestCase {
     private let t3 = Date(timeIntervalSince1970: 3_000_000)
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

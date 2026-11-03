@@ -32,7 +32,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("cache.store")
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = ModelContext(container)
@@ -208,7 +208,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
     func testActualReadOnlySaveFailureLeavesCachesAndDataUntouched() async throws {
         let fixture = try fixture()
         let before = try snapshot(fixture.container)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -326,7 +326,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         var expected: Snapshot!
         do {
             let container = try ModelContainer(

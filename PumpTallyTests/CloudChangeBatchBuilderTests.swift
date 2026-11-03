@@ -9,7 +9,7 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
     private let codec = CloudRecordCodec(zoneID: NativeCloudSyncEnvironment.zoneID)
 
     private func context() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
@@ -47,8 +47,15 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         context.insert(CloudRecordMetadata(key: "Vehicle:\(unrelated.id)", systemFieldsData: Data([0, 1])))
         try context.save()
         let preparation = await builder(ModelContext(context.container))
-        let prepared = try await preparation.build(pendingChanges: [.saveRecord(id(record.id))])
-        XCTAssertEqual(prepared?.batch.recordsToSave.count, 1)
+        let prepared = try await preparation.build(
+            pendingChanges: [.saveRecord(id(record.id))],
+            control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
+        XCTAssertEqual(prepared?.batch.businessRecordsToSave.count, 1)
+        XCTAssertEqual(prepared?.batch.atomicByZone, true)
+        XCTAssertEqual(prepared?.batch.recordsToSave.first?.recordType, CloudSyncControl.recordType)
+        XCTAssertEqual(
+            prepared?.batch.businessRecordsToSave.first?[CloudSyncControl.businessGenerationField] as? String,
+            CloudSyncControl.baselineGeneration)
         let asyncResult1 = (await preparation.metrics).journalEntriesRead
         XCTAssertEqual(asyncResult1, 1)
         let asyncResult2 = (await preparation.metrics).vehiclesRead
@@ -60,7 +67,8 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         let asyncResult5 = (await preparation.metrics).recordsEncoded
         XCTAssertEqual(asyncResult5, 1)
         XCTAssertEqual(
-            prepared?.batch.recordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.odometer] as? Double,
+            prepared?.batch.businessRecordsToSave.first?[CloudRecordCodec.CloudFieldKey.FuelingRecord.odometer]
+                as? Double,
             record.odometer)
         XCTAssertEqual(record.odometer.bitPattern, expected)
         XCTAssertFalse(context.hasChanges)
@@ -74,7 +82,9 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
             recordName: uuid.uuidString, recordType: .vehicle, operation: .delete, in: context)
         try context.save()
         let preparation = await builder(context)
-        let prepared = try await preparation.build(pendingChanges: [.deleteRecord(id(uuid))])
+        let prepared = try await preparation.build(
+            pendingChanges: [.deleteRecord(id(uuid))],
+            control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
         XCTAssertEqual(prepared?.batch.recordIDsToDelete, [id(uuid)])
         XCTAssertEqual(prepared?.generations.count, 1)
         let asyncResult6 =
@@ -96,7 +106,7 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         let preparation = await builder(context)
         let batch = try await preparation.build(pendingChanges: [
             .deleteRecord(id(record.id)), .deleteRecord(id(try XCTUnwrap(UUID(uuidString: legacy.recordName)))),
-        ])
+            ], control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
         XCTAssertNil(batch)
         let asyncResult8 = (await preparation.metrics).recordsEncoded
         XCTAssertEqual(asyncResult8, 0)
@@ -111,7 +121,7 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         let preparation = await builder(context, blockedParents: [record.vehicle.id.uuidString])
         let batch = try await preparation.build(pendingChanges: [
             .saveRecord(id(record.vehicle.id)), .saveRecord(id(record.id)),
-        ])
+            ], control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
         XCTAssertNil(batch)
         let asyncResult9 = (await preparation.metrics).recordsEncoded
         XCTAssertEqual(asyncResult9, 0)
@@ -124,7 +134,9 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         try SyncChangeJournal.enqueue(
             recordName: uuid.uuidString, recordType: .fuelingRecord, operation: .save, in: context)
         try context.save()
-        let batch = try await builder(context).build(pendingChanges: [.saveRecord(id(uuid))])
+        let batch = try await builder(context).build(
+            pendingChanges: [.saveRecord(id(uuid))],
+            control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
         XCTAssertNil(batch)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 1)
     }
@@ -135,7 +147,9 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         context.insert(CloudRecordMetadata(key: "FuelingRecord:\(record.id)", systemFieldsData: Data([0, 1])))
         try context.save()
         do {
-            _ = try await builder(context).build(pendingChanges: [.saveRecord(id(record.id))])
+            _ = try await builder(context).build(
+                pendingChanges: [.saveRecord(id(record.id))],
+                control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
             XCTFail("Corrupt metadata must pause the send")
         } catch {}
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 1)
@@ -152,7 +166,9 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         context.insert(CloudRecordMetadata(key: "FuelingRecord:\(record.id)", systemFieldsData: archiver.encodedData))
         try context.save()
         do {
-            _ = try await builder(context).build(pendingChanges: [.saveRecord(id(record.id))])
+            _ = try await builder(context).build(
+                pendingChanges: [.saveRecord(id(record.id))],
+                control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
             XCTFail("Metadata must belong to the requested record")
         } catch {}
         XCTAssertFalse(context.hasChanges)
@@ -169,9 +185,10 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         }
         try context.save()
         let preparation = await builder(context)
-        let result = try await preparation.build(pendingChanges: pending)
+        let result = try await preparation.build(
+            pendingChanges: pending, control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
         let prepared = try XCTUnwrap(result)
-        let saved = prepared.batch.recordsToSave
+        let saved = prepared.batch.businessRecordsToSave
         XCTAssertGreaterThan(saved.count, 0)
         XCTAssertLessThan(saved.count, pending.count, "The native initializer must exercise a bounded batch")
         let asyncResult10 = (await preparation.metrics).recordsEncoded

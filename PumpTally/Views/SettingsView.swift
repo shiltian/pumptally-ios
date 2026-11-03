@@ -16,6 +16,8 @@ struct SettingsView: View {
     @EnvironmentObject private var cloudSyncService: CloudSyncService
 
     @Query private var vehicles: [Vehicle]
+    @Query(filter: #Predicate<CloudRecoveryReceipt> { $0.phaseRaw != "completed" && $0.phaseRaw != "superseded" })
+    private var pendingReplacements: [CloudRecoveryReceipt]
     @Query(sort: \PendingRemoteChange.key) private var pendingRemoteChanges: [PendingRemoteChange]
     @Query(filter: #Predicate<SyncChange> { $0.operationRaw == "delete" && $0.originRaw == nil }, sort: \SyncChange.key)
     private var legacyDeletions: [SyncChange]
@@ -73,7 +75,7 @@ struct SettingsView: View {
                         .font(.appBody)
                 }
             }
-            .disabled(stateManager.syncStatus.isInProgress)
+            .disabled(stateManager.syncStatus.isInProgress || !pendingReplacements.isEmpty)
             .accessibilityIdentifier("settings.sync")
 
             HStack {
@@ -90,6 +92,15 @@ struct SettingsView: View {
                     .font(.appSubheadline)
                     .foregroundColor(.secondary)
             }
+            if !pendingReplacements.isEmpty {
+                Button("Resume iCloud Replacement") {
+                    Task {
+                        do { try await cloudSyncService.resumeRecoveryIfNeeded() } catch { presentSyncError(error) }
+                    }
+                }
+                .disabled(stateManager.syncStatus.isInProgress)
+                .accessibilityIdentifier("sync.recovery.resume")
+            }
         } header: {
             Text("iCloud")
                 .font(.appCaption)
@@ -102,7 +113,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var syncRecoverySection: some View {
         let assessment = syncRecovery.assessment
-        if !stateManager.syncStatus.isInProgress
+        if pendingReplacements.isEmpty && !stateManager.syncStatus.isInProgress
             && (!assessment.unitConfirmations.isEmpty || assessment.legacyDeletionCount > 0
                 || !assessment.diagnostics.isEmpty || syncRecovery.loadError != nil)
         {
@@ -220,7 +231,9 @@ struct SettingsView: View {
                 Button("Merge Both") { performInitialSync(strategy: .merge, proposal: proposal) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("iCloud already contains fueling data. How would you like to handle this?")
+                Text(
+                    "iCloud already contains fueling data. How would you like to handle this? Before using local data, update or close PumpTally on your other devices until replacement finishes."
+                )
             }
             // Toggle off alert
             .alert("Disable iCloud Sync?", isPresented: $showingToggleOffAlert) {
@@ -335,7 +348,7 @@ struct SettingsView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV4.self)
+    let schema = Schema(versionedSchema: SchemaV5.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

@@ -10,7 +10,7 @@ final class StartupCachePerformanceTests: XCTestCase {
     private func fixture(count: Int, recordsPerVehicle: Int, cached: Bool) throws -> ModelContainer {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [

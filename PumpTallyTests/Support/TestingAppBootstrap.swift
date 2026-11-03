@@ -7,6 +7,7 @@ import SwiftData
 enum AppBootstrap {
     static func makeEnvironment() throws -> ApplicationEnvironment {
         let arguments = ProcessInfo.processInfo.arguments
+        if let recovery = try TestingRecoveryScenario.makeEnvironment(arguments: arguments) { return recovery }
         let container = try makeContainer(arguments: arguments)
         let suite = "PumpTally.Testing"
         guard let defaults = UserDefaults(suiteName: suite) else { throw CocoaError(.fileReadUnknown) }
@@ -37,7 +38,7 @@ enum AppBootstrap {
     }
 
     private static func makeContainer(arguments: [String]) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV4.self)
+        let schema = Schema(versionedSchema: SchemaV5.self)
         let readOnly = arguments.contains("--ui-testing-read-only-store")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("UIFixture-\(UUID()).store")
         let configuration =
