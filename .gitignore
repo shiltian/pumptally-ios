@@ -29,3 +29,6 @@ Pods/
 *.dSYM
 
 CLAUDE.md
+
+# Local planning, review and session notes (keep Cursor rules trackable)
+.cursor/*.md

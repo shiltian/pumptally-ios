@@ -790,23 +790,6 @@
         }
       }
     },
-    "Counts differ from local data. Use \"Force Re-sync from Local\" to wipe iCloud and re-upload all local data." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los conteos difieren de los datos locales. Usa \"Forzar Re-sincronización desde Local\" para borrar iCloud y volver a subir todos los datos locales."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "数量与本地数据不一致。使用「从本地强制重新同步」来清除iCloud并重新上传所有本地数据。"
-          }
-        }
-      }
-    },
     "CSV file saved successfully." : {
       "localizations" : {
         "es" : {
@@ -1427,57 +1410,6 @@
         }
       }
     },
-    "Force Re-sync from Local" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forzar Re-sincronización desde Local"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从本地强制重新同步"
-          }
-        }
-      }
-    },
-    "Force re-sync will delete all iCloud data and re-upload everything from this device." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La re-sincronización forzada eliminará todos los datos de iCloud y volverá a subir todo desde este dispositivo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "强制重新同步将删除所有iCloud数据，并从此设备重新上传所有内容。"
-          }
-        }
-      }
-    },
-    "Force Re-sync?" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Forzar Re-sincronización?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "强制重新同步？"
-          }
-        }
-      }
-    },
     "Fuel" : {
 
     },
@@ -1675,23 +1607,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud"
-          }
-        }
-      }
-    },
-    "iCloud already contains fueling data. How would you like to handle this?" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud ya contiene datos de combustible. ¿Cómo deseas manejar esto?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud中已有加油数据。您希望如何处理？"
           }
         }
       }
@@ -2919,23 +2834,6 @@
         }
       }
     },
-    "Re-sync" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Re-sincronizar"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新同步"
-          }
-        }
-      }
-    },
     "Recovery information could not be loaded. Try again." : {
 
     },
@@ -3688,23 +3586,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这将删除该车辆的所有%lld条加油记录。车辆本身将保留。"
-          }
-        }
-      }
-    },
-    "This will delete all data in iCloud and re-upload all local data (%lld vehicle(s), %lld record(s)). This may take a moment." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esto eliminará todos los datos en iCloud y volverá a subir todos los datos locales (%1$lld vehículo(s), %2$lld registro(s)). Esto puede tardar un momento."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这将删除iCloud中的所有数据，并重新上传所有本地数据（%1$lld辆车，%2$lld条记录）。这可能需要一些时间。"
           }
         }
       }
