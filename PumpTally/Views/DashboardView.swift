@@ -26,11 +26,6 @@ struct DashboardView: View {
         records.count
     }
 
-    private var chartInvalidationKey: String {
-        let cacheTimestamp = vehicle.cacheLastUpdated?.timeIntervalSince1970 ?? 0
-        return "\(recordCount)-\(cacheTimestamp)"
-    }
-
     // Use cached statistics from the vehicle model
     private var totalSpent: Double {
         vehicle.cachedTotalSpent ?? 0
@@ -129,12 +124,8 @@ struct DashboardView: View {
                             .padding(.horizontal)
 
                         ChartView(
-                            records: records,
-                            unitSystem: units,
-                            rawAverageEfficiency: units.efficiencyValue(
-                                vehicle.cachedAverageEfficiency ?? 0, from: vehicle.unitSystem),
-                            metricEfficiencyFormat: metricEfficiencyFormat,
-                            invalidationKey: chartInvalidationKey
+                            input: ChartInput(
+                                vehicle: vehicle, records: records, metricEfficiencyFormat: metricEfficiencyFormat)
                         )
                             .frame(height: 250)
                             .padding(.horizontal)

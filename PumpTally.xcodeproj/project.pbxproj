@@ -118,6 +118,8 @@
 		BE6E07F8FA3F5D2EF7BC67D5 /* TestingRecoveryScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BC26A2C161799C4B6A2C01A /* TestingRecoveryScenario.swift */; };
 		D3D5EBAB1E1AA1024FC33B43 /* CloudRecoveryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */; };
 		0F1C89468A9F4B739305CF43 /* CloudSyncControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */; };
+		A36DE7908B084FDBAF249F6F /* ChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93EEA7A533D0470C80E75F25 /* ChartData.swift */; };
+		D4ECE77CC86A42A388D31016 /* ChartInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -262,6 +264,8 @@
 		2BC26A2C161799C4B6A2C01A /* TestingRecoveryScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingRecoveryScenario.swift; sourceTree = "<group>"; };
 		17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRecoveryUITests.swift; sourceTree = "<group>"; };
 		B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncControlTests.swift; sourceTree = "<group>"; };
+		93EEA7A533D0470C80E75F25 /* ChartData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartData.swift; sourceTree = "<group>"; };
+		62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartInputTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -342,6 +346,7 @@
 			isa = PBXGroup;
 			children = (
 				F3DC47BB5957993E77A03AB8 /* CloudRecoveryReceipt.swift */,
+				93EEA7A533D0470C80E75F25 /* ChartData.swift */,
 				X100000229B40001 /* FuelingRecordDraft.swift */,
 				A100000A296A0001 /* Vehicle.swift */,
 				A100000C296A0001 /* FuelingRecord.swift */,
@@ -509,6 +514,7 @@
 				AD0000000000000000000102 /* ApplicationLifecycleTests.swift */,
 				AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */,
 				Z200000229B60001 /* SyncSafetyTests.swift */,
+				62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */,
 				K100000229AC0001 /* PrecomputedChartDataTests.swift */,
 				K100000429AC0001 /* HistoryRecordsQueryTests.swift */,
 				L100000429AD0001 /* OdometerChronologyValidatorTests.swift */,
@@ -754,6 +760,7 @@
 				BE6E07F8FA3F5D2EF7BC67D5 /* TestingRecoveryScenario.swift in Sources */,
 				Z500000129B60001 /* SyncReviewView.swift in Sources */,
 				Z400000129B60001 /* SyncReviewService.swift in Sources */,
+				A36DE7908B084FDBAF249F6F /* ChartData.swift in Sources */,
 				X100000129B40001 /* FuelingRecordDraft.swift in Sources */,
 				A1000003296A0001 /* ContentView.swift in Sources */,
 				A1000009296A0001 /* Vehicle.swift in Sources */,
@@ -842,6 +849,7 @@
 				AD0000000000000000000101 /* ApplicationLifecycleTests.swift in Sources */,
 				AB0000000000000000000001 /* CloudReconciliationValidationTests.swift in Sources */,
 				Z200000129B60001 /* SyncSafetyTests.swift in Sources */,
+				D4ECE77CC86A42A388D31016 /* ChartInputTests.swift in Sources */,
 				K100000129AC0001 /* PrecomputedChartDataTests.swift in Sources */,
 				K100000329AC0001 /* HistoryRecordsQueryTests.swift in Sources */,
 				L100000329AD0001 /* OdometerChronologyValidatorTests.swift in Sources */,
