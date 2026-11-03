@@ -21,6 +21,53 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testZeroFuelRecordAllowsNotesEditThroughTheForm() throws {
+        let app = launch(arguments: ["--ui-testing-zero-fuel"])
+        let history = app.tabBars.buttons["History"]
+        XCTAssertTrue(history.waitForExistence(timeout: 10))
+        history.tap()
+        let original = app.staticTexts["Original UI note"]
+        XCTAssertTrue(original.waitForExistence(timeout: 5))
+        original.tap()
+        let notes = app.descendants(matching: .any).matching(identifier: "fueling.notes").firstMatch
+        if !notes.isHittable { app.swipeUp() }
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        notes.tap()
+        notes.typeText(" updated")
+        let expected = try XCTUnwrap(notes.value as? String)
+        XCTAssertNotEqual(expected, "Original UI note")
+        XCTAssertTrue(app.buttons["Save"].isEnabled)
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts[expected].waitForExistence(timeout: 5))
+    }
+
+    func testFirstBaselineAllowsEfficiencyPreview() { assertEfficiencyPreview(afterPartial: false) }
+    func testNonFirstPartialPredecessorSuppressesEfficiencyPreview() { assertEfficiencyPreview(afterPartial: true) }
+
+    private func assertEfficiencyPreview(afterPartial: Bool) {
+        let app = launch(
+            arguments: afterPartial
+                ? ["--ui-testing-two-records", "--ui-testing-partial-predecessor"] : [])
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let odometer = app.textFields["fueling.odometer"]
+        XCTAssertTrue(odometer.waitForExistence(timeout: 5))
+        odometer.tap()
+        odometer.typeText("1600")
+        let price = app.textFields["fueling.price"]
+        price.tap()
+        price.typeText("3500")
+        let fuel = app.textFields["fueling.fuel"]
+        fuel.tap()
+        fuel.typeText("10000")
+        let preview = app.staticTexts["Preview"]
+        if !preview.isHittable { app.swipeUp() }
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["Estimated MPG"].exists, !afterPartial)
+        app.buttons["Cancel"].tap()
+    }
+
     func testFailedStartupKeepsEditingUnavailableAndRetryReportsFailure() {
         let app = launch(arguments: ["--ui-testing-read-only-store", "--ui-testing-uncached-store"])
         let failure = app.staticTexts["Unable to Prepare Your Data"]

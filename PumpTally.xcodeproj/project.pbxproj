@@ -120,6 +120,9 @@
 		0F1C89468A9F4B739305CF43 /* CloudSyncControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */; };
 		A36DE7908B084FDBAF249F6F /* ChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93EEA7A533D0470C80E75F25 /* ChartData.swift */; };
 		D4ECE77CC86A42A388D31016 /* ChartInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */; };
+		555AE9D244344801AFB6D914 /* FuelingRecordValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412B0C3A383847558EAB4A2C /* FuelingRecordValidation.swift */; };
+		12FB4E4F14CA4984BF3F71F6 /* FuelingRecordPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC5D5B3E17F44A090F567DA /* FuelingRecordPreview.swift */; };
+		CE26E5C5A65449DCA367B66E /* FuelingRecordPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2CACDA40A2A49A286A7AA8F /* FuelingRecordPreviewTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -266,6 +269,9 @@
 		B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncControlTests.swift; sourceTree = "<group>"; };
 		93EEA7A533D0470C80E75F25 /* ChartData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartData.swift; sourceTree = "<group>"; };
 		62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartInputTests.swift; sourceTree = "<group>"; };
+		412B0C3A383847558EAB4A2C /* FuelingRecordValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordValidation.swift; sourceTree = "<group>"; };
+		9CC5D5B3E17F44A090F567DA /* FuelingRecordPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordPreview.swift; sourceTree = "<group>"; };
+		A2CACDA40A2A49A286A7AA8F /* FuelingRecordPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordPreviewTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -347,6 +353,7 @@
 			children = (
 				F3DC47BB5957993E77A03AB8 /* CloudRecoveryReceipt.swift */,
 				93EEA7A533D0470C80E75F25 /* ChartData.swift */,
+				9CC5D5B3E17F44A090F567DA /* FuelingRecordPreview.swift */,
 				X100000229B40001 /* FuelingRecordDraft.swift */,
 				A100000A296A0001 /* Vehicle.swift */,
 				A100000C296A0001 /* FuelingRecord.swift */,
@@ -400,6 +407,7 @@
 				E1000006296E0001 /* SyncStateManager.swift */,
 				Y100000229B50001 /* SyncPersistenceStore.swift */,
 				L100000229AD0001 /* OdometerChronologyValidator.swift */,
+				412B0C3A383847558EAB4A2C /* FuelingRecordValidation.swift */,
 				N100000229AE0001 /* FuelingRecordPersistenceService.swift */,
 				P100000229AF0001 /* FuelEfficiencyPolicy.swift */,
 				R100000229B00001 /* SyncOperationCoordinator.swift */,
@@ -493,6 +501,7 @@
 				2F5031CCADCD46AC2D4D9A9D /* CloudRecoveryTests.swift */,
 				AA0000000000000000000007 /* Support */,
 				Z300000229B60001 /* Fixtures */,
+				A2CACDA40A2A49A286A7AA8F /* FuelingRecordPreviewTests.swift */,
 				X200000229B40001 /* FuelingRecordDraftTests.swift */,
 				B1000002296B0001 /* FuelingRecordTests.swift */,
 				B1000004296B0001 /* VehicleTests.swift */,
@@ -761,6 +770,7 @@
 				Z500000129B60001 /* SyncReviewView.swift in Sources */,
 				Z400000129B60001 /* SyncReviewService.swift in Sources */,
 				A36DE7908B084FDBAF249F6F /* ChartData.swift in Sources */,
+				12FB4E4F14CA4984BF3F71F6 /* FuelingRecordPreview.swift in Sources */,
 				X100000129B40001 /* FuelingRecordDraft.swift in Sources */,
 				A1000003296A0001 /* ContentView.swift in Sources */,
 				A1000009296A0001 /* Vehicle.swift in Sources */,
@@ -788,6 +798,7 @@
 				G1000005297A0001 /* CSVExportImportViews.swift in Sources */,
 				I1000001299A0001 /* PumpTallySchema.swift in Sources */,
 				L100000129AD0001 /* OdometerChronologyValidator.swift in Sources */,
+				555AE9D244344801AFB6D914 /* FuelingRecordValidation.swift in Sources */,
 				N100000129AE0001 /* FuelingRecordPersistenceService.swift in Sources */,
 				P100000129AF0001 /* FuelEfficiencyPolicy.swift in Sources */,
 				R100000129B00001 /* SyncOperationCoordinator.swift in Sources */,
@@ -827,6 +838,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B1000001296B0001 /* FuelingRecordTests.swift in Sources */,
+				CE26E5C5A65449DCA367B66E /* FuelingRecordPreviewTests.swift in Sources */,
 				X200000129B40001 /* FuelingRecordDraftTests.swift in Sources */,
 				B1000003296B0001 /* VehicleTests.swift in Sources */,
 				B1000005296B0001 /* FillUpTypeTests.swift in Sources */,

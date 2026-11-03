@@ -12,8 +12,7 @@ struct FuelingRecordFormView: View {
 
     var focusedField: FocusState<EditableField?>.Binding
 
-    /// Previous odometer reading — zero means first record, hides distance/preview
-    var previousOdometer: Double = 0
+    var preview: FuelingRecordPreview?
 
     /// Chronology error produced by the shared validator, if any.
     var odometerValidationIssue: OdometerChronologyIssue?
@@ -23,29 +22,14 @@ struct FuelingRecordFormView: View {
 
     typealias EditableField = FuelingRecordDraft.Field
 
-    private var currentOdometer: Double? { draft.odometer }
-    private var fuelAmount: Double { draft.fuelAmount }
-    private var totalCost: Double { draft.totalCost }
-
     private func numericBinding(_ field: EditableField) -> Binding<Int> {
         Binding(get: { draft.input(for: field) }, set: { draft.edit(field, input: $0) })
     }
 
     private var previewEfficiency: Double? {
-        guard showPreview, draft.fillUpType == .full, let current = currentOdometer, fuelAmount > 0 else { return nil }
-        let distance = current - previousOdometer
-        guard distance > 0 else { return nil }
-        return unitSystem.efficiencyDisplayValue(
-            from: distance / fuelAmount,
-            metricFormat: metricEfficiencyFormat
-        )
-    }
-
-    private var previewCostPerDistance: Double? {
-        guard showPreview, let current = currentOdometer, totalCost > 0 else { return nil }
-        let distance = current - previousOdometer
-        guard distance > 0 else { return nil }
-        return totalCost / distance
+        preview?.efficiency.map {
+            unitSystem.efficiencyDisplayValue(from: $0, metricFormat: metricEfficiencyFormat)
+        }
     }
 
     var body: some View {
@@ -87,16 +71,13 @@ struct FuelingRecordFormView: View {
                     .frame(width: 120)
             }
 
-            if showPreview,
-               previousOdometer > 0,
-               let current = currentOdometer,
-               current > previousOdometer {
+            if showPreview, let distance = preview?.distanceDriven {
                 HStack {
                     Text("\(unitSystem.distanceName) This Trip")
                         .font(.appBody)
                         .foregroundColor(.teal)
                     Spacer()
-                    Text((current - previousOdometer).formatted(.number.precision(.fractionLength(0))))
+                    Text(distance.formatted(.number.precision(.fractionLength(0))))
                         .font(.appBody)
                         .fontWeight(.semibold)
                         .foregroundColor(.teal)
@@ -190,7 +171,7 @@ struct FuelingRecordFormView: View {
 
     @ViewBuilder
     private var previewSection: some View {
-        if previousOdometer > 0, previewEfficiency != nil || previewCostPerDistance != nil {
+        if previewEfficiency != nil || preview?.costPerDistance != nil {
             Section {
                 if let efficiency = previewEfficiency {
                     HStack {
@@ -206,7 +187,7 @@ struct FuelingRecordFormView: View {
                     }
                 }
 
-                if let cpd = previewCostPerDistance {
+                if let cpd = preview?.costPerDistance {
                     HStack {
                         Image(systemName: "dollarsign.circle")
                             .foregroundColor(.orange)

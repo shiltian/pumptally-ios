@@ -63,11 +63,13 @@ enum AppBootstrap {
             notes: "Original UI note", vehicle: vehicle)
         context.insert(vehicle)
         context.insert(record)
+        if arguments.contains("--ui-testing-zero-fuel") { record.fuelAmount = 0 }
         if arguments.contains("--ui-testing-two-records") {
             context.insert(
                 FuelingRecord(
                     date: Date(timeIntervalSince1970: 1_700_086_400), odometer: 1300,
                     pricePerFuelUnit: 3, fuelAmount: 10, totalCost: 30,
+                    fillUpType: arguments.contains("--ui-testing-partial-predecessor") ? .partial : .full,
                     notes: "Second UI note", vehicle: vehicle))
         }
         if arguments.contains("--ui-testing-legacy-record") || arguments.contains("--ui-testing-malformed-record") {

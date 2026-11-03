@@ -77,8 +77,6 @@ struct EditRecordView: View {
                     metricEfficiencyFormat: metricEfficiencyFormat,
                     draft: $draft,
                     focusedField: $focusedField,
-                    previousOdometer: units.distanceValue(
-                        validation?.neighbors.predecessor?.odometer ?? 0, from: vehicle.unitSystem),
                     odometerValidationIssue: validation?.issue,
                     showPreview: false
                 )

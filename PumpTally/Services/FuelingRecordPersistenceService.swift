@@ -14,7 +14,7 @@ struct FuelingRecordPersistenceService: Sendable {
         try await store.transaction { actor in
             let context = actor.modelContext
             let vehicle = try owner(vehicleID, storageUnit: storageUnit, in: context)
-            try validate(values)
+            try FuelingRecordValidation.validate(values)
             let readings = (vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
             guard
                 OdometerChronologyValidator.validate(date: values.date, odometer: values.odometer, records: readings)
@@ -44,7 +44,7 @@ struct FuelingRecordPersistenceService: Sendable {
             let current = FuelingRecordValues(record: record)
             let values = try update.merging(into: current)
             guard values != current else { return false }
-            try validate(values, preserving: current)
+            try FuelingRecordValidation.validate(values, preserving: current)
             let readings = (record.vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
             guard
                 OdometerChronologyValidator.validate(
@@ -89,14 +89,14 @@ struct FuelingRecordPersistenceService: Sendable {
         try await store.transaction { actor in
             let vehicle = try importOwner(vehicleID, in: actor.modelContext)
             let existing = (vehicle.fuelingRecords ?? []).map(CSVImportExistingRecord.init(record:))
-            for row in snapshots { try validate(row.values) }
+            for row in snapshots { try FuelingRecordValidation.validate(row.values) }
             let revision = CSVImportRevision(
                 storeID: ObjectIdentifier(actor.modelContainer),
                 storageUnit: vehicle.unitSystem, records: existing)
             let plan = try CSVImportPlan(
                 records: snapshots, vehicleID: vehicleID, sourceUnit: sourceUnit,
                 revision: revision, existing: existing)
-            for row in plan.records { try validate(row.values) }
+            for row in plan.records { try FuelingRecordValidation.validate(row.values) }
             return plan
         }
     }
@@ -123,7 +123,7 @@ struct FuelingRecordPersistenceService: Sendable {
                 snapshots, existingRecords: (vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:)))
             let values = snapshots.map(\.values)
             // Validate the complete input before constructing any models.
-            for value in values { try validate(value) }
+            for value in values { try FuelingRecordValidation.validate(value) }
             guard !snapshots.isEmpty else { return [] }
             let modifiedAt = Date()
             for (snapshot, value) in zip(snapshots, values) {
@@ -161,17 +161,5 @@ struct FuelingRecordPersistenceService: Sendable {
         query.fetchLimit = 1
         guard let record = try context.fetch(query).first else { throw FuelingRecordEditingError.recordUnavailable }
         return record
-    }
-
-    private func validate(_ values: FuelingRecordValues, preserving original: FuelingRecordValues? = nil) throws {
-        // Existing legacy values are grandfathered when untouched. Validation
-        // cannot turn a notes edit into a rewrite or repair of old measurements.
-        guard original?.date == values.date || values.date.timeIntervalSince1970.isFinite,
-            original?.odometer == values.odometer || (values.odometer.isFinite && values.odometer > 0),
-            original?.pricePerFuelUnit == values.pricePerFuelUnit
-                || (values.pricePerFuelUnit.isFinite && values.pricePerFuelUnit >= 0),
-            original?.fuelAmount == values.fuelAmount || (values.fuelAmount.isFinite && values.fuelAmount > 0),
-            original?.totalCost == values.totalCost || (values.totalCost.isFinite && values.totalCost >= 0)
-        else { throw FuelingRecordEditingError.invalidInput }
     }
 }

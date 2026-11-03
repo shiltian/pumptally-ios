@@ -51,8 +51,7 @@ struct AddRecordView: View {
 
     var body: some View {
         let validation = chronologyValidation
-        let previousOdometer = units.distanceValue(
-            validation?.neighbors.predecessor?.odometer ?? 0, from: vehicle.unitSystem)
+        let preview = draft.preview(after: FuelingIntervalContext(validation: validation, records: records))
 
         NavigationStack {
             Form {
@@ -62,7 +61,7 @@ struct AddRecordView: View {
                     metricEfficiencyFormat: metricEfficiencyFormat,
                     draft: $draft,
                     focusedField: $focusedField,
-                    previousOdometer: previousOdometer,
+                    preview: preview,
                     odometerValidationIssue: validation?.issue,
                     showPreview: true
                 )

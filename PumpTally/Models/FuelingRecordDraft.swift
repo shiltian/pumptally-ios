@@ -168,11 +168,10 @@ struct FuelingRecordDraft: Sendable {
     var totalCost: Double { value(for: .totalCost) }
 
     var isValid: Bool {
-        guard let odometer, odometer.isFinite, odometer > 0, calculationIsValid else { return false }
-        return pricePerFuelUnit.isFinite && pricePerFuelUnit >= 0
-            && fuelAmount.isFinite && fuelAmount > 0
-            && totalCost.isFinite && totalCost >= 0
-            && (original != nil || (pricePerFuelUnit > 0 && totalCost > 0))
+        guard calculationIsValid, original != nil || editedFields.count == 2,
+            let values = try? proposedValues()
+        else { return false }
+        return FuelingRecordValidation.isValid(values, preserving: original)
     }
 
     func input(for field: Field) -> Int { numericInputs[field]!.input }
@@ -189,22 +188,32 @@ struct FuelingRecordDraft: Sendable {
     }
 
     func makeValues() throws -> FuelingRecordValues {
-        guard isValid, let odometer else { throw FuelingRecordEditingError.invalidInput }
+        guard isValid else { throw FuelingRecordEditingError.invalidInput }
+        return try proposedValues()
+    }
+
+    func preview(after previous: FuelingIntervalContext?) -> FuelingRecordPreview? {
+        guard let previous, let values = try? proposedValues() else { return nil }
+        return FuelingRecordPreview(
+            values: values, previous: previous,
+            storageUnit: storageUnit, displayUnit: inputUnit)
+    }
+
+    private func proposedValues() throws -> FuelingRecordValues {
+        guard let odometer else { throw FuelingRecordEditingError.invalidInput }
         let savedNotes = notes == (original?.notes ?? "") ? original?.notes : (notes.isEmpty ? nil : notes)
-        var result = FuelingRecordValues(
+        let displayed = FuelingRecordValues(
             date: date, odometer: odometer, pricePerFuelUnit: pricePerFuelUnit,
-            fuelAmount: fuelAmount, totalCost: totalCost, fillUpType: fillUpType, notes: savedNotes
-        )
-        let baseline = original?.converted(from: storageUnit, to: inputUnit)
-        result.odometer =
-            result.odometer == baseline?.odometer
-            ? original!.odometer : storageUnit.distanceValue(result.odometer, from: inputUnit)
-        result.fuelAmount =
-            result.fuelAmount == baseline?.fuelAmount
-            ? original!.fuelAmount : storageUnit.fuelValue(result.fuelAmount, from: inputUnit)
-        result.pricePerFuelUnit =
-            result.pricePerFuelUnit == baseline?.pricePerFuelUnit
-            ? original!.pricePerFuelUnit : storageUnit.priceValue(result.pricePerFuelUnit, from: inputUnit)
+            fuelAmount: fuelAmount, totalCost: totalCost, fillUpType: fillUpType, notes: savedNotes)
+        var result = displayed.converted(from: inputUnit, to: storageUnit)
+        if let original {
+            let baseline = original.converted(from: storageUnit, to: inputUnit)
+            if displayed.odometer == baseline.odometer { result.odometer = original.odometer }
+            if displayed.fuelAmount == baseline.fuelAmount { result.fuelAmount = original.fuelAmount }
+            if displayed.pricePerFuelUnit == baseline.pricePerFuelUnit {
+                result.pricePerFuelUnit = original.pricePerFuelUnit
+            }
+        }
         return result
     }
 

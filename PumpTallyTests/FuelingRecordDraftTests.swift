@@ -4,6 +4,83 @@ import XCTest
 @testable import PumpTally
 
 final class FuelingRecordDraftTests: XCTestCase {
+    func testNotesOnlyEditPreservesUntouchedLegacyZeroAndNegativeValues() throws {
+        for legacy in [0.0, -1.0] {
+            var original = values()
+            original.odometer = legacy
+            original.fuelAmount = legacy
+            original.pricePerFuelUnit = legacy
+            original.totalCost = legacy
+            var draft = FuelingRecordDraft(values: original)
+            draft.notes = "Updated legacy note"
+            XCTAssertTrue(draft.isValid)
+            let saved = try draft.makeValues()
+            XCTAssertEqual(saved.odometer.bitPattern, original.odometer.bitPattern)
+            XCTAssertEqual(saved.fuelAmount.bitPattern, original.fuelAmount.bitPattern)
+            XCTAssertEqual(saved.pricePerFuelUnit.bitPattern, original.pricePerFuelUnit.bitPattern)
+            XCTAssertEqual(saved.totalCost.bitPattern, original.totalCost.bitPattern)
+            XCTAssertEqual(saved.notes, "Updated legacy note")
+            XCTAssertTrue(FuelingRecordValidation.isValid(saved, preserving: original))
+            XCTAssertFalse(FuelingRecordValidation.isValid(saved))
+        }
+    }
+
+    func testChangingLegacyValueToAnotherInvalidValueIsRejected() throws {
+        var original = values()
+        original.fuelAmount = 0
+        var draft = FuelingRecordDraft(values: original)
+        draft.edit(.fuelAmount, input: -1000)
+        XCTAssertFalse(draft.isValid)
+        XCTAssertThrowsError(try draft.makeValues())
+        draft.edit(.fuelAmount, input: 10_000)
+        XCTAssertTrue(draft.isValid)
+        XCTAssertEqual(try draft.makeValues().fuelAmount, 10)
+    }
+
+    func testNewEntryRequiresTwoSourceInputsRatherThanTreatingMissingPricesAsFreeFuel() {
+        var draft = FuelingRecordDraft()
+        draft.odometerString = "1000"
+        draft.edit(.fuelAmount, input: 10_000)
+        XCTAssertFalse(draft.isValid)
+        draft.edit(.pricePerFuelUnit, input: 3500)
+        XCTAssertTrue(draft.isValid)
+    }
+
+    func testExplicitZeroPriceAndCostUseTheSamePolicyAsPersistence() throws {
+        var draft = FuelingRecordDraft()
+        draft.odometerString = "1000"
+        draft.edit(.pricePerFuelUnit, input: 3500)
+        draft.edit(.fuelAmount, input: 10_000)
+        draft.edit(.pricePerFuelUnit, input: 0)
+        draft.edit(.totalCost, input: 0)
+        XCTAssertTrue(draft.isValid)
+        let saved = try draft.makeValues()
+        XCTAssertEqual(saved.fuelAmount, 10)
+        XCTAssertEqual(saved.pricePerFuelUnit, 0)
+        XCTAssertEqual(saved.totalCost, 0)
+        XCTAssertNoThrow(try FuelingRecordValidation.validate(saved))
+    }
+
+    func testBusinessPolicyRejectsNewInvalidAndNonfiniteMeasurements() {
+        for invalid in [0.0, -1.0, .infinity, .nan] {
+            var proposed = values()
+            proposed.fuelAmount = invalid
+            XCTAssertFalse(FuelingRecordValidation.isValid(proposed))
+            XCTAssertThrowsError(try FuelingRecordValidation.validate(proposed))
+            proposed = values()
+            proposed.odometer = invalid
+            XCTAssertFalse(FuelingRecordValidation.isValid(proposed))
+        }
+        for invalid in [-1.0, .infinity, .nan] {
+            var proposed = values()
+            proposed.pricePerFuelUnit = invalid
+            XCTAssertFalse(FuelingRecordValidation.isValid(proposed))
+            proposed = values()
+            proposed.totalCost = invalid
+            XCTAssertFalse(FuelingRecordValidation.isValid(proposed))
+        }
+    }
+
     private func values(notes: String? = "Original") -> FuelingRecordValues {
         FuelingRecordValues(
             date: Date(timeIntervalSince1970: 1_700_000_000), odometer: 87_654.321098765,
@@ -143,6 +220,31 @@ final class FuelingRecordDraftTests: XCTestCase {
 
 @MainActor
 final class FuelingRecordEditingPersistenceTests: XCTestCase {
+    func testDraftNotesEditOfZeroFuelSurvivesDiskReopenWithoutRepairingMeasurements() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("LegacyDraft-\(UUID()).store")
+        var original: FuelingRecordValues!
+        do {
+            let container = try makeStore(at: url)
+            let context = ModelContext(container)
+            let record = try insertFixture(in: context)
+            record.fuelAmount = 0
+            try context.save()
+            original = FuelingRecordValues(record: record)
+            var draft = FuelingRecordDraft(values: original, storageUnit: .imperial, inputUnit: .metric)
+            draft.notes = "Updated zero-fuel note"
+            XCTAssertTrue(draft.isValid)
+            try await FuelingRecordPersistenceService(container: container).update(
+                recordID: record.id, update: draft.makeUpdate())
+        }
+        let container = try makeStore(at: url)
+        let record = try XCTUnwrap(ModelContext(container).fetch(FetchDescriptor<FuelingRecord>()).first)
+        XCTAssertEqual(record.fuelAmount.bitPattern, original.fuelAmount.bitPattern)
+        XCTAssertEqual(record.odometer.bitPattern, original.odometer.bitPattern)
+        XCTAssertEqual(record.pricePerFuelUnit.bitPattern, original.pricePerFuelUnit.bitPattern)
+        XCTAssertEqual(record.totalCost.bitPattern, original.totalCost.bitPattern)
+        XCTAssertEqual(record.notes, "Updated zero-fuel note")
+    }
+
     private func makeStore(at url: URL? = nil) throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV5.self)
         let configuration =
