@@ -120,6 +120,8 @@ struct FuelingRecordDraft: Sendable {
     private let original: FuelingRecordValues?
     let storageUnit: UnitSystem
     let inputUnit: UnitSystem
+    private let locale: Locale
+    private let initialOdometerString: String
     private var numericInputs: [Field: NumericInput]
     private var editedFields: [Field] = []
     private(set) var calculationIsValid = true
@@ -129,10 +131,15 @@ struct FuelingRecordDraft: Sendable {
     var fillUpType: FillUpType
     var notes: String
 
-    init(date: Date = Date(), storageUnit: UnitSystem = .imperial, inputUnit: UnitSystem = .imperial) {
+    init(
+        date: Date = Date(), storageUnit: UnitSystem = .imperial, inputUnit: UnitSystem = .imperial,
+        locale: Locale = .current
+    ) {
         original = nil
         self.storageUnit = storageUnit
         self.inputUnit = inputUnit
+        self.locale = locale
+        initialOdometerString = ""
         self.date = date
         odometerString = ""
         fillUpType = .full
@@ -144,14 +151,19 @@ struct FuelingRecordDraft: Sendable {
     }
 
     init(
-        values storedValues: FuelingRecordValues, storageUnit: UnitSystem = .imperial, inputUnit: UnitSystem = .imperial
+        values storedValues: FuelingRecordValues, storageUnit: UnitSystem = .imperial,
+        inputUnit: UnitSystem = .imperial,
+        locale: Locale = .current
     ) {
         self.storageUnit = storageUnit
         self.inputUnit = inputUnit
+        self.locale = locale
         let values = storedValues.converted(from: storageUnit, to: inputUnit)
         original = storedValues
         date = values.date
-        odometerString = values.odometer.editableDecimalString
+        odometerString = values.odometer.formatted(
+            .number.locale(locale).grouping(.never).precision(.significantDigits(1...17)))
+        initialOdometerString = odometerString
         fillUpType = values.fillUpType
         notes = values.notes ?? ""
         numericInputs = [
@@ -161,7 +173,12 @@ struct FuelingRecordDraft: Sendable {
         ]
     }
 
-    var odometer: Double? { Double(odometerString) }
+    var odometer: Double? {
+        if let original, odometerString == initialOdometerString {
+            return inputUnit.distanceValue(original.odometer, from: storageUnit)
+        }
+        return odometerString.wholeMatch(of: .localizedDouble(locale: locale))?.output
+    }
     var storageOdometer: Double? { odometer.map { storageUnit.distanceValue($0, from: inputUnit) } }
     var pricePerFuelUnit: Double { value(for: .pricePerFuelUnit) }
     var fuelAmount: Double { value(for: .fuelAmount) }

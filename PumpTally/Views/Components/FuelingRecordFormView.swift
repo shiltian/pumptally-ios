@@ -1,5 +1,22 @@
 import SwiftUI
 
+/// Use the platform's Done action for SwiftUI fields, matching the UIKit
+/// system Done item used by the fixed-decimal fields.
+struct FuelingRecordKeyboardToolbar: ToolbarContent {
+    let dismiss: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            if #available(iOS 26.0, *) {
+                Button(role: .confirm, action: dismiss)
+            } else {
+                Button("Done", action: dismiss)
+            }
+        }
+    }
+}
+
 /// Shared form sections used by both AddRecordView and EditRecordView.
 /// This eliminates duplication of the date, odometer, fuel, fill-up type,
 /// preview, and notes sections.
@@ -67,6 +84,7 @@ struct FuelingRecordFormView: View {
                     .accessibilityIdentifier("fueling.odometer")
                     .font(.appBody)
                     .keyboardType(.decimalPad)
+                    .autocorrectionDisabled()
                     .multilineTextAlignment(.trailing)
                     .frame(width: 120)
             }

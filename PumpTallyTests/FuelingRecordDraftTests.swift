@@ -4,6 +4,57 @@ import XCTest
 @testable import PumpTally
 
 final class FuelingRecordDraftTests: XCTestCase {
+    func testOdometerUsesTheLocaleAndConsumesTheWholeInput() throws {
+        for (identifier, text) in [
+            ("en_US", "87,654.32"), ("es_ES", "87.654,32"),
+            ("fr_FR", "87\u{202f}654,32"), ("ar_EG", "٨٧٬٦٥٤٫٣٢"),
+        ] {
+            var draft = FuelingRecordDraft(values: values(), locale: Locale(identifier: identifier))
+            draft.odometerString = text
+            XCTAssertEqual(try XCTUnwrap(draft.odometer), 87654.32, accuracy: 0.000001, identifier)
+            XCTAssertEqual(try draft.makeValues().odometer, 87654.32, accuracy: 0.000001, identifier)
+            draft.odometerString += "invalid"
+            XCTAssertNil(draft.odometer, identifier)
+            XCTAssertFalse(draft.isValid, identifier)
+            XCTAssertThrowsError(try draft.makeValues(), identifier)
+        }
+        for text in ["", "123abc", "1.2.3", "1,23.4", "NaN", "∞"] {
+            var draft = FuelingRecordDraft(values: values(), locale: Locale(identifier: "en_US"))
+            draft.odometerString = text
+            XCTAssertFalse(draft.isValid, text)
+            XCTAssertThrowsError(try draft.makeValues(), text)
+        }
+    }
+
+    func testLocalizedNotesEditsPreserveExactMeasurementsAcrossUnitSystems() throws {
+        for identifier in ["en_US", "es_ES", "fr_FR", "ar_EG", "zh_CN"] {
+            let locale = Locale(identifier: identifier)
+            for storage in UnitSystem.allCases {
+                for display in UnitSystem.allCases {
+                    let original = values()
+                    var draft = FuelingRecordDraft(
+                        values: original, storageUnit: storage, inputUnit: display, locale: locale)
+                    XCTAssertTrue(draft.odometerString.contains(locale.decimalSeparator!), identifier)
+                    XCTAssertTrue(try draft.makeUpdate().isEmpty, identifier)
+                    draft.notes = "Updated localized note"
+                    let saved = try draft.makeValues()
+                    XCTAssertEqual(saved.odometer.bitPattern, original.odometer.bitPattern, identifier)
+                    XCTAssertEqual(saved.fuelAmount.bitPattern, original.fuelAmount.bitPattern, identifier)
+                    XCTAssertEqual(saved.pricePerFuelUnit.bitPattern, original.pricePerFuelUnit.bitPattern, identifier)
+                    XCTAssertEqual(saved.totalCost.bitPattern, original.totalCost.bitPattern, identifier)
+                }
+            }
+        }
+    }
+
+    func testEditedLocalizedOdometerConvertsToTheStorageUnit() throws {
+        var draft = FuelingRecordDraft(
+            values: values(), storageUnit: .imperial, inputUnit: .metric,
+            locale: Locale(identifier: "es_ES"))
+        draft.odometerString = "160.934,4"
+        XCTAssertEqual(try draft.makeValues().odometer, 100000, accuracy: 0.000001)
+    }
+
     func testNotesOnlyEditPreservesUntouchedLegacyZeroAndNegativeValues() throws {
         for legacy in [0.0, -1.0] {
             var original = values()

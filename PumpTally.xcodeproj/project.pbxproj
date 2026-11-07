@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C70000000000000000000001 /* CurrencyInputFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C70000000000000000000002 /* CurrencyInputFieldTests.swift */; };
 		CF0000000000000000000004 /* CSVImportPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000005 /* CSVImportPlan.swift */; };
 		CF0000000000000000000001 /* SwiftCSV in Frameworks */ = {isa = PBXBuildFile; productRef = CF0000000000000000000002 /* SwiftCSV */; };
 		BF0000000000000000000601 /* CloudSyncMappingHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000602 /* CloudSyncMappingHarness.swift */; };
@@ -143,6 +144,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C70000000000000000000002 /* CurrencyInputFieldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyInputFieldTests.swift; sourceTree = "<group>"; };
 		CF0000000000000000000005 /* CSVImportPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportPlan.swift; sourceTree = "<group>"; };
 		BF0000000000000000000602 /* CloudSyncMappingHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncMappingHarness.swift; sourceTree = "<group>"; };
 		BF0000000000000000000502 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
@@ -503,6 +505,7 @@
 				Z300000229B60001 /* Fixtures */,
 				A2CACDA40A2A49A286A7AA8F /* FuelingRecordPreviewTests.swift */,
 				X200000229B40001 /* FuelingRecordDraftTests.swift */,
+				C70000000000000000000002 /* CurrencyInputFieldTests.swift */,
 				B1000002296B0001 /* FuelingRecordTests.swift */,
 				B1000004296B0001 /* VehicleTests.swift */,
 				B1000006296B0001 /* FillUpTypeTests.swift */,
@@ -840,6 +843,7 @@
 				B1000001296B0001 /* FuelingRecordTests.swift in Sources */,
 				CE26E5C5A65449DCA367B66E /* FuelingRecordPreviewTests.swift in Sources */,
 				X200000129B40001 /* FuelingRecordDraftTests.swift in Sources */,
+				C70000000000000000000001 /* CurrencyInputFieldTests.swift in Sources */,
 				B1000003296B0001 /* VehicleTests.swift in Sources */,
 				B1000005296B0001 /* FillUpTypeTests.swift in Sources */,
 				B1000007296B0001 /* CSVServiceTests.swift in Sources */,

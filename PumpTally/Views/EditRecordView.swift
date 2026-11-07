@@ -94,14 +94,9 @@ struct EditRecordView: View {
                         .disabled(!isValid(validation))
                 }
 
-                ToolbarItem(placement: .keyboard) {
-                    HStack {
-                        Spacer()
-                        Button("Done") {
-                            focusedField = nil
-                            hideKeyboard()
-                        }
-                    }
+                FuelingRecordKeyboardToolbar {
+                    focusedField = nil
+                    hideKeyboard()
                 }
             }
             .alert("Unable to Save", isPresented: $showingSaveError) {

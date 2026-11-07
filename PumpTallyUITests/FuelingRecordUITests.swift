@@ -21,6 +21,169 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testAddOdometerKeyboardDoneIsTrailingAndDismissesTheKeyboard() {
+        assertOdometerKeyboardDone(editing: false)
+    }
+
+    func testEditOdometerKeyboardDoneIsTrailingAndDismissesTheKeyboard() {
+        assertOdometerKeyboardDone(editing: true)
+    }
+
+    private func assertOdometerKeyboardDone(editing: Bool) {
+        let app = launch()
+        if editing {
+            let history = app.tabBars.buttons["History"]
+            XCTAssertTrue(history.waitForExistence(timeout: 10))
+            history.tap()
+            let record = app.staticTexts["Original UI note"]
+            XCTAssertTrue(record.waitForExistence(timeout: 5))
+            record.tap()
+        } else {
+            let add = app.buttons["fueling.add"]
+            XCTAssertTrue(add.waitForExistence(timeout: 10))
+            add.tap()
+        }
+        let odometer = app.textFields["fueling.odometer"]
+        XCTAssertTrue(odometer.waitForExistence(timeout: 5))
+        odometer.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = editing ? "Edit odometer keyboard accessory" : "Add odometer keyboard accessory"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertGreaterThan(done.frame.midX, app.frame.minX + app.frame.width * 0.75)
+        done.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
+        wait(for: [dismissed], timeout: 5)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testNumericKeyboardDoneDismissesTheKeyboard() {
+        let app = launch()
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let field = app.textFields["fueling.price"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("2470")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        let dismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+        wait(for: [dismissed], timeout: 5)
+        XCTAssertEqual(field.value as? String, "2.470")
+    }
+
+    func testRecordFieldsUseConsistentNativeKeyboardDone() {
+        let app = launch()
+        let addRecord = app.buttons["fueling.add"]
+        XCTAssertTrue(addRecord.waitForExistence(timeout: 10))
+        addRecord.tap()
+        for identifier in ["fueling.odometer", "fueling.price", "fueling.fuel", "fueling.cost"] {
+            let field = app.textFields[identifier]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+            let done = app.buttons["Done"]
+            XCTAssertTrue(done.waitForExistence(timeout: 5))
+            XCTAssertGreaterThan(done.frame.midX, app.frame.minX + app.frame.width * 0.75)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "\(identifier) native keyboard Done"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            done.tap()
+            let dismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: keyboard)
+            wait(for: [dismissed], timeout: 5)
+        }
+        app.buttons["Cancel"].tap()
+    }
+
+    func testFuelDetailsSwitchDirectlyWithoutDismissingTheKeyboard() {
+        let app = launch()
+        let addRecord = app.buttons["fueling.add"]
+        XCTAssertTrue(addRecord.waitForExistence(timeout: 10))
+        addRecord.tap()
+        for identifier in ["fueling.price", "fueling.fuel", "fueling.cost"] {
+            let field = app.textFields[identifier]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(field.value as? String, "")
+            let done = app.buttons.matching(identifier: "Done")
+            XCTAssertEqual(done.count, 1)
+            XCTAssertTrue(done.firstMatch.isHittable)
+        }
+        app.buttons["Done"].tap()
+        let dismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+        wait(for: [dismissed], timeout: 5)
+        XCTAssertEqual(app.textFields["fueling.price"].value as? String, "0.000")
+        XCTAssertEqual(app.textFields["fueling.fuel"].value as? String, "0.000")
+        XCTAssertEqual(app.textFields["fueling.cost"].value as? String, "0.00")
+        XCTAssertFalse(app.buttons["Save"].isEnabled)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testDecimalCommaEntrySavesThroughTheForm() {
+        let app = launch(arguments: ["-AppleLanguages", "(en)", "-AppleLocale", "es_ES"])
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let odometer = app.textFields["fueling.odometer"]
+        XCTAssertTrue(odometer.waitForExistence(timeout: 5))
+        odometer.tap()
+        odometer.typeText("1600,5")
+        let price = app.textFields["fueling.price"]
+        price.tap()
+        price.typeText("3,5")
+        let fuel = app.textFields["fueling.fuel"]
+        fuel.tap()
+        fuel.typeText("10000")
+        app.buttons["Done"].tap()
+        XCTAssertEqual(price.value as? String, "3,500")
+        XCTAssertEqual(fuel.value as? String, "10,000")
+        XCTAssertEqual(app.textFields["fueling.cost"].value as? String, "35,00")
+        app.swipeUp()
+        let notes = app.descendants(matching: .any).matching(identifier: "fueling.notes").firstMatch
+        notes.tap()
+        notes.typeText("Localized numeric entry")
+        XCTAssertTrue(app.buttons["Save"].isEnabled)
+        app.buttons["Save"].tap()
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["Localized numeric entry"].waitForExistence(timeout: 5))
+    }
+
+    func testSelectAllDeleteFromTheNativeEditMenu() {
+        let app = launch()
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let price = app.textFields["fueling.price"]
+        XCTAssertTrue(price.waitForExistence(timeout: 5))
+        price.tap()
+        price.typeText("12345")
+        XCTAssertEqual(price.value as? String, "12.345")
+        let text = price.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        let selectAll = app.menuItems["Select All"]
+        text.tap()
+        if !selectAll.waitForExistence(timeout: 1) { text.tap() }
+        XCTAssertTrue(selectAll.waitForExistence(timeout: 5))
+        selectAll.tap()
+        price.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertEqual(price.value as? String, "")
+        price.typeText("2.47")
+        app.buttons["Done"].tap()
+        XCTAssertEqual(price.value as? String, "2.470")
+    }
+
     func testSpanishRecoveryReviewIsLocalized() {
         assertLocalizedRecoveryReview(
             language: "es", locale: "es_ES",

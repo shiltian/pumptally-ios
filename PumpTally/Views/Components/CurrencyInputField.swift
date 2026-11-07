@@ -6,6 +6,7 @@ import UIKit
 /// - Explicit decimal: typing "2.47" also displays "2.47"
 /// - Extra digits after decimal limit are ignored
 struct CurrencyInputField: View {
+    @Environment(\.locale) private var locale
     @Binding var value: Int  // Value in smallest units (cents for 2 decimals, mills for 3)
     let decimalPlaces: Int
     let width: CGFloat
@@ -27,6 +28,7 @@ struct CurrencyInputField: View {
         CurrencyTextFieldRepresentable(
             value: $value,
             decimalPlaces: decimalPlaces,
+            locale: locale,
             accessibilityIdentifier: accessibilityIdentifier
         )
         .frame(width: width, height: 22)
@@ -44,199 +46,169 @@ private func intPow(_ base: Int, _ exp: Int) -> Int {
 }
 
 // MARK: - Display Formatting
-private func formatValue(_ value: Int, decimalPlaces: Int) -> String {
-    let divisor = intPow(10, decimalPlaces)
-    let integerPart = value / divisor
-    let decimalPart = abs(value % divisor)
-    // Pad decimal part with leading zeros
-    let decimalString = String(format: "%0\(decimalPlaces)d", decimalPart)
-    return "\(integerPart).\(decimalString)"
+private func formatValue(_ value: Int, decimalPlaces: Int, locale: Locale) -> String {
+    let number = Decimal(value) / Decimal(intPow(10, decimalPlaces))
+    return number.formatted(.number.locale(locale).grouping(.never).precision(.fractionLength(decimalPlaces)))
 }
 
 // MARK: - UIViewRepresentable
 private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
     @Binding var value: Int
     let decimalPlaces: Int
+    let locale: Locale
     let accessibilityIdentifier: String
 
     func makeUIView(context: Context) -> UITextField {
         let textField = UITextField()
         textField.keyboardType = .decimalPad
+        textField.autocorrectionType = .no
+        textField.spellCheckingType = .no
         textField.textAlignment = .right
         textField.font = UIFont(name: "Avenir Next", size: 16)
-        textField.text = formatValue(value, decimalPlaces: decimalPlaces)
         textField.delegate = context.coordinator
+        textField.addTarget(context.coordinator, action: #selector(Coordinator.textChanged), for: .editingChanged)
         textField.accessibilityIdentifier = accessibilityIdentifier
-
+        let toolbar = UIToolbar()
+        toolbar.items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(
+                barButtonSystemItem: .done, target: textField,
+                action: #selector(UIResponder.resignFirstResponder)),
+        ]
+        toolbar.sizeToFit()
+        textField.inputAccessoryView = toolbar
+        context.coordinator.refresh(textField)
         return textField
     }
 
     func updateUIView(_ textField: UITextField, context: Context) {
-        // Only update if the value changed externally (e.g., from calculation)
-        // and we're not currently editing
-        if !textField.isFirstResponder {
-            textField.text = formatValue(value, decimalPlaces: decimalPlaces)
-            // Reset coordinator state when not editing
-            context.coordinator.resetState()
+        let coordinator = context.coordinator
+        let configurationChanged =
+            coordinator.parent.locale != locale || coordinator.parent.decimalPlaces != decimalPlaces
+        coordinator.parent = self
+        if !textField.isFirstResponder || coordinator.lastValue != value || configurationChanged {
+            coordinator.refresh(textField)
         }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    // MARK: - Coordinator (State Machine)
     class Coordinator: NSObject, UITextFieldDelegate {
         var parent: CurrencyTextFieldRepresentable
-
-        // State machine
-        private var isDecimalMode: Bool = false
-        private var decimalPosition: Int = 0
-
-        // Precomputed constants (decimalPlaces is immutable for the component lifetime)
-        private let decimalPlaces: Int
-        private let multiplier: Int            // 10^decimalPlaces
-        private let positionMultipliers: [Int]  // [10^(dp-1), 10^(dp-2), …, 10^0]
+        private(set) var lastValue: Int
+        private var initialValue: Int
+        private var isTextEditing = false
+        private var multiplier: Int { intPow(10, parent.decimalPlaces) }
+        private var separator: String { parent.locale.decimalSeparator ?? "." }
+        private let maximumValue = 999_999_999
 
         init(_ parent: CurrencyTextFieldRepresentable) {
             self.parent = parent
-            self.decimalPlaces = parent.decimalPlaces
-            self.multiplier = intPow(10, parent.decimalPlaces)
-            self.positionMultipliers = (0..<parent.decimalPlaces).map {
-                intPow(10, parent.decimalPlaces - 1 - $0)
-            }
+            lastValue = parent.value
+            initialValue = parent.value
         }
 
-        func resetState() {
-            isDecimalMode = false
-            decimalPosition = 0
+        func refresh(_ textField: UITextField) {
+            isTextEditing = false
+            lastValue = parent.value
+            initialValue = parent.value
+            textField.text = formatValue(parent.value, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
         }
-
-        // MARK: - UITextFieldDelegate
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
-            resetState()
+            isTextEditing = false
+            initialValue = parent.value
+            // The initial zero is a display template, not text to append a
+            // pasted number to. Focusing it does not change the bound value.
+            if parent.value == 0 { textField.text = "" }
         }
+        func textFieldDidEndEditing(_ textField: UITextField) { refresh(textField) }
 
-        func textFieldDidEndEditing(_ textField: UITextField) {
-            resetState()
-            // Ensure display is formatted correctly
-            textField.text = formatValue(parent.value, decimalPlaces: decimalPlaces)
+        @objc func textChanged(_ textField: UITextField) {
+            guard let value = parsedValue(textField.text ?? "") else {
+                refresh(textField)
+                return
+            }
+            publish(value)
         }
 
         func textField(_ textField: UITextField,
                        shouldChangeCharactersIn range: NSRange,
                        replacementString string: String) -> Bool {
+            let text = textField.text ?? ""
+            guard let replacementRange = Range(range, in: text) else { return false }
+            guard !string.isEmpty || range.length > 0 else { return false }
+            let hasSelection = textField.selectedTextRange?.isEmpty == false
+            let insertsAtEnd = !hasSelection && range.length == 0 && range.location == text.utf16.count
+            let deletesAtEnd =
+                !hasSelection && string.isEmpty && range.length == 1
+                && NSMaxRange(range) == text.utf16.count
 
-            // Work on a local copy — assign to binding exactly once at the end
-            var current = parent.value
-
-            // Handle backspace/delete
-            if string.isEmpty {
-                current = applyBackspace(to: current)
-                parent.value = current
-                textField.text = formatValue(current, decimalPlaces: decimalPlaces)
+            // Cash-register entry applies only to individual keystrokes at the
+            // end. All selection, cursor and paste edits use UIKit replacement.
+            if !isTextEditing, insertsAtEnd, string.count == 1 {
+                if let digit = string.first?.wholeNumberValue,
+                    string.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) })
+                {
+                    let (shifted, overflow) = parent.value.multipliedReportingOverflow(by: 10)
+                    let (value, additionOverflow) = shifted.addingReportingOverflow(digit)
+                    guard !overflow, !additionOverflow, value >= 0, value <= maximumValue else { return false }
+                    apply(value, to: textField)
+                    return false
+                }
+                if string == separator {
+                    let (value, overflow) = parent.value.multipliedReportingOverflow(by: multiplier)
+                    guard !overflow, value >= 0, value <= maximumValue else { return false }
+                    isTextEditing = true
+                    let integer = parent.value.formatted(.number.locale(parent.locale).grouping(.never))
+                    apply(value, text: integer + separator, to: textField)
+                    return false
+                }
+            }
+            if !isTextEditing, deletesAtEnd {
+                apply(max(parent.value / 10, 0), to: textField)
                 return false
             }
 
-            // Handle decimal point
-            if string == "." || string == "," {
-                if let newValue = applyDecimalPoint(to: current) {
-                    current = newValue
-                    parent.value = current
-                }
-                textField.text = formatValue(current, decimalPlaces: decimalPlaces)
-                return false
-            }
-
-            // Only allow digits — no CharacterSet allocation
-            guard string.allSatisfy(\.isNumber) else {
-                return false
-            }
-
-            // Process each digit on the local copy
-            for char in string {
-                if let digit = char.wholeNumberValue {
-                    current = applyDigit(digit, to: current)
-                }
-            }
-
-            // Single binding mutation for the entire keystroke
-            parent.value = current
-            textField.text = formatValue(current, decimalPlaces: decimalPlaces)
-            return false
+            let candidate = text.replacingCharacters(in: replacementRange, with: string)
+            guard parsedValue(candidate) != nil else { return false }
+            isTextEditing = true
+            // UIKit owns the replacement and selection, including cut/paste and
+            // undo. editingChanged publishes the resulting value exactly once.
+            return true
         }
 
-        // MARK: - State Machine Operations (pure value transforms)
-
-        /// Returns the new value after appending a digit.
-        private func applyDigit(_ digit: Int, to value: Int) -> Int {
-            if isDecimalMode {
-                // Decimal mode: fill decimal places from left to right
-                guard decimalPosition < decimalPlaces else {
-                    // All decimal places filled — ignore additional digits
-                    return value
-                }
-
-                let posMul = positionMultipliers[decimalPosition]
-
-                // Clear existing digit at this position and insert new one in a single expression
-                let existingDigit = (value / posMul) % 10
-                let newValue = value - existingDigit * posMul + digit * posMul
-                decimalPosition += 1
-                return newValue
-            } else {
-                // Normal mode: right-to-left entry
-                let (shifted, multiplicationOverflow) = value.multipliedReportingOverflow(by: 10)
-                let (newValue, additionOverflow) = shifted.addingReportingOverflow(digit)
-                if !multiplicationOverflow, !additionOverflow, newValue <= 999_999_999, newValue >= value {
-                    return newValue
-                }
-                return value
+        private func parsedValue(_ text: String) -> Int? {
+            // Undo may restore an unchanged legacy value outside today's entry
+            // limits. Its original text must still restore its exact value.
+            if text == formatValue(initialValue, decimalPlaces: parent.decimalPlaces, locale: parent.locale) {
+                return initialValue
             }
+            if text.isEmpty || text == separator { return 0 }
+            var allowed = CharacterSet.decimalDigits
+            allowed.formUnion(CharacterSet(charactersIn: separator + (parent.locale.groupingSeparator ?? "")))
+            guard text.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+            let parts = text.components(separatedBy: separator)
+            guard parts.count <= 2,
+                parts.count == 1 || parts[1].count <= parent.decimalPlaces,
+                let number = text.wholeMatch(of: .localizedDecimal(locale: parent.locale))?.output
+            else { return nil }
+            let scaled = number * Decimal(multiplier)
+            guard scaled >= 0, scaled <= Decimal(maximumValue) else { return nil }
+            return NSDecimalNumber(decimal: scaled).intValue
         }
 
-        /// Returns the new value after pressing decimal point, or nil if no change.
-        private func applyDecimalPoint(to value: Int) -> Int? {
-            guard !isDecimalMode else {
-                // Already in decimal mode — ignore
-                return nil
-            }
-
-            // Switch to decimal mode: current value becomes integer part
-            let (newValue, overflow) = value.multipliedReportingOverflow(by: multiplier)
-            if !overflow, newValue <= 999_999_999 {
-                isDecimalMode = true
-                decimalPosition = 0
-                return newValue
-            }
-            return nil
+        private func publish(_ value: Int) {
+            lastValue = value
+            if parent.value != value { parent.value = value }
         }
 
-        /// Returns the new value after pressing backspace.
-        private func applyBackspace(to value: Int) -> Int {
-            let result: Int
-            if isDecimalMode {
-                if decimalPosition > 0 {
-                    // Clear the last entered decimal digit
-                    let targetPosition = decimalPosition - 1
-                    let posMul = positionMultipliers[targetPosition]
-
-                    let existingDigit = (value / posMul) % 10
-                    result = value - existingDigit * posMul
-                    decimalPosition -= 1
-                } else {
-                    // At position 0 — transition back to normal mode
-                    result = value / multiplier
-                    isDecimalMode = false
-                }
-            } else {
-                // Normal mode: remove last digit
-                result = value / 10
-            }
-
-            // Ensure non-negative
-            return max(result, 0)
+        private func apply(_ value: Int, text: String? = nil, to textField: UITextField) {
+            textField.text = text ?? formatValue(value, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+            textField.selectedTextRange = textField.textRange(
+                from: textField.endOfDocument, to: textField.endOfDocument)
+            publish(value)
+            textField.sendActions(for: .editingChanged)
         }
     }
 }
