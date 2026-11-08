@@ -4,9 +4,13 @@ import Foundation
 enum CloudRecoveryError: LocalizedError, Equatable, Sendable {
     case invalidControl, replacementInProgress, generationChanged
     case pendingReplacement, invalidReceipt, verificationFailed, incompleteBatch
+    case replacementUnavailable
 
     var errorDescription: String? {
         switch self {
+        case .replacementUnavailable:
+            return String(
+                localized: "Replacing iCloud data is unavailable while older app versions may still be using it.")
         case .invalidControl:
             return String(localized: "The iCloud sync format is not supported. Update PumpTally before syncing.")
         case .replacementInProgress:

@@ -41,7 +41,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     private enum Session {
         case stopped
         case starting(UUID, SyncPersistenceStore)
-        case stopping, recovering
+        case stopping
         case running(Runtime)
         case recoveryRequired
     }
@@ -62,11 +62,6 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         }
     }
     private var syncEngine: (any SyncEngineDriver)? { runtime?.driver }
-    private func recoveryCoordinator() -> CloudRecoveryCoordinator {
-        CloudRecoveryCoordinator(
-            environment: environment,
-            store: CloudRecoveryStore(persistence: makePersistenceStore(writer)), codec: recordCodec)
-    }
     private let operationCoordinator = SyncOperationCoordinator()
     private var inFlightGenerations: [String: String] = [:]
     private var journalRead: UUID?
@@ -186,18 +181,16 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
             guard proposal.containerID == ObjectIdentifier(writer.container) else {
                 throw InitialSyncError.differentStore
             }
+            // Released clients share this zone but cannot honor the generation
+            // fence. Refuse bulk replacement before stopping sync or mutating
+            // preferences, receipts, local data or CloudKit.
+            if case .replaceCloud = strategy { throw CloudRecoveryError.replacementUnavailable }
             do {
                 stateManager.syncStatus = .syncing
                 await stopMonitoring()
                 try await verifyAccount(proposal.accountID)
                 let store = makePersistenceStore(writer)
                 try await store.validateActivation(accountID: proposal.accountID)
-                if case .replaceCloud = strategy {
-                    try await performRecovery(
-                        accountID: proposal.accountID, expectedGeneration: proposal.cloudGeneration,
-                        expectedLocalChanges: proposal.localChanges)
-                    return
-                }
                 let snapshot = try await environment.snapshot()
                 let control =
                     try snapshot.control.map { try CloudSyncControl(record: $0, zone: zoneID) }
@@ -254,63 +247,37 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
         guard current == expected else { throw SyncPersistenceError.accountChanged }
     }
 
-    // MARK: - Durable cloud replacement
+    // MARK: - Legacy-client compatibility
 
     func replaceCloudDataWithLocal() async throws {
-        try await operationCoordinator.runExclusive {
-            do {
-                let accountID = try await environment.accountID()
-                try await performRecovery(accountID: accountID)
-            } catch {
-                recordRecoveryFailure(error)
-                throw error
-            }
-        }
+        throw CloudRecoveryError.replacementUnavailable
     }
 
-    /// Called at startup even when a crash occurred before enabling preferences.
-    /// The persisted receipt, rather than a preference flag, owns resumption.
+    /// Pending receipts stay intact. Resuming publication is subject to the
+    /// same legacy-client restriction as starting a new replacement.
     func resumeRecoveryIfNeeded() async throws {
         var resumed = false
         try await operationCoordinator.runExclusive {
-            let coordinator = recoveryCoordinator()
-            guard try await coordinator.store.pending() != nil else {
-                if !stateManager.iCloudSyncEnabled || !stateManager.initialSyncCompleted,
-                    let account = try await coordinator.store.persistence.committedAccountID,
-                    try await environment.accountID() == account
-                {
-                    finishRecoveryIntent()
-                    resumed = true
-                }
-                return
-            }
-            await stopMonitoring()
-            session = .recovering
-            stateManager.syncStatus = .syncing
             do {
-                _ = try await coordinator.resumeIfNeeded()
-                finishRecoveryIntent()
-                resumed = true
+                let store = CloudRecoveryStore(persistence: makePersistenceStore(writer))
+                guard try await store.pending() != nil else {
+                    if !stateManager.iCloudSyncEnabled || !stateManager.initialSyncCompleted,
+                        let account = try await store.persistence.committedAccountID,
+                        try await environment.accountID() == account
+                    {
+                        finishRecoveryIntent()
+                        resumed = true
+                    }
+                    return
+                }
+                throw CloudRecoveryError.replacementUnavailable
             } catch {
+                await stopMonitoring()
                 recordRecoveryFailure(error)
                 throw error
             }
         }
         if resumed { await synchronizeNow() }
-    }
-
-    private func performRecovery(
-        accountID: String, expectedGeneration: String? = nil,
-        expectedLocalChanges: [String: String]? = nil
-    ) async throws {
-        await stopMonitoring()
-        session = .recovering
-        stateManager.syncStatus = .syncing
-        try await recoveryCoordinator().replace(
-            accountID: accountID, expectedGeneration: expectedGeneration,
-            expectedLocalChanges: expectedLocalChanges)
-        finishRecoveryIntent()
-        await synchronizeNow()
     }
 
     private func finishRecoveryIntent() {
@@ -361,7 +328,7 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     /// Start CKSyncEngine and monitor durable journal changes.
     func startMonitoring() async {
         switch session {
-        case .running, .starting, .stopping, .recovering: return
+        case .running, .starting, .stopping: return
         case .stopped, .recoveryRequired: break
         }
         let attempt = UUID()

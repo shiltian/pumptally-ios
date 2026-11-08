@@ -201,8 +201,8 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(try fixture.record(in: fixture.context).notes, "original")
     }
 
-    func testEveryStrategyRejectsAnAccountSwitchAfterConfirmation() async throws {
-        for strategy: InitialSyncStrategy in [.merge, .useCloud, .replaceCloud] {
+    func testAvailableStrategiesRejectAnAccountSwitchAfterConfirmation() async throws {
+        for strategy: InitialSyncStrategy in [.merge, .useCloud] {
             let fixture = try fixture()
             let proposal = try await fixture.service.prepareInitialSync()
             fixture.environment.userID = "other-account"
@@ -654,32 +654,36 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertEqual(try fixture.record(in: fixture.context).odometer.bitPattern, 1000.123456789.bitPattern)
     }
 
-    func testLocalSourceChoicePublishesTheReceiptWithoutRecreatingTheZone() async throws {
+    func testCloudReplacementChoiceIsRejectedBeforeAnySideEffect() async throws {
         let fixture = try fixture()
         let cloudSource = try self.fixture()
         fixture.environment.records = cloudSource.environment.records
-        fixture.environment.automaticDelivery = true
         let proposal = try await fixture.service.prepareInitialSync()
-        var checkedReceipt = false
-        fixture.environment.batchHandler = { _ in
-            if !checkedReceipt {
-                let receipt = try XCTUnwrap(fixture.context.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first)
-                XCTAssertEqual(receipt.phaseRaw, "prepared")
-                XCTAssertFalse(fixture.state.iCloudSyncEnabled)
-                checkedReceipt = true
-            }
-        }
-        try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
-        XCTAssertTrue(checkedReceipt)
-        XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first?.phaseRaw, "completed")
-        XCTAssertEqual(
-            fixture.environment.records.fuelingRecords.map(\.recordID.recordName), [fixture.recordID.uuidString])
-        XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<SyncChange>()), 0)
+        let accountReads = fixture.environment.accountReads
+        let snapshotReads = fixture.environment.snapshotReads
+        let zonePreparations = fixture.environment.zonePreparations
+        let cloudIDs = fixture.environment.records.businessRecords.map(\.recordID)
+        let status = fixture.state.syncStatus
+        do {
+            try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
+            XCTFail("Released clients cannot coordinate destructive replacement")
+        } catch { XCTAssertEqual(error as? CloudRecoveryError, .replacementUnavailable) }
+        XCTAssertEqual(fixture.environment.accountReads, accountReads)
+        XCTAssertEqual(fixture.environment.snapshotReads, snapshotReads)
+        XCTAssertEqual(fixture.environment.zonePreparations, zonePreparations)
+        XCTAssertEqual(fixture.environment.records.businessRecords.map(\.recordID), cloudIDs)
+        XCTAssertNil(fixture.environment.records.control)
+        XCTAssertTrue(fixture.environment.drivers.isEmpty)
+        XCTAssertEqual(fixture.commits.attempts, 0)
+        XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<CloudRecoveryReceipt>()), 0)
         XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<FuelingRecord>()).map(\.id), [fixture.recordID])
-        XCTAssertEqual(fixture.state.syncStatus, .synced)
+        XCTAssertEqual(try fixture.record(in: fixture.context).notes, "original")
+        XCTAssertEqual(fixture.state.syncStatus, status)
+        XCTAssertFalse(fixture.state.iCloudSyncEnabled)
+        XCTAssertFalse(fixture.state.initialSyncCompleted)
     }
 
-    func testInvalidLocalReplacementSourceIsRejectedBeforeDeletingCloudData() async throws {
+    func testInvalidLocalSourceCannotBypassTheReplacementRestriction() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
         let context = fixture.context
@@ -688,13 +692,13 @@ final class InitialSyncCommandTests: XCTestCase {
         do {
             try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
             XCTFail("Validate the trusted local source before touching the cloud")
-        } catch CloudSnapshotValidator.ValidationError.invalidVehicleRecord {}
+        } catch { XCTAssertEqual(error as? CloudRecoveryError, .replacementUnavailable) }
         XCTAssertEqual(fixture.commits.attempts, 0)
         XCTAssertFalse(fixture.state.iCloudSyncEnabled)
         XCTAssertTrue(fixture.environment.drivers.isEmpty)
     }
 
-    func testDeletionAfterRecoverySnapshotRetainsItsExactGeneration() async throws {
+    func testRetainedProtocolDeletionAfterRecoverySnapshotRetainsItsExactGeneration() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
         fixture.environment.automaticDelivery = true
@@ -711,7 +715,14 @@ final class InitialSyncCommandTests: XCTestCase {
                 fixture.environment.automaticDelivery = false
             }
         }
-        try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
+        let coordinator = CloudRecoveryCoordinator(
+            environment: fixture.environment,
+            store: CloudRecoveryStore(persistence: SyncPersistenceStore(writer: fixture.writer)),
+            codec: CloudRecordCodec(zoneID: fixture.environment.recordZoneID))
+        try await coordinator.replace(
+            accountID: proposal.accountID, expectedGeneration: proposal.cloudGeneration,
+            expectedLocalChanges: proposal.localChanges)
+        try await fixture.service.resumeRecoveryIfNeeded()
         let journal = try XCTUnwrap(
             fixture.context.fetch(FetchDescriptor<SyncChange>()).first { $0.recordName == fixture.recordID.uuidString })
         XCTAssertEqual(journal.generation, generation)
@@ -722,7 +733,7 @@ final class InitialSyncCommandTests: XCTestCase {
             batch?.businessRecordsToSave.contains { $0.recordID.recordName == fixture.recordID.uuidString } == true)
     }
 
-    func testEditAfterRecoverySnapshotRetainsItsExactGenerationAndValues() async throws {
+    func testRetainedProtocolEditAfterRecoverySnapshotRetainsItsExactGenerationAndValues() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
         fixture.environment.automaticDelivery = true
@@ -739,7 +750,14 @@ final class InitialSyncCommandTests: XCTestCase {
                 fixture.environment.automaticDelivery = false
             }
         }
-        try await fixture.service.enableSync(strategy: .replaceCloud, proposal: proposal)
+        let coordinator = CloudRecoveryCoordinator(
+            environment: fixture.environment,
+            store: CloudRecoveryStore(persistence: SyncPersistenceStore(writer: fixture.writer)),
+            codec: CloudRecordCodec(zoneID: fixture.environment.recordZoneID))
+        try await coordinator.replace(
+            accountID: proposal.accountID, expectedGeneration: proposal.cloudGeneration,
+            expectedLocalChanges: proposal.localChanges)
+        try await fixture.service.resumeRecoveryIfNeeded()
         let journal = try XCTUnwrap(
             fixture.context.fetch(FetchDescriptor<SyncChange>()).first { $0.recordName == fixture.recordID.uuidString })
         XCTAssertEqual(journal.generation, generation)
@@ -750,12 +768,30 @@ final class InitialSyncCommandTests: XCTestCase {
     }
 
     func testInitialMergePreservesThe800RecordFixtureExactlyThroughSaveAndReopen() async throws {
+        try await assertInitialMergePreservesFixture("SchemaV3")
+    }
+
+    func testReleasedV11StartupRepairAndMergePreserve800RecordsThroughReopen() async throws {
+        try await assertInitialMergePreservesFixture("ReleasedV11", repairStartupCaches: true)
+    }
+
+    func testReleasedV12StartupRepairAndMergePreserve800RecordsThroughReopen() async throws {
+        try await assertInitialMergePreservesFixture("ReleasedV12", repairStartupCaches: true)
+    }
+
+    func testReleasedV13StartupRepairAndMergePreserve800RecordsThroughReopen() async throws {
+        try await assertInitialMergePreservesFixture("ReleasedV13", repairStartupCaches: true)
+    }
+
+    private func assertInitialMergePreservesFixture(
+        _ fixtureName: String, repairStartupCaches: Bool = false
+    ) async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("representative.store")
         let source = try XCTUnwrap(
-            Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
+            Bundle(for: Self.self).url(forResource: fixtureName, withExtension: "store", subdirectory: "Fixtures"))
         try FileManager.default.copyItem(at: source, to: url)
         let schema = Schema(versionedSchema: SchemaV5.self)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
@@ -805,8 +841,16 @@ final class InitialSyncCommandTests: XCTestCase {
             let state = SyncStateManager(defaults: try XCTUnwrap(UserDefaults(suiteName: "Initial800.\(UUID())")))
             state.iCloudSyncEnabled = false
             state.initialSyncCompleted = false
-            let service = CloudSyncService(
-                writer: OwnedModelStore(container: container), stateManager: state, environment: environment)
+            let writer = OwnedModelStore(container: container)
+            let service = CloudSyncService(writer: writer, stateManager: state, environment: environment)
+            if repairStartupCaches {
+                for vehicle in vehicles { vehicle.cacheLastUpdated = nil }
+                try context.save()
+                let lifecycle = ApplicationLifecycleCoordinator(writer: writer, syncService: service)
+                await lifecycle.start()
+                XCTAssertEqual(lifecycle.startup, .ready)
+                XCTAssertEqual(try businessValues(in: ModelContext(container)), expected)
+            }
             let proposal = try await service.prepareInitialSync()
             try await service.enableSync(strategy: .merge, proposal: proposal)
             XCTAssertEqual(try businessValues(in: ModelContext(container)), expected)

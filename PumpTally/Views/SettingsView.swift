@@ -89,13 +89,10 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
             if !pendingReplacements.isEmpty {
-                Button("Resume iCloud Replacement") {
-                    Task {
-                        do { try await cloudSyncService.resumeRecoveryIfNeeded() } catch { presentSyncError(error) }
-                    }
-                }
-                .disabled(stateManager.syncStatus.isInProgress)
-                .accessibilityIdentifier("sync.recovery.resume")
+                Text("Your saved replacement data has been kept on this device.")
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("sync.recovery.paused")
             }
         } header: {
             Text("iCloud")
@@ -225,12 +222,11 @@ struct SettingsView: View {
                 ), presenting: initialSyncProposal
             ) { proposal in
                 Button("Use iCloud Data") { performInitialSync(strategy: .useCloud, proposal: proposal) }
-                Button("Use Local Data") { performInitialSync(strategy: .replaceCloud, proposal: proposal) }
                 Button("Merge Both") { performInitialSync(strategy: .merge, proposal: proposal) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text(
-                    "iCloud already contains fueling data. How would you like to handle this? Before using local data, update or close PumpTally on your other devices until replacement finishes."
+                    "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device."
                 )
             }
             // Toggle off alert

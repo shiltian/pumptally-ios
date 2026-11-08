@@ -14,8 +14,26 @@ import SwiftData
 final class SchemaMigrationTests: XCTestCase {
 
     func testReleasedV15StorePreserves800RecordsThroughMigrationWritesAndReopen() throws {
+        try assertReleasedStoreSurvivesMigrationWritesAndReopen("ReleasedV15")
+    }
+
+    func testReleasedV12StorePreserves800RecordsThroughMigrationWritesAndReopen() throws {
+        try assertReleasedStoreSurvivesMigrationWritesAndReopen("ReleasedV12")
+    }
+
+    func testReleasedV13StorePreserves800RecordsThroughMigrationWritesAndReopen() throws {
+        try assertReleasedStoreSurvivesMigrationWritesAndReopen("ReleasedV13")
+    }
+
+    func testReleasedV11UnversionedStorePreserves800RecordsThroughMigrationWritesAndReopen() throws {
+        try assertReleasedStoreSurvivesMigrationWritesAndReopen("ReleasedV11", unversioned: true)
+    }
+
+    private func assertReleasedStoreSurvivesMigrationWritesAndReopen(
+        _ fixtureName: String, unversioned: Bool = false
+    ) throws {
         let fixture = try XCTUnwrap(
-            Bundle(for: Self.self).url(forResource: "ReleasedV15", withExtension: "store", subdirectory: "Fixtures"))
+            Bundle(for: Self.self).url(forResource: fixtureName, withExtension: "store", subdirectory: "Fixtures"))
         let url = tempStoreURL()
         let baselineURL = tempStoreURL()
         // Keep these isolated files until native SQLite handles are released.
@@ -26,39 +44,81 @@ final class SchemaMigrationTests: XCTestCase {
         }
         var expectedRecords: [UUID: [String]] = [:]
         var expectedVehicles: [UUID: [String]] = [:]
-        do {
-            // This fixture was generated from the tagged v1.5 runtime models,
-            // independently of today's historical schema definitions.
-            let schema = Schema(versionedSchema: SchemaV2.self)
-            let original = try ModelContainer(
-                for: schema,
-                configurations: [
-                    ModelConfiguration(schema: schema, url: baselineURL, cloudKitDatabase: .none)
-                ])
-            let context = ModelContext(original)
-            context.autosaveEnabled = false
-            for r in try context.fetch(FetchDescriptor<SchemaV2.FuelingRecord>()) {
-                expectedRecords[r.id] =
-                    bits([
-                        r.odometer, r.pricePerFuelUnit, r.fuelAmount, r.totalCost,
-                        r.cachedPreviousOdometer, r.cachedDistanceDriven, r.cachedEfficiency, r.cachedCostPerDistance,
-                        r.date.timeIntervalSinceReferenceDate, r.createdAt.timeIntervalSinceReferenceDate,
-                        r.modifiedAt?.timeIntervalSinceReferenceDate,
-                    ]) + [r.vehicle.id.uuidString, r.fillUpTypeRaw, r.notes ?? "nil"]
+        if unversioned {
+            do {
+                // The released v1.1 app used an unversioned store matching V1.
+                // Read its unchanged fields before adding optional modification dates.
+                let schema = Schema(versionedSchema: SchemaV1.self)
+                let original = try ModelContainer(
+                    for: schema,
+                    configurations: [
+                        ModelConfiguration(schema: schema, url: baselineURL, cloudKitDatabase: .none)
+                    ])
+                let context = ModelContext(original)
+                context.autosaveEnabled = false
+                for r in try context.fetch(FetchDescriptor<SchemaV1.FuelingRecord>()) {
+                    expectedRecords[r.id] =
+                        bits([
+                            r.odometer, r.pricePerFuelUnit, r.fuelAmount, r.totalCost,
+                            r.cachedPreviousOdometer, r.cachedDistanceDriven, r.cachedEfficiency,
+                            r.cachedCostPerDistance,
+                            r.date.timeIntervalSinceReferenceDate, r.createdAt.timeIntervalSinceReferenceDate,
+                            nil,
+                        ]) + [r.vehicle.id.uuidString, r.fillUpTypeRaw, r.notes ?? "nil"]
+                }
+                for v in try context.fetch(FetchDescriptor<SchemaV1.Vehicle>()) {
+                    expectedVehicles[v.id] =
+                        bits([
+                            v.cachedTotalSpent, v.cachedTotalDistance, v.cachedTotalFuel,
+                            v.cachedAverageEfficiency, v.cachedAverageCostPerDistance, v.cachedAverageFillUpCost,
+                            v.cachedAveragePricePerFuelUnit, v.cachedBestEfficiency, v.cachedWorstEfficiency,
+                            v.cachedHighestPricePerFuelUnit, v.cachedLowestPricePerFuelUnit,
+                            v.cacheLastUpdated?.timeIntervalSinceReferenceDate,
+                            v.createdAt.timeIntervalSinceReferenceDate,
+                            nil,
+                        ]) + [
+                            v.name, v.make ?? "nil", v.model ?? "nil", String(describing: v.year),
+                            v.unitSystemRaw, String(describing: v.cachedRecordCount),
+                        ] + (v.fuelingRecords ?? []).map { $0.id.uuidString }.sorted()
+                }
             }
-            for v in try context.fetch(FetchDescriptor<SchemaV2.Vehicle>()) {
-                expectedVehicles[v.id] =
-                    bits([
-                        v.cachedTotalSpent, v.cachedTotalDistance, v.cachedTotalFuel,
-                        v.cachedAverageEfficiency, v.cachedAverageCostPerDistance, v.cachedAverageFillUpCost,
-                        v.cachedAveragePricePerFuelUnit, v.cachedBestEfficiency, v.cachedWorstEfficiency,
-                        v.cachedHighestPricePerFuelUnit, v.cachedLowestPricePerFuelUnit,
-                        v.cacheLastUpdated?.timeIntervalSinceReferenceDate, v.createdAt.timeIntervalSinceReferenceDate,
-                        v.modifiedAt?.timeIntervalSinceReferenceDate,
-                    ]) + [
-                        v.name, v.make ?? "nil", v.model ?? "nil", String(describing: v.year),
-                        v.unitSystemRaw, String(describing: v.cachedRecordCount),
-                    ] + (v.fuelingRecords ?? []).map { $0.id.uuidString }.sorted()
+        } else {
+            do {
+                // These fixtures were generated from the tagged runtime models,
+                // independently of today's historical schema definitions.
+                let schema = Schema(versionedSchema: SchemaV2.self)
+                let original = try ModelContainer(
+                    for: schema,
+                    configurations: [
+                        ModelConfiguration(schema: schema, url: baselineURL, cloudKitDatabase: .none)
+                    ])
+                let context = ModelContext(original)
+                context.autosaveEnabled = false
+                for r in try context.fetch(FetchDescriptor<SchemaV2.FuelingRecord>()) {
+                    expectedRecords[r.id] =
+                        bits([
+                            r.odometer, r.pricePerFuelUnit, r.fuelAmount, r.totalCost,
+                            r.cachedPreviousOdometer, r.cachedDistanceDriven, r.cachedEfficiency,
+                            r.cachedCostPerDistance,
+                            r.date.timeIntervalSinceReferenceDate, r.createdAt.timeIntervalSinceReferenceDate,
+                            r.modifiedAt?.timeIntervalSinceReferenceDate,
+                        ]) + [r.vehicle.id.uuidString, r.fillUpTypeRaw, r.notes ?? "nil"]
+                }
+                for v in try context.fetch(FetchDescriptor<SchemaV2.Vehicle>()) {
+                    expectedVehicles[v.id] =
+                        bits([
+                            v.cachedTotalSpent, v.cachedTotalDistance, v.cachedTotalFuel,
+                            v.cachedAverageEfficiency, v.cachedAverageCostPerDistance, v.cachedAverageFillUpCost,
+                            v.cachedAveragePricePerFuelUnit, v.cachedBestEfficiency, v.cachedWorstEfficiency,
+                            v.cachedHighestPricePerFuelUnit, v.cachedLowestPricePerFuelUnit,
+                            v.cacheLastUpdated?.timeIntervalSinceReferenceDate,
+                            v.createdAt.timeIntervalSinceReferenceDate,
+                            v.modifiedAt?.timeIntervalSinceReferenceDate,
+                        ]) + [
+                            v.name, v.make ?? "nil", v.model ?? "nil", String(describing: v.year),
+                            v.unitSystemRaw, String(describing: v.cachedRecordCount),
+                        ] + (v.fuelingRecords ?? []).map { $0.id.uuidString }.sorted()
+                }
             }
         }
         XCTAssertEqual(expectedRecords.count, 800)

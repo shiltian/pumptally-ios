@@ -444,14 +444,28 @@ final class CloudSyncRuntimeTests: XCTestCase {
         XCTAssertTrue(batch?.recordIDsToDelete.isEmpty == true)
     }
 
-    func testRecoveryRestartsAnEnabledSessionThatWasNotMonitoring() async throws {
+    func testBlockedReplacementLeavesTheRunningSyncSessionUsable() async throws {
         let runtime = try runtime()
-        runtime.environment.automaticDelivery = true
-        try await runtime.service.replaceCloudDataWithLocal()
-        XCTAssertGreaterThan(runtime.environment.drivers.count, 1)
-        XCTAssertTrue(try runtime.journal().isEmpty)
-        XCTAssertEqual(runtime.state.syncStatus, .synced)
-        XCTAssertEqual(try runtime.record(in: runtime.context).odometer.bitPattern, 1000.123456789.bitPattern)
+        await runtime.service.startMonitoring()
+        let driver = runtime.driver
+        let accountReads = runtime.environment.accountReads
+        let snapshotReads = runtime.environment.snapshotReads
+        let state = runtime.state.syncStatus
+        do {
+            try await runtime.service.replaceCloudDataWithLocal()
+            XCTFail("Replacement must remain unavailable with unknown older clients")
+        } catch { XCTAssertEqual(error as? CloudRecoveryError, .replacementUnavailable) }
+        XCTAssertTrue(runtime.driver === driver)
+        XCTAssertEqual(driver.cancellations, 0)
+        XCTAssertEqual(runtime.environment.accountReads, accountReads)
+        XCTAssertEqual(runtime.environment.snapshotReads, snapshotReads)
+        XCTAssertEqual(runtime.state.syncStatus, state)
+        XCTAssertEqual(try runtime.context.fetchCount(FetchDescriptor<CloudRecoveryReceipt>()), 0)
+        try await runtime.edit(notes: "ordinary sync still works")
+        await runtime.service.pushPendingLocalChanges()
+        let batch = await driver.batch()
+        XCTAssertEqual(batch?.businessRecordsToSave.first?["notes"] as? String, "ordinary sync still works")
+        XCTAssertTrue(batch?.recordIDsToDelete.isEmpty == true)
     }
 
     func testInvalidRecoverySourceMakesNoCloudCalls() async throws {
@@ -502,18 +516,15 @@ final class CloudSyncRuntimeTests: XCTestCase {
         XCTAssertTrue(try runtime.journal().isEmpty)
     }
 
-    func testReplacementSettlesWhenSDKQueueUpdateArrivesAfterSendCompletion() async throws {
+    func testInitialMergeSettlesWhenSDKQueueUpdateArrivesAfterSendCompletion() async throws {
         let runtime = try runtime()
         runtime.state.iCloudSyncEnabled = false
         runtime.state.initialSyncCompleted = false
         runtime.environment.automaticDelivery = true
-        runtime.environment.afterBatch = { batch in
-            if batch.recordsToSave.first?["phase"] as? String == "ready" {
-                runtime.environment.automaticDelivery = false
-            }
-        }
         let proposal = try await runtime.service.prepareInitialSync()
-        try await runtime.service.enableSync(strategy: .replaceCloud, proposal: proposal)
+        try await runtime.service.enableSync(strategy: .merge, proposal: proposal)
+        runtime.environment.automaticDelivery = false
+        runtime.driver.automaticDelivery = false
         try await runtime.edit(notes: "later local edit")
         await runtime.service.pushPendingLocalChanges()
         let driver = runtime.driver

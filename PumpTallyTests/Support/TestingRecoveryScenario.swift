@@ -1,35 +1,26 @@
 import CloudKit
 import SwiftData
-import os
 
-/// Testing/Benchmark composition only. Persistent synthetic cloud and local
-/// stores survive termination; neither uses CloudKit nor a production store.
+/// Testing/Benchmark composition only. Existing synthetic receipts survive
+/// relaunch while the real application service refuses further publication.
 @MainActor
 enum TestingRecoveryScenario {
-    enum Cutpoint: String, Sendable { case prepared, publishing, businessAcknowledged, verified, completed, resume }
     private struct CloudArchive: Codable {
         let records: [Data]
         let control: Data?
     }
 
     static func makeEnvironment(arguments: [String]) throws -> ApplicationEnvironment? {
-        guard let raw = argument("--ui-testing-recovery-phase=", in: arguments) else { return nil }
-        guard let cutpoint = Cutpoint(rawValue: raw),
-            let identifier = argument("--ui-testing-recovery-id=", in: arguments).flatMap(UUID.init(uuidString:)),
-            let expected = argument("--ui-testing-recovery-expected=", in: arguments)
+        guard let phase = argument("--ui-testing-recovery-phase=", in: arguments) else { return nil }
+        guard ["prepared", "publishing", "verified", "resume"].contains(phase),
+            let identifier = argument("--ui-testing-recovery-id=", in: arguments).flatMap(UUID.init(uuidString:))
         else { throw CocoaError(.fileReadCorruptFile) }
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("RecoveryUITests").appendingPathComponent(identifier.uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("local.store")
         let cloudURL = directory.appendingPathComponent("synthetic-cloud.json")
-        let marker = directory.appendingPathComponent("reached-cutpoint.txt")
         let existed = FileManager.default.fileExists(atPath: storeURL.path)
-        if cutpoint == .resume {
-            guard try String(contentsOf: marker, encoding: .utf8) == expected else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-        }
         let schema = Schema(versionedSchema: SchemaV5.self)
         let container = try ModelContainer(
             for: schema, migrationPlan: PumpTallyMigrationPlan.self,
@@ -40,41 +31,51 @@ enum TestingRecoveryScenario {
         }
         let state = SyncStateManager(defaults: defaults)
         if !existed {
+            guard phase != "resume" else { throw CocoaError(.fileReadNoSuchFile) }
             try seed(container: container, environment: environment)
-            state.iCloudSyncEnabled = false
-            state.initialSyncCompleted = false
+            try seedReceipt(phase: phase, container: container, environment: environment)
+            state.iCloudSyncEnabled = true
+            state.initialSyncCompleted = true
             try saveCloud(environment.records, at: cloudURL)
         } else {
             environment.records = try loadCloud(at: cloudURL)
         }
-        let gate = Gate(state: state, cutpoint: cutpoint, marker: marker)
-        environment.afterBatch = { [weak environment] batch in
-            guard let environment else { throw CancellationError() }
-            try saveCloud(environment.records, at: cloudURL)
-            if cutpoint == .businessAcknowledged,
-                batch.recordsToSave.contains(where: { $0.recordType != CloudSyncControl.recordType })
-            {
-                try await gate.pauseAfterBusinessAcknowledgement()
-            }
-        }
         let writer = OwnedModelStore(container: container)
-        let service = CloudSyncService(
-            writer: writer, stateManager: state, environment: environment,
-            makePersistenceStore: { writer in
-                SyncPersistenceStore(
-                    writer: writer,
-                    commit: { actor in
-                        try actor.modelContext.save()
-                        if let phase = try actor.modelContext.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first?
-                            .phaseRaw
-                        {
-                            try gate.pauseAfterCommit(phase)
-                        }
-                    })
-            })
+        let service = CloudSyncService(writer: writer, stateManager: state, environment: environment)
         return ApplicationEnvironment(
             writer: writer, cloudSyncService: service,
             lifecycle: ApplicationLifecycleCoordinator(writer: writer, syncService: service))
+    }
+
+    private static func seedReceipt(
+        phase: String, container: ModelContainer, environment: TestingCloudSyncEnvironment
+    ) throws {
+        let context = ModelContext(container)
+        let codec = CloudRecordCodec(zoneID: environment.recordZoneID)
+        let chosen = try InitialSyncReconciler(codec: codec).uploadSnapshot(in: context)
+        let manifest = try CloudRecoveryManifest(
+            version: 1, previousGeneration: CloudSyncControl.baselineGeneration,
+            records: chosen.map(CloudRecordCodec.archiveFullRecord),
+            journal: context.fetch(FetchDescriptor<SyncChange>()).map {
+                .init(
+                    key: $0.key, recordName: $0.recordName, recordType: $0.recordTypeRaw,
+                    operation: $0.operationRaw, generation: $0.generation, createdAt: $0.createdAt,
+                    origin: $0.originRaw)
+            },
+            inbox: context.fetch(FetchDescriptor<PendingRemoteChange>()).map {
+                .init(key: $0.key, data: $0.recordData)
+            })
+        let receipt = CloudRecoveryReceipt(
+            id: UUID(), scope: environment.scopeIdentifier, accountID: environment.userID,
+            payload: try JSONEncoder().encode(manifest))
+        receipt.phaseRaw = phase
+        receipt.remoteBackup = try JSONEncoder().encode(
+            environment.records.businessRecords.map(CloudRecordCodec.archiveFullRecord))
+        if phase == "verified" {
+            receipt.verifiedRecords = try JSONEncoder().encode(chosen.map(CloudRecordCodec.archiveFullRecord))
+        }
+        context.insert(receipt)
+        try context.save()
     }
 
     private static func argument(_ prefix: String, in arguments: [String]) -> String? {
@@ -136,45 +137,4 @@ enum TestingRecoveryScenario {
             control: archive.control.flatMap(CloudRecordCodec.unarchiveFullRecord))
     }
 
-    @MainActor
-    private final class Gate {
-        let state: SyncStateManager
-        nonisolated let cutpoint: Cutpoint
-        nonisolated let marker: URL
-        nonisolated let entered = OSAllocatedUnfairLock(initialState: false)
-        private let suspended = AsyncStream<Void>.makeStream()
-
-        init(state: SyncStateManager, cutpoint: Cutpoint, marker: URL) {
-            self.state = state
-            self.cutpoint = cutpoint
-            self.marker = marker
-        }
-
-        nonisolated func pauseAfterCommit(_ phase: String) throws {
-            guard phase == cutpoint.rawValue else { return }
-            let first = entered.withLock { value in
-                let first = !value
-                value = true
-                return first
-            }
-            guard first else { return }
-            try Data(phase.utf8).write(to: marker, options: .atomic)
-            Task { @MainActor in self.state.syncStatus = .error("Recovery test checkpoint: \(phase)") }
-            // The UI test terminates the process after observing this checkpoint.
-            // Only a background model executor waits; the UI remains responsive.
-            DispatchSemaphore(value: 0).wait()
-        }
-
-        func pauseAfterBusinessAcknowledgement() async throws {
-            let first = entered.withLock { value in
-                let first = !value
-                value = true
-                return first
-            }
-            guard first else { return }
-            try Data(cutpoint.rawValue.utf8).write(to: marker, options: .atomic)
-            state.syncStatus = .error("Recovery test checkpoint: \(cutpoint.rawValue)")
-            for await _ in suspended.stream { break }
-        }
-    }
 }

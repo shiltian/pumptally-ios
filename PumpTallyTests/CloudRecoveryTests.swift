@@ -83,6 +83,20 @@ final class CloudRecoveryTests: XCTestCase {
                 makePersistenceStore: { SyncPersistenceStore(writer: $0, commit: commit) })
         }
 
+        // Exercise the retained protocol directly. The app service refuses
+        // replacement while released clients can still write the shared zone.
+        func coordinator(
+            commit: @escaping OwnedModelStore.Commit = { try $0.modelContext.save() },
+            container override: ModelContainer? = nil
+        ) -> CloudRecoveryCoordinator {
+            CloudRecoveryCoordinator(
+                environment: environment,
+                store: CloudRecoveryStore(
+                    persistence: SyncPersistenceStore(
+                        writer: OwnedModelStore(container: override ?? container), commit: commit)),
+                codec: codec)
+        }
+
         func reopen() throws -> ModelContainer {
             let schema = Schema(versionedSchema: SchemaV5.self)
             return try ModelContainer(
@@ -141,11 +155,93 @@ final class CloudRecoveryTests: XCTestCase {
         } catch { /* The test verifies the durable state below. */  }
     }
 
+    func testAppReplacementMakesNoCloudCallsOrLocalWrites() async throws {
+        let fixture = try Fixture()
+        let before = try fixture.fingerprint()
+        let cloudIDs = fixture.environment.records.businessRecords.map(\.recordID)
+        let service = fixture.service(commit: { _ in XCTFail("A denied replacement must not commit") })
+        let status = service.stateManager.syncStatus
+        do {
+            try await service.replaceCloudDataWithLocal()
+            XCTFail("The app must refuse replacement in the legacy shared zone")
+        } catch { XCTAssertEqual(error as? CloudRecoveryError, .replacementUnavailable) }
+        XCTAssertEqual(try fixture.fingerprint(), before)
+        XCTAssertEqual(fixture.environment.records.businessRecords.map(\.recordID), cloudIDs)
+        XCTAssertNil(fixture.environment.records.control)
+        XCTAssertEqual(fixture.environment.accountReads, 0)
+        XCTAssertEqual(fixture.environment.snapshotReads, 0)
+        XCTAssertEqual(fixture.environment.zonePreparations, 0)
+        XCTAssertTrue(fixture.environment.drivers.isEmpty)
+        XCTAssertNil(try fixture.phase())
+        XCTAssertEqual(service.stateManager.syncStatus, status)
+        XCTAssertTrue(service.stateManager.iCloudSyncEnabled)
+        XCTAssertTrue(service.stateManager.initialSyncCompleted)
+    }
+
+    func testAppPreservesEveryPendingReceiptPhaseWithoutResumingAfterReopen() async throws {
+        for phase in ["prepared", "publishing", "verified"] {
+            let fixture = try Fixture()
+            let coordinator = fixture.coordinator()
+            let prepared = try await coordinator.store.prepare(
+                accountID: fixture.environment.userID, scope: fixture.environment.scopeIdentifier,
+                previousGeneration: CloudSyncControl.baselineGeneration, codec: fixture.codec)
+            let context = ModelContext(fixture.container)
+            let receipt = try XCTUnwrap(context.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first)
+            receipt.phaseRaw = phase
+            receipt.remoteBackup = Data([3, 1, 4, 0, 255])
+            receipt.retainedInbox = fixture.inboxBytes
+            if phase == "verified" {
+                receipt.verifiedRecords = try JSONEncoder().encode(prepared.manifest.records)
+            }
+            try context.save()
+            let payload = receipt.payload
+            let remoteBackup = receipt.remoteBackup
+            let verifiedRecords = receipt.verifiedRecords
+            let retainedInbox = receipt.retainedInbox
+            let before = try fixture.fingerprint()
+            let journal = try context.fetch(FetchDescriptor<SyncChange>()).map { $0.key + $0.generation }.sorted()
+            for _ in 0..<2 {
+                let reopened = try fixture.reopen()
+                let service = fixture.service(container: reopened)
+                do {
+                    try await service.resumeRecoveryIfNeeded()
+                    XCTFail("Pending publication must stay paused with unknown older clients")
+                } catch { XCTAssertEqual(error as? CloudRecoveryError, .replacementUnavailable) }
+                let saved = ModelContext(reopened)
+                let retained = try XCTUnwrap(saved.fetch(FetchDescriptor<CloudRecoveryReceipt>()).first)
+                XCTAssertEqual(retained.id, prepared.id)
+                XCTAssertEqual(retained.phaseRaw, phase)
+                XCTAssertEqual(retained.payload, payload)
+                XCTAssertEqual(retained.remoteBackup, remoteBackup)
+                XCTAssertEqual(retained.verifiedRecords, verifiedRecords)
+                XCTAssertEqual(retained.retainedInbox, retainedInbox)
+                XCTAssertEqual(retained.scope, fixture.environment.scopeIdentifier)
+                XCTAssertEqual(retained.accountID, fixture.environment.userID)
+                XCTAssertEqual(try fixture.fingerprint(), before)
+                XCTAssertEqual(
+                    try saved.fetch(FetchDescriptor<SyncChange>()).map { $0.key + $0.generation }.sorted(), journal)
+                XCTAssertEqual(
+                    try saved.fetch(FetchDescriptor<PendingRemoteChange>()).first?.recordData, fixture.inboxBytes)
+                XCTAssertTrue(service.stateManager.iCloudSyncEnabled)
+                XCTAssertTrue(service.stateManager.initialSyncCompleted)
+                guard case .error = service.stateManager.syncStatus else {
+                    return XCTFail("Paused work must be visible")
+                }
+            }
+            XCTAssertEqual(fixture.environment.accountReads, 0)
+            XCTAssertEqual(fixture.environment.snapshotReads, 0)
+            XCTAssertEqual(fixture.environment.zonePreparations, 0)
+            XCTAssertTrue(fixture.environment.drivers.isEmpty)
+            XCTAssertNil(fixture.environment.records.control)
+        }
+    }
+
     func testReplacementPreservesLocalBitsPublishesChosenDataAndRetainsOldInbox() async throws {
         let fixture = try Fixture()
         let before = try fixture.fingerprint()
-        let service = fixture.service()
-        try await service.replaceCloudDataWithLocal()
+        let coordinator = fixture.coordinator()
+        try await coordinator.replace(
+            accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
         try fixture.assertPublished()
         XCTAssertEqual(try fixture.fingerprint(), before)
         let context = ModelContext(fixture.container)
@@ -159,8 +255,6 @@ final class CloudRecoveryTests: XCTestCase {
         XCTAssertNotNil(receipt.remoteBackup)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<PendingRemoteChange>()), 0)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 0)
-        XCTAssertEqual(service.stateManager.syncStatus, .synced)
-        await service.stopMonitoring()
     }
 
     func testReceiptIsCommittedBeforeFirstCloudMutation() async throws {
@@ -172,22 +266,25 @@ final class CloudRecoveryTests: XCTestCase {
                 checked = true
             }
         }
-        let service = fixture.service()
-        try await service.replaceCloudDataWithLocal()
+        let coordinator = fixture.coordinator()
+        try await coordinator.replace(
+            accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
         XCTAssertTrue(checked)
-        await service.stopMonitoring()
     }
 
     func testPrepareFailureMakesNoCloudMutationAndKeepsEveryLocalValue() async throws {
         let fixture = try Fixture()
         let before = try fixture.fingerprint()
-        let service = fixture.service(commit: { actor in
+        let coordinator = fixture.coordinator(commit: { actor in
             if try actor.modelContext.fetchCount(FetchDescriptor<CloudRecoveryReceipt>()) > 0 {
                 throw Failure.interrupted
             }
             try actor.modelContext.save()
         })
-        await interrupted { try await service.replaceCloudDataWithLocal() }
+        await interrupted {
+            try await coordinator.replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
         XCTAssertNil(fixture.environment.records.control)
         XCTAssertTrue(fixture.environment.drivers.isEmpty)
         XCTAssertNil(try fixture.phase())
@@ -199,7 +296,7 @@ final class CloudRecoveryTests: XCTestCase {
             let fixture = try Fixture()
             let fault = OSAllocatedUnfairLock(initialState: true)
             let before = try fixture.fingerprint()
-            let service = fixture.service(commit: { actor in
+            let coordinator = fixture.coordinator(commit: { actor in
                 let matches = try actor.modelContext.fetch(FetchDescriptor<CloudRecoveryReceipt>()).contains {
                     $0.phaseRaw == phase
                 }
@@ -214,16 +311,16 @@ final class CloudRecoveryTests: XCTestCase {
                 }
                 try actor.modelContext.save()
             })
-            await interrupted { try await service.replaceCloudDataWithLocal() }
+            await interrupted {
+                try await coordinator.replace(
+                    accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+            }
             XCTAssertNotEqual(try fixture.phase(), "completed")
-            let restarted = fixture.service(container: try fixture.reopen())
-            restarted.stateManager.iCloudSyncEnabled = false
-            restarted.stateManager.initialSyncCompleted = false
-            try await restarted.resumeRecoveryIfNeeded()
+            let restarted = fixture.coordinator(container: try fixture.reopen())
+            try await restarted.resumeIfNeeded()
             try fixture.assertPublished()
             XCTAssertEqual(try fixture.phase(), "completed")
             XCTAssertEqual(try fixture.fingerprint(), before)
-            await restarted.stopMonitoring()
         }
     }
 
@@ -236,14 +333,16 @@ final class CloudRecoveryTests: XCTestCase {
                 throw Failure.interrupted
             }
         }
-        let service = fixture.service()
-        await interrupted { try await service.replaceCloudDataWithLocal() }
+        let coordinator = fixture.coordinator()
+        await interrupted {
+            try await coordinator.replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
         XCTAssertEqual(try fixture.phase(), "prepared")
         XCTAssertNotNil(fixture.environment.records.control)
-        let restarted = fixture.service(container: try fixture.reopen())
-        try await restarted.resumeRecoveryIfNeeded()
+        let restarted = fixture.coordinator(container: try fixture.reopen())
+        try await restarted.resumeIfNeeded()
         try fixture.assertPublished()
-        await restarted.stopMonitoring()
     }
 
     func testLostBusinessAcknowledgementResumes800RecordsWithoutRepeatingAcknowledgedSaves() async throws {
@@ -265,16 +364,18 @@ final class CloudRecoveryTests: XCTestCase {
                 throw Failure.interrupted
             }
         }
-        let service = fixture.service()
-        await interrupted { try await service.replaceCloudDataWithLocal() }
+        let coordinator = fixture.coordinator()
+        await interrupted {
+            try await coordinator.replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
         XCTAssertFalse(acknowledgedIDs.isEmpty)
         XCTAssertEqual(try fixture.phase(), "publishing")
         resuming = true
-        let restarted = fixture.service(container: try fixture.reopen())
-        try await restarted.resumeRecoveryIfNeeded()
+        let restarted = fixture.coordinator(container: try fixture.reopen())
+        try await restarted.resumeIfNeeded()
         try fixture.assertPublished()
         XCTAssertTrue(repeated.isEmpty)
-        await restarted.stopMonitoring()
     }
 
     func testLaterLocalEditStaysOutsideTheFrozenSnapshotAndSyncsAfterCompletion() async throws {
@@ -297,9 +398,15 @@ final class CloudRecoveryTests: XCTestCase {
                 recordID: id, update: FuelingRecordUpdate(original: old, proposed: new))
             throw Failure.interrupted
         }
-        await interrupted { try await fixture.service().replaceCloudDataWithLocal() }
-        let restarted = fixture.service(container: try fixture.reopen())
-        try await restarted.resumeRecoveryIfNeeded()
+        await interrupted {
+            try await fixture.coordinator().replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
+        let restarted = fixture.coordinator(container: try fixture.reopen())
+        try await restarted.resumeIfNeeded()
+        let synchronization = fixture.service()
+        await synchronization.synchronizeNow()
+        await synchronization.stopMonitoring()
         let context = ModelContext(fixture.container)
         let local = try XCTUnwrap(
             context.fetch(FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.id == id })).first)
@@ -316,14 +423,16 @@ final class CloudRecoveryTests: XCTestCase {
         XCTAssertEqual(
             (frozen[CloudRecordCodec.CloudFieldKey.FuelingRecord.fuelAmount] as? Double)?.bitPattern,
             10.123456789.bitPattern)
-        await restarted.stopMonitoring()
     }
 
     func testAccountAndContainerChangesCannotResumeIntoAnotherScope() async throws {
         for changeAccount in [true, false] {
             let fixture = try Fixture()
             fixture.environment.afterBatch = { _ in throw Failure.interrupted }
-            await interrupted { try await fixture.service().replaceCloudDataWithLocal() }
+            await interrupted {
+                try await fixture.coordinator().replace(
+                    accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+            }
             let drivers = fixture.environment.drivers.count
             fixture.environment.afterBatch = nil
             if changeAccount {
@@ -331,8 +440,8 @@ final class CloudRecoveryTests: XCTestCase {
             } else {
                 fixture.environment.scopeIdentifier = "different-container"
             }
-            let restarted = fixture.service()
-            await interrupted { try await restarted.resumeRecoveryIfNeeded() }
+            let restarted = fixture.coordinator()
+            await interrupted { try await restarted.resumeIfNeeded() }
             XCTAssertEqual(fixture.environment.drivers.count, drivers)
             XCTAssertNotEqual(try fixture.phase(), "completed")
         }
@@ -341,27 +450,32 @@ final class CloudRecoveryTests: XCTestCase {
     func testNewGenerationSupersedesTheOldReceiptWithoutReplayingItsDeletions() async throws {
         let fixture = try Fixture()
         fixture.environment.afterBatch = { _ in throw Failure.interrupted }
-        await interrupted { try await fixture.service().replaceCloudDataWithLocal() }
+        await interrupted {
+            try await fixture.coordinator().replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
         fixture.environment.afterBatch = nil
         let control = try CloudSyncControl(
             record: XCTUnwrap(fixture.environment.records.control), zone: fixture.codec.zoneID)
         fixture.environment.records.control = try control.changing(generation: UUID().uuidString, phase: .ready).record
         let before = fixture.environment.records.businessRecords.count
         let drivers = fixture.environment.drivers.count
-        let restarted = fixture.service()
-        await interrupted { try await restarted.resumeRecoveryIfNeeded() }
+        let restarted = fixture.coordinator()
+        await interrupted { try await restarted.resumeIfNeeded() }
         XCTAssertEqual(try fixture.phase(), "superseded")
         XCTAssertEqual(fixture.environment.records.businessRecords.count, before)
         XCTAssertEqual(fixture.environment.drivers.count, drivers)
-        XCTAssertFalse(restarted.stateManager.iCloudSyncEnabled)
     }
 
     func testPendingRecoveryBlocksDisableAndLegacyReviewWithoutDeletingTheReceipt() async throws {
         let fixture = try Fixture()
         fixture.environment.afterBatch = { _ in throw Failure.interrupted }
-        let service = fixture.service()
-        await interrupted { try await service.replaceCloudDataWithLocal() }
-        await interrupted { try await service.disable(.removeLocalCopy) }
+        let coordinator = fixture.coordinator()
+        await interrupted {
+            try await coordinator.replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
+        }
+        await interrupted { try await fixture.service().disable(.removeLocalCopy) }
         await interrupted {
             try await SyncReviewService.resolveLegacyDeletions(
                 apply: false,
@@ -387,7 +501,7 @@ final class CloudRecoveryTests: XCTestCase {
         XCTAssertEqual(try fixture.phase(), "prepared")
     }
 
-    func testFailedServerVerificationKeepsReplacementPendingAndNeverReportsSynced() async throws {
+    func testRetainedProtocolFailedVerificationPreservesPendingWorkAndOriginalValues() async throws {
         let fixture = try Fixture()
         fixture.environment.afterBatch = { batch in
             guard batch.recordsToSave.contains(where: { $0.recordType == CloudRecordType.fuelingRecord }) else {
@@ -397,22 +511,21 @@ final class CloudRecoveryTests: XCTestCase {
                 0.0
         }
         let before = try fixture.fingerprint()
-        let service = fixture.service()
+        let coordinator = fixture.coordinator()
         do {
-            try await service.replaceCloudDataWithLocal()
+            try await coordinator.replace(
+                accountID: fixture.environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
             XCTFail("A mismatched server value must prevent activation")
         } catch { XCTAssertEqual(error as? CloudRecoveryError, .verificationFailed) }
         XCTAssertEqual(try fixture.phase(), "publishing")
         let marker = try CloudSyncControl(
             record: XCTUnwrap(fixture.environment.records.control), zone: fixture.codec.zoneID)
         XCTAssertEqual(marker.phase, .replacing)
-        XCTAssertNotEqual(service.stateManager.syncStatus, .synced)
         XCTAssertEqual(try fixture.fingerprint(), before)
         fixture.environment.afterBatch = nil
-        let restarted = fixture.service(container: try fixture.reopen())
-        try await restarted.resumeRecoveryIfNeeded()
+        let restarted = fixture.coordinator(container: try fixture.reopen())
+        try await restarted.resumeIfNeeded()
         try fixture.assertPublished()
-        await restarted.stopMonitoring()
     }
 
     func testCopiedV4StorePublishes800RecordsWithoutDirtyingBusinessModelsAndReopensUnchanged() async throws {
@@ -454,14 +567,12 @@ final class CloudRecoveryTests: XCTestCase {
         let before = try caches(in: context)
         let environment = TestingCloudSyncEnvironment()
         environment.userID = "v4-fixture-account"
-        let state = SyncStateManager(defaults: try XCTUnwrap(UserDefaults(suiteName: "CopiedRecovery.\(UUID())")))
         let dirtied = OSAllocatedUnfairLock(initialState: false)
-        let service = CloudSyncService(
-            writer: OwnedModelStore(container: container), stateManager: state,
+        let coordinator = CloudRecoveryCoordinator(
             environment: environment,
-            makePersistenceStore: { writer in
-                SyncPersistenceStore(
-                    writer: writer,
+            store: CloudRecoveryStore(
+                persistence: SyncPersistenceStore(
+                    writer: OwnedModelStore(container: container),
                     commit: { actor in
                         if actor.modelContext.changedModelsArray.contains(where: {
                             $0 is Vehicle || $0 is FuelingRecord
@@ -469,10 +580,8 @@ final class CloudRecoveryTests: XCTestCase {
                             dirtied.withLock { $0 = true }
                         }
                         try actor.modelContext.save()
-                    })
-            })
-        try await service.replaceCloudDataWithLocal()
-        await service.stopMonitoring()
+                    })), codec: codec)
+        try await coordinator.replace(accountID: environment.userID, expectedGeneration: nil, expectedLocalChanges: nil)
         XCTAssertFalse(dirtied.withLock { $0 })
         let reopened = ModelContext(try open())
         XCTAssertEqual(try caches(in: reopened), before)

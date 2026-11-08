@@ -4,6 +4,22 @@
     "--" : {
       "shouldTranslate" : false
     },
+    "Counts can differ while changes are pending." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los recuentos pueden diferir mientras haya cambios pendientes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有待同步的更改时，数量可能不同。"
+          }
+        }
+      }
+    },
     "Load More" : {
       "localizations" : {
         "es" : {
@@ -16,6 +32,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加载更多"
+          }
+        }
+      }
+    },
+    "Replacing iCloud data is unavailable while older app versions may still be using it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La opción de reemplazar los datos de iCloud no está disponible mientras las versiones anteriores de la app puedan seguir usándolos."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旧版 App 可能仍在使用 iCloud 数据，因此暂时无法替换。"
           }
         }
       }
@@ -48,6 +80,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法加载你的加油历史记录。请重试。"
+          }
+        }
+      }
+    },
+    "Your saved replacement data has been kept on this device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos guardados para el reemplazo se han conservado en este dispositivo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于替换的已保存数据仍保留在此设备上。"
+          }
+        }
+      }
+    },
+    "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud ya contiene datos de combustible. Puedes combinar ambas copias. Usar la copia de iCloud reemplaza la copia local de este dispositivo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 中已有加油数据。你可以合并两份数据。使用 iCloud 中的数据会替换此设备上的本地数据。"
           }
         }
       }
@@ -1058,22 +1122,6 @@
         }
       }
     },
-    "Counts can differ while changes are pending. Replace iCloud data only when this device has the copy you want to keep." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los recuentos pueden diferir mientras haya cambios pendientes. Reemplaza los datos de iCloud solo si este dispositivo tiene la copia que quieres conservar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有待同步的更改时，记录数量可能不同。仅当此设备上的副本是你想保留的数据时，才替换 iCloud 数据。"
-          }
-        }
-      }
-    },
     "CSV file saved successfully." : {
       "localizations" : {
         "es" : {
@@ -1982,22 +2030,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud"
-          }
-        }
-      }
-    },
-    "iCloud already contains fueling data. How would you like to handle this? Before using local data, update or close PumpTally on your other devices until replacement finishes." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud ya contiene datos de combustible. ¿Cómo quieres proceder? Antes de usar los datos locales, actualiza o cierra PumpTally en tus otros dispositivos hasta que termine el reemplazo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 中已有加油数据。你想如何处理？使用本地数据前，请更新其他设备上的 PumpTally，或将其关闭直到替换完成。"
           }
         }
       }
@@ -3400,70 +3432,6 @@
         }
       }
     },
-    "Replace" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reemplazar"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替换"
-          }
-        }
-      }
-    },
-    "Replace iCloud Data" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reemplazar datos de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替换 iCloud 数据"
-          }
-        }
-      }
-    },
-    "Replace iCloud Data?" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Reemplazar los datos de iCloud?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替换 iCloud 数据？"
-          }
-        }
-      }
-    },
-    "Replacement publishes a saved snapshot from this device. Interrupted replacements can resume; later local edits sync afterward." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El reemplazo publica una copia guardada de este dispositivo. Si se interrumpe, puedes reanudarlo; los cambios locales posteriores se sincronizan después."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替换将上传此设备已保存的数据快照。替换中断后可继续，之后的本地编辑会在替换完成后同步。"
-          }
-        }
-      }
-    },
     "Required" : {
       "localizations" : {
         "es" : {
@@ -3476,22 +3444,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "必填"
-          }
-        }
-      }
-    },
-    "Resume iCloud Replacement" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reanudar reemplazo de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "继续替换 iCloud 数据"
           }
         }
       }
@@ -4734,22 +4686,6 @@
         }
       }
     },
-    "Unable to re-sync with iCloud. Please check your connection and try again." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se puede re-sincronizar con iCloud. Verifica tu conexión e intenta de nuevo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法与iCloud重新同步。请检查连接并重试。"
-          }
-        }
-      }
-    },
     "Unable to read the selected file. Please make sure it is a valid CSV file." : {
       "localizations" : {
         "es" : {
@@ -4858,38 +4794,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用iCloud数据"
-          }
-        }
-      }
-    },
-    "Use Local Data" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usar Datos Locales"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用本地数据"
-          }
-        }
-      }
-    },
-    "Use this device's %lld vehicle(s) and %lld record(s) to replace the iCloud copy? Update or close PumpTally on your other devices until replacement finishes. Older versions cannot coordinate replacement." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Usar los %1$lld vehículos y %2$lld registros de este dispositivo para reemplazar la copia de iCloud? Actualiza o cierra PumpTally en tus otros dispositivos hasta que termine el reemplazo. Las versiones anteriores no pueden coordinarlo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用此设备的 %1$lld 辆车和 %2$lld 条记录替换 iCloud 副本？请更新其他设备上的 PumpTally，或将其关闭直到替换完成。旧版本无法协调数据替换。"
           }
         }
       }
