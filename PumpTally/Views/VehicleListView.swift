@@ -168,10 +168,21 @@ struct VehicleDetailView: View {
     }
     private var readKey: ReadKey { ReadKey(revision: history.revision, format: metricEfficiencyFormat) }
 
-    @State private var showingAddRecord = false
+    private enum Sheet: Identifiable {
+        case addRecord(UUID)
+        case summary(FuelingSummaryData)
+        case settings(UUID)
+
+        var id: UUID {
+            switch self {
+            case .addRecord(let id), .settings(let id): return id
+            case .summary(let data): return data.id
+            }
+        }
+    }
+
+    @State private var activeSheet: Sheet?
     @State private var pendingSummary: FuelingSummaryData?
-    @State private var activeSummary: FuelingSummaryData?
-    @State private var showingVehicleSettings = false
 
     var body: some View {
         let key = readKey
@@ -213,22 +224,26 @@ struct VehicleDetailView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button(action: { showingAddRecord = true }) {
+                    Button(action: presentAddRecord) {
                         Label("Add Fueling", systemImage: "plus")
                     }
 
                     Divider()
 
-                    Button(action: { showingVehicleSettings = true }) {
+                    Button {
+                        pendingSummary = nil
+                        activeSheet = .settings(UUID())
+                    } label: {
                         Label("Vehicle Settings", systemImage: "gearshape")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityIdentifier("vehicle.actions")
             }
 
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { showingAddRecord = true }) {
+                Button(action: presentAddRecord) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
                         .foregroundStyle(LinearGradient.brandDiagonal)
@@ -236,31 +251,40 @@ struct VehicleDetailView: View {
                 .accessibilityIdentifier("fueling.add")
             }
         }
-        .sheet(isPresented: $showingAddRecord, onDismiss: {
-            // Present the summary popup only AFTER the add-record sheet has fully
-            // dismissed. A small delay ensures SwiftUI completes the sheet
-            // transition before presenting the next one.
-            if let summary = pendingSummary {
-                pendingSummary = nil
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    activeSummary = summary
+        .sheet(item: $activeSheet, onDismiss: presentPendingSummary) { destination in
+            switch destination {
+            case .addRecord(let session):
+                FuelingRecordEditorView(vehicle: vehicle) { record in
+                    guard case .addRecord(let currentSession) = activeSheet, currentSession == session else { return }
+                    pendingSummary = FuelingSummaryData(
+                        record: record,
+                        unitSystem: vehicle.displayUnitSystem,
+                        metricEfficiencyFormat: .stored(for: vehicle.id))
                 }
-            }
-        }) {
-            FuelingRecordEditorView(vehicle: vehicle) { record in
-                pendingSummary = FuelingSummaryData(
-                    record: record,
-                    unitSystem: vehicle.displayUnitSystem,
-                    metricEfficiencyFormat: .stored(for: vehicle.id)
-                )
+            case .summary(let summary):
+                FuelingSummaryPopup(data: summary)
+            case .settings:
+                VehicleSettingsView(vehicle: vehicle)
             }
         }
-        .sheet(item: $activeSummary) { summary in
-            FuelingSummaryPopup(data: summary)
+        .onDisappear {
+            pendingSummary = nil
+            activeSheet = nil
         }
-        .sheet(isPresented: $showingVehicleSettings) {
-            VehicleSettingsView(vehicle: vehicle)
-        }
+    }
+
+    private func presentAddRecord() {
+        pendingSummary = nil
+        activeSheet = .addRecord(UUID())
+    }
+
+    private func presentPendingSummary() {
+        let summary = pendingSummary
+        pendingSummary = nil
+        // SwiftUI calls this after dismissal. Another destination or leaving
+        // this vehicle cancels the handoff instead of scheduling a later popup.
+        guard activeSheet == nil, let summary else { return }
+        activeSheet = .summary(summary)
     }
 }
 

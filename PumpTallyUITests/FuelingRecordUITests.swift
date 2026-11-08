@@ -21,6 +21,93 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testFuelingSummaryFollowsDismissalOnceForEachSave() {
+        let app = launch()
+        for odometer in ["1300", "1600"] {
+            enterNewFueling(in: app, odometer: odometer)
+            app.buttons["Save"].tap()
+            let summary = app.staticTexts["Fill-up Recorded!"]
+            XCTAssertTrue(summary.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.navigationBars["Add Fueling"].exists)
+            XCTAssertTrue(app.staticTexts["$35.00"].exists)
+            if odometer == "1300" {
+                let screenshot = XCTAttachment(screenshot: app.screenshot())
+                screenshot.name = "Summary after native editor dismissal"
+                screenshot.lifetime = .keepAlways
+                add(screenshot)
+            }
+            app.buttons["Done"].tap()
+            XCTAssertTrue(app.buttons["fueling.add"].waitForExistence(timeout: 5))
+            XCTAssertFalse(summary.exists)
+        }
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["3 records"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons["My Vehicles"].tap()
+        XCTAssertTrue(app.staticTexts["UI Test Vehicle"].waitForExistence(timeout: 5))
+        app.staticTexts["UI Test Vehicle"].tap()
+        XCTAssertTrue(app.buttons["fueling.add"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Fill-up Recorded!"].exists)
+    }
+
+    func testCancelAndSwipeDismissDoNotPresentSummaryOverVehicleSettingsOrNavigation() {
+        let app = launch()
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Add Fueling"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        add.tap()
+        let editor = app.navigationBars["Add Fueling"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.swipeDown()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: editor)
+        wait(for: [dismissed], timeout: 5)
+        app.buttons["vehicle.actions"].tap()
+        app.buttons["Vehicle Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Vehicle Settings"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Fill-up Recorded!"].exists)
+        app.buttons["Cancel"].tap()
+        app.navigationBars.buttons["My Vehicles"].tap()
+        XCTAssertTrue(app.staticTexts["UI Test Vehicle"].waitForExistence(timeout: 5))
+        app.staticTexts["UI Test Vehicle"].tap()
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Fill-up Recorded!"].exists)
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["1 records"].waitForExistence(timeout: 5))
+    }
+
+    func testFailedFuelingSaveKeepsEditorAndNeverQueuesSummary() {
+        let app = launch(arguments: ["--ui-testing-read-only-store"])
+        enterNewFueling(in: app, odometer: "1300")
+        app.buttons["Save"].tap()
+        let error = app.alerts["Unable to Save"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        error.buttons["OK"].tap()
+        XCTAssertTrue(app.navigationBars["Add Fueling"].exists)
+        XCTAssertEqual(app.textFields["fueling.cost"].value as? String, "35.00")
+        XCTAssertFalse(app.staticTexts["Fill-up Recorded!"].exists)
+        app.buttons["Cancel"].tap()
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["1 records"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Fill-up Recorded!"].exists)
+    }
+
+    private func enterNewFueling(in app: XCUIApplication, odometer: String) {
+        let add = app.buttons["fueling.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let field = app.textFields["fueling.odometer"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(odometer)
+        app.textFields["fueling.price"].tap()
+        app.textFields["fueling.price"].typeText("3500")
+        app.textFields["fueling.fuel"].tap()
+        app.textFields["fueling.fuel"].typeText("10000")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["Save"].isEnabled)
+    }
+
     func testHistorySearchAndNativeSortIncludeRecordsBeyondTheFirstPage() {
         let app = launch(arguments: ["--ui-testing-history-pages"])
         let history = app.tabBars.buttons["History"]
@@ -224,6 +311,8 @@ final class FuelingRecordUITests: XCTestCase {
         notes.typeText("Localized numeric entry")
         XCTAssertTrue(app.buttons["Save"].isEnabled)
         app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Fill-up Recorded!"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
         app.tabBars.buttons["History"].tap()
         XCTAssertTrue(app.staticTexts["Localized numeric entry"].waitForExistence(timeout: 5))
     }
