@@ -217,14 +217,6 @@ enum UnitSystem: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    // MARK: - Conversion Factors
-
-    /// Miles to kilometers
-    static let milesToKm: Double = 1.60934
-
-    /// Gallons to liters
-    static let gallonsToLiters: Double = 3.78541
-
     // MARK: - Efficiency Display
 
     /// Convert raw efficiency value (distance/fuel ratio) to a display value.
@@ -256,44 +248,4 @@ enum UnitSystem: String, Codable, CaseIterable, Sendable {
         return efficiencyDisplayValue(from: rawRatio, metricFormat: metricFormat)
     }
 
-    // MARK: - Unit Conversion
-
-    /// Convert a distance value from another unit system to this one
-    func convertDistance(from source: UnitSystem, value: Double) -> Double {
-        if source == self { return value }
-        switch self {
-        case .metric:
-            // miles -> km
-            return value * UnitSystem.milesToKm
-        case .imperial:
-            // km -> miles
-            return value / UnitSystem.milesToKm
-        }
-    }
-
-    /// Convert a fuel amount from another unit system to this one
-    func convertFuel(from source: UnitSystem, value: Double) -> Double {
-        if source == self { return value }
-        switch self {
-        case .metric:
-            // gallons -> liters
-            return value * UnitSystem.gallonsToLiters
-        case .imperial:
-            // liters -> gallons
-            return value / UnitSystem.gallonsToLiters
-        }
-    }
-
-    /// Convert a price-per-fuel-unit from another unit system to this one
-    func convertPricePerFuel(from source: UnitSystem, value: Double) -> Double {
-        if source == self { return value }
-        switch self {
-        case .metric:
-            // $/gallon -> $/liter (price goes down because liters are smaller)
-            return value / UnitSystem.gallonsToLiters
-        case .imperial:
-            // $/liter -> $/gallon (price goes up because gallons are larger)
-            return value * UnitSystem.gallonsToLiters
-        }
-    }
 }

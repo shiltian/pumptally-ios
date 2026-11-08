@@ -13,6 +13,110 @@ import SwiftData
 @MainActor
 final class SchemaMigrationTests: XCTestCase {
 
+    func testReleasedV15StorePreserves800RecordsThroughMigrationWritesAndReopen() throws {
+        let fixture = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "ReleasedV15", withExtension: "store", subdirectory: "Fixtures"))
+        let url = tempStoreURL()
+        let baselineURL = tempStoreURL()
+        // Keep these isolated files until native SQLite handles are released.
+        try FileManager.default.copyItem(at: fixture, to: url)
+        try FileManager.default.copyItem(at: fixture, to: baselineURL)
+        func bits(_ values: [Double?]) -> [String] {
+            values.map { $0.map { String($0.bitPattern) } ?? "nil" }
+        }
+        var expectedRecords: [UUID: [String]] = [:]
+        var expectedVehicles: [UUID: [String]] = [:]
+        do {
+            // This fixture was generated from the tagged v1.5 runtime models,
+            // independently of today's historical schema definitions.
+            let schema = Schema(versionedSchema: SchemaV2.self)
+            let original = try ModelContainer(
+                for: schema,
+                configurations: [
+                    ModelConfiguration(schema: schema, url: baselineURL, cloudKitDatabase: .none)
+                ])
+            let context = ModelContext(original)
+            context.autosaveEnabled = false
+            for r in try context.fetch(FetchDescriptor<SchemaV2.FuelingRecord>()) {
+                expectedRecords[r.id] =
+                    bits([
+                        r.odometer, r.pricePerFuelUnit, r.fuelAmount, r.totalCost,
+                        r.cachedPreviousOdometer, r.cachedDistanceDriven, r.cachedEfficiency, r.cachedCostPerDistance,
+                        r.date.timeIntervalSinceReferenceDate, r.createdAt.timeIntervalSinceReferenceDate,
+                        r.modifiedAt?.timeIntervalSinceReferenceDate,
+                    ]) + [r.vehicle.id.uuidString, r.fillUpTypeRaw, r.notes ?? "nil"]
+            }
+            for v in try context.fetch(FetchDescriptor<SchemaV2.Vehicle>()) {
+                expectedVehicles[v.id] =
+                    bits([
+                        v.cachedTotalSpent, v.cachedTotalDistance, v.cachedTotalFuel,
+                        v.cachedAverageEfficiency, v.cachedAverageCostPerDistance, v.cachedAverageFillUpCost,
+                        v.cachedAveragePricePerFuelUnit, v.cachedBestEfficiency, v.cachedWorstEfficiency,
+                        v.cachedHighestPricePerFuelUnit, v.cachedLowestPricePerFuelUnit,
+                        v.cacheLastUpdated?.timeIntervalSinceReferenceDate, v.createdAt.timeIntervalSinceReferenceDate,
+                        v.modifiedAt?.timeIntervalSinceReferenceDate,
+                    ]) + [
+                        v.name, v.make ?? "nil", v.model ?? "nil", String(describing: v.year),
+                        v.unitSystemRaw, String(describing: v.cachedRecordCount),
+                    ] + (v.fuelingRecords ?? []).map { $0.id.uuidString }.sorted()
+            }
+        }
+        XCTAssertEqual(expectedRecords.count, 800)
+        XCTAssertEqual(expectedVehicles.count, 2)
+        for pass in 0..<2 {
+            let schema = Schema(versionedSchema: SchemaV5.self)
+            let migrated = try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+                configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+            let context = ModelContext(migrated)
+            context.autosaveEnabled = false
+            let records = try context.fetch(FetchDescriptor<FuelingRecord>())
+            let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
+            XCTAssertEqual(Set(records.map(\.id)), Set(expectedRecords.keys))
+            XCTAssertEqual(Set(vehicles.map(\.id)), Set(expectedVehicles.keys))
+            for r in records {
+                XCTAssertEqual(
+                    bits([
+                        r.odometer, r.pricePerFuelUnit, r.fuelAmount, r.totalCost,
+                        r.cachedPreviousOdometer, r.cachedDistanceDriven, r.cachedEfficiency, r.cachedCostPerDistance,
+                        r.date.timeIntervalSinceReferenceDate, r.createdAt.timeIntervalSinceReferenceDate,
+                        r.modifiedAt?.timeIntervalSinceReferenceDate,
+                    ]) + [r.vehicle.id.uuidString, r.fillUpTypeRaw, r.notes ?? "nil"], expectedRecords[r.id])
+            }
+            for v in vehicles {
+                XCTAssertEqual(
+                    bits([
+                        v.cachedTotalSpent, v.cachedTotalDistance, v.cachedTotalFuel,
+                        v.cachedAverageEfficiency, v.cachedAverageCostPerDistance, v.cachedAverageFillUpCost,
+                        v.cachedAveragePricePerFuelUnit, v.cachedBestEfficiency, v.cachedWorstEfficiency,
+                        v.cachedHighestPricePerFuelUnit, v.cachedLowestPricePerFuelUnit,
+                        v.cacheLastUpdated?.timeIntervalSinceReferenceDate, v.createdAt.timeIntervalSinceReferenceDate,
+                        v.modifiedAt?.timeIntervalSinceReferenceDate,
+                    ]) + [
+                        v.name, v.make ?? "nil", v.model ?? "nil", String(describing: v.year),
+                        v.unitSystemRaw, String(describing: v.cachedRecordCount),
+                    ] + (v.fuelingRecords ?? []).map { $0.id.uuidString }.sorted(), expectedVehicles[v.id])
+                XCTAssertNil(v.displayUnitSystemRaw)
+                XCTAssertEqual(v.displayUnitSystem, v.unitSystem)
+            }
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 0)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<CloudRecordMetadata>()), 0)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<PendingRemoteChange>()), 0)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncCheckpoint>()), 0)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<CloudRecoveryReceipt>()), 0)
+            if pass == 0 {
+                // Dirty every migrated record, then restore the notes. This
+                // exercises full-row persistence, where a bad load could be
+                // amplified into permanent numeric corruption.
+                let originalNotes = records.map(\.notes)
+                for r in records { r.notes = "Migration write verification" }
+                try context.save()
+                for (r, notes) in zip(records, originalNotes) { r.notes = notes }
+                try context.save()
+            }
+        }
+    }
+
     func testIndependentV4StorePreserves800RecordsAndCheckpointThroughV5AndReopen() throws {
         let fixture = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: "SchemaV4", withExtension: "store", subdirectory: "Fixtures"))

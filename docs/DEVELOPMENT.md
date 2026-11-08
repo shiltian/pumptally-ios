@@ -20,6 +20,14 @@ python3 scripts/swift_format.py
 
 Persistence migrations use `VersionedSchema` and `SchemaMigrationPlan`. Test them with copies of the immutable stores in `PumpTallyTests/Fixtures`, preserving existing business values through save and reopen. Never run migration experiments against a live user store.
 
+## Compatibility with released versions
+
+The v1.5 release uses schema V2. Keep V1 and V2 historical definitions compatible with the released models and retain the complete migration path to the current schema. `SchemaMigrationTests` covers earlier stores; the independent `ReleasedV15.store` fixture exercises 800 records across imperial and metric vehicles over five years, compares every stored numeric field bit for bit, and verifies notes, dates, IDs and ownership through migration, full-row writes and reopening. These checks cover upgrades on the tested simulator runtime; they do not establish that an older app can reopen an already migrated store. Minimum-supported-iOS migration verification remains a release gate.
+
+Preserve the existing CloudKit record types, identifiers, scalar fields and measurement basis. New measurement envelopes and display preferences are additive. Older clients can read the original scalar values. Incoming legacy numeric edits or storage-unit changes that cannot be interpreted safely remain in the durable inbox for explicit unit confirmation; they must never be guessed or discarded. Mixed-version sync can therefore require review rather than applying every old-client edit automatically. Wire-contract and legacy-writer cases run in `CloudSyncServiceTests` and `SyncSafetyTests`.
+
+The generation guard cannot constrain clients released before that protocol existed. Do not treat a successful local migration as proof that replacing iCloud data is safe while those clients remain active. Update or close them before replacement, as required below.
+
 ## Live CloudKit tests
 
 The separate `CloudKitProtocol` scheme uses the `CloudKitProbe` app and only the Development container `iCloud.me.tianshilei.fuelio.CloudKitProbe`. It has no access to the PumpTally store. Tests create uniquely named synthetic zones and remove them after successful test scopes.
@@ -43,8 +51,8 @@ Before releasing the generation-guarded sync implementation, deploy these additi
 | Record type | Fields |
 | --- | --- |
 | `PumpTallySyncControl` | `version` (Int64), `generation`, `phase`, `transaction` (String) |
-| `Vehicle` | `syncGenerationV1` (String) |
-| `FuelingRecord` | `syncGenerationV1` (String) |
+| `Vehicle` | `displayUnitSystemRaw`, `syncGenerationV1` (String) |
+| `FuelingRecord` | `measurementsV1` (Bytes), `syncGenerationV1` (String) |
 
 Preserve all existing record types and fields. The control uses direct record identifiers and needs no new query indexes. Verify migration behavior on the minimum supported iOS version before release.
 

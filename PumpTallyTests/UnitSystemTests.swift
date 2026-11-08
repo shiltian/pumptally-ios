@@ -232,95 +232,58 @@ final class UnitSystemTests: XCTestCase {
         XCTAssertTrue(UnitSystem.allCases.contains(.metric))
     }
 
-    // MARK: - Conversion Factors
+    // MARK: - Measurement Conversion
 
-    func testMilesToKm() {
-        XCTAssertEqual(UnitSystem.milesToKm, 1.60934, accuracy: 0.00001)
+    func testSameUnitConversionsPreserveExactBits() {
+        let values: [Double] = [
+            0, -0.0, .leastNonzeroMagnitude, Double(1).nextUp,
+            3.45987654321, 87_654.321, .greatestFiniteMagnitude,
+        ]
+        for unit in UnitSystem.allCases {
+            for value in values {
+                XCTAssertEqual(unit.distanceValue(value, from: unit).bitPattern, value.bitPattern)
+                XCTAssertEqual(unit.fuelValue(value, from: unit).bitPattern, value.bitPattern)
+                XCTAssertEqual(unit.priceValue(value, from: unit).bitPattern, value.bitPattern)
+                XCTAssertEqual(unit.efficiencyValue(value, from: unit).bitPattern, value.bitPattern)
+                XCTAssertEqual(unit.costPerDistanceValue(value, from: unit).bitPattern, value.bitPattern)
+            }
+        }
     }
 
-    func testGallonsToLiters() {
-        XCTAssertEqual(UnitSystem.gallonsToLiters, 3.78541, accuracy: 0.00001)
+    func testDistanceConversionUsesInternationalMiles() {
+        XCTAssertEqual(UnitSystem.metric.distanceValue(1, from: .imperial), 1.609344, accuracy: 1e-12)
+        XCTAssertEqual(UnitSystem.imperial.distanceValue(1.609344, from: .metric), 1, accuracy: 1e-12)
     }
 
-    // MARK: - Distance Conversion
-
-    func testConvertDistanceSameUnit() {
-        let value = 100.0
-        XCTAssertEqual(UnitSystem.imperial.convertDistance(from: .imperial, value: value), value)
-        XCTAssertEqual(UnitSystem.metric.convertDistance(from: .metric, value: value), value)
+    func testFuelAndPriceConversionUsesUSGallons() {
+        XCTAssertEqual(UnitSystem.metric.fuelValue(1, from: .imperial), 3.78541, accuracy: 1e-5)
+        XCTAssertEqual(UnitSystem.imperial.fuelValue(3.78541, from: .metric), 1, accuracy: 1e-5)
+        XCTAssertEqual(UnitSystem.metric.priceValue(3.78541, from: .imperial), 1, accuracy: 1e-5)
+        XCTAssertEqual(UnitSystem.imperial.priceValue(1, from: .metric), 3.78541, accuracy: 1e-5)
     }
 
-    func testConvertDistanceMilesToKm() {
-        let miles = 100.0
-        let km = UnitSystem.metric.convertDistance(from: .imperial, value: miles)
-        XCTAssertEqual(km, 100.0 * 1.60934, accuracy: 0.001)
-    }
-
-    func testConvertDistanceKmToMiles() {
-        let km = 100.0
-        let miles = UnitSystem.imperial.convertDistance(from: .metric, value: km)
-        XCTAssertEqual(miles, 100.0 / 1.60934, accuracy: 0.001)
-    }
-
-    func testConvertDistanceRoundTrip() {
-        let original = 12345.6
-        let converted = UnitSystem.metric.convertDistance(from: .imperial, value: original)
-        let roundTrip = UnitSystem.imperial.convertDistance(from: .metric, value: converted)
-        XCTAssertEqual(roundTrip, original, accuracy: 0.001)
-    }
-
-    // MARK: - Fuel Conversion
-
-    func testConvertFuelSameUnit() {
-        let value = 50.0
-        XCTAssertEqual(UnitSystem.imperial.convertFuel(from: .imperial, value: value), value)
-        XCTAssertEqual(UnitSystem.metric.convertFuel(from: .metric, value: value), value)
-    }
-
-    func testConvertFuelGallonsToLiters() {
-        let gallons = 10.0
-        let liters = UnitSystem.metric.convertFuel(from: .imperial, value: gallons)
-        XCTAssertEqual(liters, 10.0 * 3.78541, accuracy: 0.001)
-    }
-
-    func testConvertFuelLitersToGallons() {
-        let liters = 37.8541
-        let gallons = UnitSystem.imperial.convertFuel(from: .metric, value: liters)
-        XCTAssertEqual(gallons, 37.8541 / 3.78541, accuracy: 0.001)
-    }
-
-    func testConvertFuelRoundTrip() {
-        let original = 15.5
-        let converted = UnitSystem.metric.convertFuel(from: .imperial, value: original)
-        let roundTrip = UnitSystem.imperial.convertFuel(from: .metric, value: converted)
-        XCTAssertEqual(roundTrip, original, accuracy: 0.001)
-    }
-
-    // MARK: - Price Per Fuel Conversion
-
-    func testConvertPricePerFuelSameUnit() {
-        let value = 3.50
-        XCTAssertEqual(UnitSystem.imperial.convertPricePerFuel(from: .imperial, value: value), value)
-        XCTAssertEqual(UnitSystem.metric.convertPricePerFuel(from: .metric, value: value), value)
-    }
-
-    func testConvertPricePerFuelDollarPerGallonToDollarPerLiter() {
-        let pricePerGallon = 3.78541 // $3.78541/gallon
-        let pricePerLiter = UnitSystem.metric.convertPricePerFuel(from: .imperial, value: pricePerGallon)
-        XCTAssertEqual(pricePerLiter, 1.0, accuracy: 0.001) // = 3.78541 / 3.78541
-    }
-
-    func testConvertPricePerFuelDollarPerLiterToDollarPerGallon() {
-        let pricePerLiter = 1.0
-        let pricePerGallon = UnitSystem.imperial.convertPricePerFuel(from: .metric, value: pricePerLiter)
-        XCTAssertEqual(pricePerGallon, 3.78541, accuracy: 0.001)
-    }
-
-    func testConvertPricePerFuelRoundTrip() {
-        let original = 3.459
-        let converted = UnitSystem.metric.convertPricePerFuel(from: .imperial, value: original)
-        let roundTrip = UnitSystem.imperial.convertPricePerFuel(from: .metric, value: converted)
-        XCTAssertEqual(roundTrip, original, accuracy: 0.001)
+    func testMeasurementConversionsRoundTripInBothDirections() {
+        for source in UnitSystem.allCases {
+            let target: UnitSystem = source == .imperial ? .metric : .imperial
+            for value in [0, 0.000123456789, 3.459, 15.5, 12_345.6789] {
+                let accuracy = max(abs(value) * 1e-12, 1e-15)
+                XCTAssertEqual(
+                    source.distanceValue(target.distanceValue(value, from: source), from: target),
+                    value, accuracy: accuracy)
+                XCTAssertEqual(
+                    source.fuelValue(target.fuelValue(value, from: source), from: target),
+                    value, accuracy: accuracy)
+                XCTAssertEqual(
+                    source.priceValue(target.priceValue(value, from: source), from: target),
+                    value, accuracy: accuracy)
+                XCTAssertEqual(
+                    source.efficiencyValue(target.efficiencyValue(value, from: source), from: target),
+                    value, accuracy: accuracy)
+                XCTAssertEqual(
+                    source.costPerDistanceValue(target.costPerDistanceValue(value, from: source), from: target),
+                    value, accuracy: accuracy)
+            }
+        }
     }
 
     // MARK: - Efficiency Display
@@ -403,52 +366,43 @@ final class UnitSystemTests: XCTestCase {
 
         for unit in UnitSystem.allCases {
             let encoded = try encoder.encode(unit)
+            XCTAssertEqual(encoded, Data("\"\(unit.rawValue)\"".utf8))
             let decoded = try decoder.decode(UnitSystem.self, from: encoded)
             XCTAssertEqual(unit, decoded)
         }
+        XCTAssertEqual(try decoder.decode(UnitSystem.self, from: Data("\"imperial\"".utf8)), .imperial)
+        XCTAssertEqual(try decoder.decode(UnitSystem.self, from: Data("\"metric\"".utf8)), .metric)
     }
 
     // MARK: - Unit Conversion Integration
 
-    func testFullConversionImperialToMetric() {
-        // Simulate converting a record from Imperial to Metric
-        let odometerMiles = 12500.0
-        let fuelGallons = 10.5
-        let pricePerGallon = 3.459
-        let totalCost = 36.32
+    func testConversionsPreservePhysicalMeasurementsAndDerivedValues() {
+        for source in UnitSystem.allCases {
+            let target: UnitSystem = source == .imperial ? .metric : .imperial
+            let sourceLength: UnitLength = source == .imperial ? .miles : .kilometers
+            let targetLength: UnitLength = target == .imperial ? .miles : .kilometers
+            let sourceVolume: UnitVolume = source == .imperial ? .gallons : .liters
+            let targetVolume: UnitVolume = target == .imperial ? .gallons : .liters
+            let distance = 321.123456789
+            let fuel = 10.573123456
+            let price = 3.459876543
+            let convertedDistance = target.distanceValue(distance, from: source)
+            let convertedFuel = target.fuelValue(fuel, from: source)
+            let convertedPrice = target.priceValue(price, from: source)
 
-        let odometerKm = UnitSystem.metric.convertDistance(from: .imperial, value: odometerMiles)
-        let fuelLiters = UnitSystem.metric.convertFuel(from: .imperial, value: fuelGallons)
-        let pricePerLiter = UnitSystem.metric.convertPricePerFuel(from: .imperial, value: pricePerGallon)
-
-        // Verify conversions are reasonable
-        XCTAssertGreaterThan(odometerKm, odometerMiles) // km > miles
-        XCTAssertGreaterThan(fuelLiters, fuelGallons) // liters > gallons
-        XCTAssertLessThan(pricePerLiter, pricePerGallon) // $/L < $/gal
-
-        // Total cost should be preserved: fuelAmount * pricePerFuelUnit
-        let newTotalCost = fuelLiters * pricePerLiter
-        XCTAssertEqual(newTotalCost, totalCost, accuracy: 0.01)
-    }
-
-    func testFullConversionMetricToImperial() {
-        // Simulate converting a record from Metric to Imperial
-        let odometerKm = 20000.0
-        let fuelLiters = 40.0
-        let pricePerLiter = 0.90
-        let totalCost = 36.0
-
-        let odometerMiles = UnitSystem.imperial.convertDistance(from: .metric, value: odometerKm)
-        let fuelGallons = UnitSystem.imperial.convertFuel(from: .metric, value: fuelLiters)
-        let pricePerGallon = UnitSystem.imperial.convertPricePerFuel(from: .metric, value: pricePerLiter)
-
-        // Verify conversions are reasonable
-        XCTAssertLessThan(odometerMiles, odometerKm) // miles < km
-        XCTAssertLessThan(fuelGallons, fuelLiters) // gallons < liters
-        XCTAssertGreaterThan(pricePerGallon, pricePerLiter) // $/gal > $/L
-
-        // Total cost should be preserved
-        let newTotalCost = fuelGallons * pricePerGallon
-        XCTAssertEqual(newTotalCost, totalCost, accuracy: 0.01)
+            XCTAssertEqual(
+                Measurement(value: convertedDistance, unit: targetLength).converted(to: .meters).value,
+                Measurement(value: distance, unit: sourceLength).converted(to: .meters).value, accuracy: 1e-9)
+            XCTAssertEqual(
+                Measurement(value: convertedFuel, unit: targetVolume).converted(to: .liters).value,
+                Measurement(value: fuel, unit: sourceVolume).converted(to: .liters).value, accuracy: 1e-12)
+            XCTAssertEqual(convertedFuel * convertedPrice, fuel * price, accuracy: 1e-12)
+            XCTAssertEqual(
+                target.efficiencyValue(distance / fuel, from: source),
+                convertedDistance / convertedFuel, accuracy: 1e-12)
+            XCTAssertEqual(
+                target.costPerDistanceValue(fuel * price / distance, from: source),
+                convertedFuel * convertedPrice / convertedDistance, accuracy: 1e-12)
+        }
     }
 }
