@@ -9,13 +9,21 @@ import os
 final class InitialSyncCommandTests: XCTestCase {
     private enum Failure: Error { case diskFull, offline }
 
+    /// UserDefaults synchronizes reads; commit assertions need no actor hop.
+    private final class Preferences: @unchecked Sendable {
+        let defaults: UserDefaults
+        init(_ defaults: UserDefaults) { self.defaults = defaults }
+        var syncEnabled: Bool { defaults.bool(forKey: "iCloudSyncEnabled") }
+        var initiallySynced: Bool { defaults.bool(forKey: "initialSyncCompleted") }
+    }
+
     private final class Commits: Sendable {
         private struct State: Sendable {
             var attempts = 0
             var fail = false
             var observe: OwnedModelStore.Commit?
-            var beforeSave: (@MainActor @Sendable () -> Void)?
-            var afterSave: (@MainActor @Sendable () -> Void)?
+            var beforeSave: (@Sendable () -> Void)?
+            var afterSave: (@Sendable () -> Void)?
         }
         private let state = OSAllocatedUnfairLock(initialState: State())
         var attempts: Int { state.withLock { $0.attempts } }
@@ -28,11 +36,11 @@ final class InitialSyncCommandTests: XCTestCase {
             get { state.withLock { $0.observe } }
             set { state.withLock { $0.observe = newValue } }
         }
-        var beforeSave: (@MainActor @Sendable () -> Void)? {
+        var beforeSave: (@Sendable () -> Void)? {
             get { state.withLock { $0.beforeSave } }
             set { state.withLock { $0.beforeSave = newValue } }
         }
-        var afterSave: (@MainActor @Sendable () -> Void)? {
+        var afterSave: (@Sendable () -> Void)? {
             get { state.withLock { $0.afterSave } }
             set { state.withLock { $0.afterSave = newValue } }
         }
@@ -45,6 +53,7 @@ final class InitialSyncCommandTests: XCTestCase {
         let environment: TestingCloudSyncEnvironment
         let service: CloudSyncService
         let commits: Commits
+        let preferences: Preferences
         let recordID: UUID
 
         var context: ModelContext { ModelContext(container) }
@@ -82,7 +91,7 @@ final class InitialSyncCommandTests: XCTestCase {
     }
 
     private func fixture(url: URL? = nil) throws -> Fixture {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let config =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -90,10 +99,10 @@ final class InitialSyncCommandTests: XCTestCase {
         let context = ModelContext(container)
         let date = Date(timeIntervalSince1970: 1_000_000)
         let vehicle = Vehicle(name: "Initial sync fixture", createdAt: date)
+        context.insert(vehicle)
         let record = FuelingRecord(
             date: date, odometer: 1000.123456789, pricePerFuelUnit: 3.459876543,
             fuelAmount: 10.123456789, totalCost: 35.123456789, notes: "original", createdAt: date, vehicle: vehicle)
-        context.insert(vehicle)
         context.insert(record)
         try context.save()
         let environment = TestingCloudSyncEnvironment()
@@ -103,7 +112,8 @@ final class InitialSyncCommandTests: XCTestCase {
         environment.records = CloudSyncSnapshot(
             vehicles: [parent],
             fuelingRecords: [codec.fuelingRecordToCKRecord(record, vehicleRecordID: parent.recordID)])
-        let state = SyncStateManager(defaults: try XCTUnwrap(UserDefaults(suiteName: "Initial.\(UUID())")))
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "Initial.\(UUID())"))
+        let state = SyncStateManager(defaults: defaults)
         state.iCloudSyncEnabled = false
         state.initialSyncCompleted = false
         let commits = Commits()
@@ -117,10 +127,10 @@ final class InitialSyncCommandTests: XCTestCase {
                         let context = actor.modelContext
                         commits.attempted()
                         try commits.observe?(actor)
-                        if let before = commits.beforeSave { try observeOnMainActor(before) }
+                        commits.beforeSave?()
                         if commits.fail { throw Failure.diskFull }
                         try context.save()
-                        if let after = commits.afterSave { try observeOnMainActor(after) }
+                        commits.afterSave?()
                     })
             })
         addTeardownBlock { @MainActor in
@@ -133,7 +143,7 @@ final class InitialSyncCommandTests: XCTestCase {
         }
         return Fixture(
             container: container, writer: writer, environment: environment, service: service, commits: commits,
-            recordID: record.id)
+            preferences: Preferences(defaults), recordID: record.id)
     }
 
     func testProposalDoesNotActivateStoreOrCommitBusinessData() async throws {
@@ -271,9 +281,9 @@ final class InitialSyncCommandTests: XCTestCase {
         let proposal = try await fixture.service.prepareInitialSync()
         fixture.environment.records = try fixture.cloudEdit(notes: "fresh server value")
         fixture.commits.beforeSave = {
-            XCTAssertTrue(fixture.environment.drivers.isEmpty)
-            XCTAssertFalse(fixture.state.iCloudSyncEnabled)
-            XCTAssertFalse(fixture.state.initialSyncCompleted)
+            XCTAssertTrue(fixture.environment.driverCreationCount == 0)
+            XCTAssertFalse(fixture.preferences.syncEnabled)
+            XCTAssertFalse(fixture.preferences.initiallySynced)
         }
         let expectedAccount = fixture.environment.userID
         let localOnlyName = localOnly.id.uuidString
@@ -340,8 +350,8 @@ final class InitialSyncCommandTests: XCTestCase {
         fixture.environment.records = cloudSource.environment.records
         let proposal = try await fixture.service.prepareInitialSync()
         fixture.commits.beforeSave = {
-            XCTAssertFalse(fixture.state.iCloudSyncEnabled)
-            XCTAssertTrue(fixture.environment.drivers.isEmpty)
+            XCTAssertFalse(fixture.preferences.syncEnabled)
+            XCTAssertTrue(fixture.environment.driverCreationCount == 0)
         }
         fixture.commits.observe = { actor in
             let context = actor.modelContext
@@ -497,7 +507,7 @@ final class InitialSyncCommandTests: XCTestCase {
         let record = try fixture.record(in: context)
         try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
         try SyncChangeJournal.enqueue(record.vehicle, operation: .delete, in: context)
-        context.delete(record.vehicle)
+        VehiclePersistenceService.stageDeletion(record.vehicle, in: context)
         try context.save()
         let proposal = try await fixture.service.prepareInitialSync()
         try await fixture.service.enableSync(strategy: .merge, proposal: proposal)
@@ -788,12 +798,12 @@ final class InitialSyncCommandTests: XCTestCase {
     ) async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        // Keep this isolated store until SwiftData releases its SQLite handles.
         let url = directory.appendingPathComponent("representative.store")
         let source = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: fixtureName, withExtension: "store", subdirectory: "Fixtures"))
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         func businessValues(in context: ModelContext) throws -> [UUID: [UInt64]] {
             Dictionary(
@@ -879,7 +889,7 @@ final class InitialSyncCommandTests: XCTestCase {
     func testCommittedActivationReopensWithoutASecondFullReconciliation() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        // Keep this isolated store until SwiftData releases its SQLite handles.
         let url = directory.appendingPathComponent("initial.store")
         do {
             let fixture = try fixture(url: url)
@@ -888,7 +898,7 @@ final class InitialSyncCommandTests: XCTestCase {
             try await fixture.service.enableSync(strategy: .merge, proposal: proposal)
             await fixture.service.stopMonitoring()
         }
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let reopened = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let environment = TestingCloudSyncEnvironment()

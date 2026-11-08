@@ -64,16 +64,16 @@ final class PersistenceObservationTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("store")
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = container.mainContext
         context.autosaveEnabled = false
         let vehicle = Vehicle(name: "Original")
+        context.insert(vehicle)
         let record = FuelingRecord(
             odometer: 1000.123456789, pricePerFuelUnit: 3.459876543,
             fuelAmount: 10.123456789, totalCost: 35.123456789, notes: "Original", vehicle: vehicle)
-        context.insert(vehicle)
         context.insert(record)
         StatisticsCacheService.recalculateAllStatistics(for: vehicle)
         try context.save()
@@ -130,21 +130,23 @@ final class PersistenceObservationTests: XCTestCase {
         XCTAssertFalse(container.mainContext.hasChanges)
     }
 
-    func testRealReadOnlyStoreSaveFailureLeavesTheSavedGraphIntact() throws {
+    func testRealReadOnlyStoreSaveFailureLeavesTheSavedGraphIntact() async throws {
         let (_, _, url) = try fixture()
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, url: url, allowsSave: false, cloudKitDatabase: .none)])
         do {
-            let context = ModelContext(container)
-            let record = try XCTUnwrap(context.fetch(FetchDescriptor<FuelingRecord>()).first)
-            record.notes = "Must not persist"
-            record.odometer = 0
-            context.delete(record.vehicle)
-            context.processPendingChanges()
-            XCTAssertThrowsError(try context.save())
-            context.rollback()
+            try await OwnedModelStore(container: container).transaction { actor in
+                let context = actor.modelContext
+                let record = try XCTUnwrap(context.fetch(FetchDescriptor<FuelingRecord>()).first)
+                record.notes = "Must not persist"
+                record.odometer = 0
+                VehiclePersistenceService.stageDeletion(record.vehicle, in: context)
+            }
+            XCTFail("Expected read-only save failure")
+        } catch {
+            XCTAssertFalse(container.mainContext.hasChanges)
         }
         let fresh = ModelContext(container)
         let record = try XCTUnwrap(fresh.fetch(FetchDescriptor<FuelingRecord>()).first)
@@ -154,7 +156,7 @@ final class PersistenceObservationTests: XCTestCase {
         XCTAssertEqual(record.vehicle.cachedRecordCount, 1)
     }
 
-    func testNativeBackgroundModelActorUpdatesTheRenderedQuery() async throws {
+    func testNativeWriterUpdatesTheRenderedQuery() async throws {
         if !UIApplication.shared.connectedScenes.contains(where: { $0.activationState == .foregroundActive }) {
             let activated = expectation(forNotification: UIScene.didActivateNotification, object: nil)
             await fulfillment(of: [activated], timeout: 5)
@@ -177,12 +179,12 @@ final class PersistenceObservationTests: XCTestCase {
             record.notes = "Background edit"
             return Thread.isMainThread
         }
-        XCTAssertFalse(stageOnMain)
+        assertNativeWriterExecutor(isMain: stageOnMain)
         await expect(Snapshot(names: ["Background"], notes: ["Background edit"], counts: [1]), from: observer)
         XCTAssertFalse(container.mainContext.hasChanges)
     }
 
-    func testNativeBackgroundModelActorRollsBackCascadeFailureAndCanRetry() async throws {
+    func testNativeWriterDiscardsFailedDeletionAndCanRetry() async throws {
         let (container, _, _) = try fixture()
         let attempts = OSAllocatedUnfairLock(initialState: 0)
         let writer = OwnedModelStore(
@@ -199,14 +201,14 @@ final class PersistenceObservationTests: XCTestCase {
             try await writer.transaction { actor in
                 let context = actor.modelContext
                 let vehicle = try XCTUnwrap(context.fetch(FetchDescriptor<Vehicle>()).first)
-                context.delete(vehicle)
+                VehiclePersistenceService.stageDeletion(vehicle, in: context)
                 context.processPendingChanges()
             }
             XCTFail("Expected save failure")
         } catch { XCTAssertEqual((error as NSError).code, CocoaError.fileWriteOutOfSpace.rawValue) }
         try await writer.transaction { actor in
             let context = actor.modelContext
-            XCTAssertFalse(Thread.isMainThread)
+            assertNativeWriterExecutor()
             let record = try XCTUnwrap(context.fetch(FetchDescriptor<FuelingRecord>()).first)
             XCTAssertEqual(record.notes, "Original")
             XCTAssertEqual(record.odometer.bitPattern, Double(1000.123456789).bitPattern)
@@ -219,18 +221,20 @@ final class PersistenceObservationTests: XCTestCase {
         XCTAssertEqual(record.odometer.bitPattern, Double(1000.123456789).bitPattern)
     }
 
-    func testNativeBackgroundWriterUsesTheModelExecutor() async throws {
+    func testNativeWriterUsesTheModelExecutor() async throws {
         let (container, _, _) = try fixture()
         let writer = OwnedModelStore(container: container)
         let mainActorResponded = OSAllocatedUnfairLock(initialState: false)
         let isMain = try await writer.transaction { actor in
-            try observeOnMainActor { mainActorResponded.withLock { $0 = true } }
+            if #available(iOS 18, *) {
+                try observeOnMainActor { mainActorResponded.withLock { $0 = true } }
+            }
             let record = try XCTUnwrap(actor.modelContext.fetch(FetchDescriptor<FuelingRecord>()).first)
             record.notes = "Background"
             return Thread.isMainThread
         }
-        XCTAssertFalse(isMain)
-        XCTAssertTrue(mainActorResponded.withLock { $0 })
+        assertNativeWriterExecutor(isMain: isMain)
+        if #available(iOS 18, *) { XCTAssertTrue(mainActorResponded.withLock { $0 }) }
         let reader = ModelContext(container)
         XCTAssertEqual(try reader.fetch(FetchDescriptor<FuelingRecord>()).first?.notes, "Background")
     }
@@ -242,7 +246,7 @@ final class PersistenceObservationTests: XCTestCase {
             for _ in 0..<50 {
                 group.addTask {
                     try await writer.transaction { actor in
-                        XCTAssertFalse(Thread.isMainThread)
+                        assertNativeWriterExecutor()
                         XCTAssertFalse(actor.modelContext.hasChanges)
                         let vehicle = try XCTUnwrap(actor.modelContext.fetch(FetchDescriptor<Vehicle>()).first)
                         vehicle.year = (vehicle.year ?? 0) + 1
@@ -263,6 +267,24 @@ final class PersistenceObservationTests: XCTestCase {
     func testCancelledSessionCloseDrainsAcceptedSaveAndRejectsQueuedCheckpoint() async throws {
         let (container, _, _) = try fixture()
         let writer = OwnedModelStore(container: container)
+        if #unavailable(iOS 18) {
+            // A main-queue transaction is indivisible with respect to session
+            // close on MainActor. Exercise cancellation after its accepted save.
+            let store = SyncPersistenceStore(writer: writer)
+            try await store.saveEncodedState(Data("accepted".utf8))
+            let closing = Task { await store.close() }
+            closing.cancel()
+            await closing.value
+            XCTAssertEqual(store.health, .closed)
+            do {
+                try await store.saveEncodedState(Data("obsolete".utf8))
+                XCTFail("A closed session must reject its checkpoint")
+            } catch { XCTAssertEqual(error as? SyncPersistenceError, .recoveryRequired) }
+            XCTAssertEqual(
+                try ModelContext(container).fetch(FetchDescriptor<SyncCheckpoint>()).first?.engineState,
+                Data("accepted".utf8))
+            return
+        }
         let entered = expectation(description: "First save reached commit")
         let release = DispatchSemaphore(value: 0)
         let store = SyncPersistenceStore(

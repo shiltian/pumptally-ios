@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import SQLite3
 @testable import PumpTally
 
 /// Tests that verify schema definitions, migration plan correctness, and data
@@ -124,7 +125,7 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(expectedRecords.count, 800)
         XCTAssertEqual(expectedVehicles.count, 2)
         for pass in 0..<2 {
-            let schema = Schema(versionedSchema: SchemaV5.self)
+            let schema = Schema(versionedSchema: SchemaV6.self)
             let migrated = try ModelContainer(
                 for: schema, migrationPlan: PumpTallyMigrationPlan.self,
                 configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
@@ -224,7 +225,7 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(expected.count, 800)
         XCTAssertEqual(vehicleBits.count, 2)
         for _ in 0..<2 {
-            let schema = Schema(versionedSchema: SchemaV5.self)
+            let schema = Schema(versionedSchema: SchemaV6.self)
             let container = try ModelContainer(
                 for: schema, migrationPlan: PumpTallyMigrationPlan.self,
                 configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
@@ -272,7 +273,6 @@ final class SchemaMigrationTests: XCTestCase {
         let fixture = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: "SchemaV3", withExtension: "store", subdirectory: "Fixtures"))
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
         try FileManager.default.copyItem(at: fixture, to: url)
         var expected: [UUID: [UInt64]] = [:]
         var vehicleIDs = Set<UUID>()
@@ -291,7 +291,7 @@ final class SchemaMigrationTests: XCTestCase {
         }
         XCTAssertEqual(expected.count, 800)
         for _ in 0..<2 {
-            let schema = Schema(versionedSchema: SchemaV5.self)
+            let schema = Schema(versionedSchema: SchemaV6.self)
             let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
             let migrated = try ModelContainer(
                 for: schema, migrationPlan: PumpTallyMigrationPlan.self, configurations: [configuration])
@@ -318,16 +318,13 @@ final class SchemaMigrationTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // SwiftData may retain SQLite handles past the test scope, especially on
+    // iOS 17. Keep isolated stores in the test app's temporary directory until
+    // process exit; unlinking their WAL files while open violates SQLite's API.
     private func tempStoreURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("store")
-    }
-
-    private func removeStore(at url: URL) {
-        for suffix in ["", "-wal", "-shm"] {
-            try? FileManager.default.removeItem(atPath: url.path + suffix)
-        }
     }
 
     /// Create a V1 store at `url`, populate it with known data, and close it.
@@ -418,7 +415,7 @@ final class SchemaMigrationTests: XCTestCase {
     /// SwiftData instantiates the types the rest of the app expects.  Using nested
     /// `@Model` copies here causes a fatal cast error at runtime.
     func testCurrentSchemaReferencesTopLevelRuntimeTypes() throws {
-        let models = SchemaV5.models
+        let models = SchemaV6.models
         XCTAssertTrue(
             models.contains(where: { $0 == PumpTally.Vehicle.self }),
             "Current schema must reference PumpTally.Vehicle, not a nested copy"
@@ -453,7 +450,7 @@ final class SchemaMigrationTests: XCTestCase {
 
     func testMigrationPlanContainsAllSchemaVersions() {
         let schemas = PumpTallyMigrationPlan.schemas
-        XCTAssertEqual(schemas.count, 5, "Migration plan should list V1 through V5")
+        XCTAssertEqual(schemas.count, 6, "Migration plan should list V1 through V6")
     }
 
     func testMigrationPlanSchemasAreOrdered() {
@@ -469,15 +466,14 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertTrue(schemas[2] == SchemaV3.self, "Third schema should be V3")
     }
 
-    func testMigrationPlanHasFourStages() throws {
-        XCTAssertEqual(PumpTallyMigrationPlan.stages.count, 4)
+    func testMigrationPlanHasFiveStages() throws {
+        XCTAssertEqual(PumpTallyMigrationPlan.stages.count, 5)
     }
 
     // MARK: - V1 Store Tests
 
     func testV1StoreCanBeCreatedAndReadBack() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         let v1Schema = Schema(versionedSchema: SchemaV1.self)
         let config = ModelConfiguration(schema: v1Schema, url: url, cloudKitDatabase: .none)
@@ -518,7 +514,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// verify every Double field is EXACTLY preserved across both stages.
     func testV1ToCurrentMigrationPreservesAllDoubleFields() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         // Known values chosen to expose floating-point issues
         let knownOdometer: Double          = 87654.321
@@ -553,7 +548,7 @@ final class SchemaMigrationTests: XCTestCase {
         // V1 container deallocated
 
         // --- V3: reopen with migration plan ---
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -593,7 +588,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// new column must be nil -- never a fabricated default.
     func testV1ToCurrentMigrationSetsModifiedAtToNil() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         do {
             let v1Schema = Schema(versionedSchema: SchemaV1.self)
@@ -611,7 +605,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -632,7 +626,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// Verify that String, Int?, and Date fields also survive migration.
     func testV1ToCurrentMigrationPreservesNonDoubleFields() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
         let fixedCreatedAt = Date(timeIntervalSince1970: 1_690_000_000)
@@ -660,7 +653,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -690,12 +683,11 @@ final class SchemaMigrationTests: XCTestCase {
     /// that NONE of them became zero after migration.
     func testMigrationNeverZerosOutNonZeroDoubleFields() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         let expected = try populateV1Store(at: url, vehicleCount: 3, recordsPerVehicle: 5)
 
         // Reopen with V3
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -723,11 +715,10 @@ final class SchemaMigrationTests: XCTestCase {
     /// Verify exact value fidelity for every record across migration.
     func testMigrationPreservesExactDoubleValuesForAllRecords() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         let expected = try populateV1Store(at: url, vehicleCount: 2, recordsPerVehicle: 4)
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -763,7 +754,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// round-trip without disturbing existing data.
     func testMigrationPreservesVehicleCacheFields() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         do {
             let v1Schema = Schema(versionedSchema: SchemaV1.self)
@@ -781,7 +771,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -803,7 +793,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// adds the sync journal without rewriting any stored fueling values.
     func testV2ToCurrentMigrationPreservesExistingDataAndStartsWithEmptyJournal() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         let vehicleID = UUID()
         let recordID = UUID()
@@ -835,7 +824,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let v3Config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v3Container = try ModelContainer(
             for: currentSchema,
@@ -868,9 +857,8 @@ final class SchemaMigrationTests: XCTestCase {
     /// fresh install (no pre-existing store).
     func testCurrentFreshStoreWorksWithMigrationPlan() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: currentSchema,
@@ -906,7 +894,6 @@ final class SchemaMigrationTests: XCTestCase {
     /// relationship navigation).
     func testV1ToCurrentMigrationPreservesRelationships() throws {
         let url = tempStoreURL()
-        defer { removeStore(at: url) }
 
         do {
             let v1Schema = Schema(versionedSchema: SchemaV1.self)
@@ -926,7 +913,7 @@ final class SchemaMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: SchemaV5.self)
+        let currentSchema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: currentSchema, url: url, cloudKitDatabase: .none)
         let v2Container = try ModelContainer(
             for: currentSchema,
@@ -947,5 +934,216 @@ final class SchemaMigrationTests: XCTestCase {
             XCTAssertEqual(record.vehicle.id, vehicle.id,
                            "FuelingRecord → Vehicle back-reference must survive migration")
         }
+    }
+}
+
+
+@MainActor
+extension SchemaMigrationTests {
+    func testV5MigrationRejectsAnUnownedRecordWithoutChangingBusinessNumbers() throws {
+        let fixture = try XCTUnwrap(
+            Bundle(for: Self.self).url(
+                forResource: "SchemaV5", withExtension: "store", subdirectory: "Fixtures"))
+        let url = tempStoreURL()
+        try FileManager.default.copyItem(at: fixture, to: url)
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)
+        XCTAssertEqual(
+            sqlite3_exec(
+                database,
+                "UPDATE ZFUELINGRECORD SET ZVEHICLE = NULL WHERE Z_PK = (SELECT MIN(Z_PK) FROM ZFUELINGRECORD)",
+                nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_changes(database), 1)
+        sqlite3_close(database)
+        let before = try V5MigrationSnapshot.businessNumbers(at: url)
+        let schema = Schema(versionedSchema: SchemaV6.self)
+        XCTAssertThrowsError(
+            try ModelContainer(
+                for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+                configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)]))
+        XCTAssertEqual(try V5MigrationSnapshot.businessNumbers(at: url), before)
+        XCTAssertEqual(before.count, 800)
+    }
+
+    func testV5StorePreserves800RecordsAndAllRetainedSyncBytesThroughMigrationAndWrites() throws {
+        let fixture = try XCTUnwrap(
+            Bundle(for: Self.self).url(
+                forResource: "SchemaV5", withExtension: "store", subdirectory: "Fixtures"))
+        let url = tempStoreURL()
+        let baselineURL = tempStoreURL()
+        try FileManager.default.copyItem(at: fixture, to: url)
+        try FileManager.default.copyItem(at: fixture, to: baselineURL)
+        let oldSchema = Schema(versionedSchema: SchemaV5.self)
+        let oldContainer = try ModelContainer(
+            for: oldSchema,
+            configurations: [
+                ModelConfiguration(schema: oldSchema, url: baselineURL, cloudKitDatabase: .none)
+            ])
+        let oldContext = ModelContext(oldContainer)
+        oldContext.autosaveEnabled = false
+        let expected = try V5MigrationSnapshot.old(oldContext)
+        let notes = Dictionary(
+            uniqueKeysWithValues:
+                try oldContext.fetch(FetchDescriptor<SchemaV5.FuelingRecord>()).map { ($0.id, $0.notes) })
+        XCTAssertEqual(notes.count, 800)
+        XCTAssertEqual(try oldContext.fetchCount(FetchDescriptor<SchemaV5.CloudRecoveryReceipt>()), 1)
+        XCTAssertEqual(try oldContext.fetchCount(FetchDescriptor<SchemaV5.SyncChange>()), 800)
+        let schema = Schema(versionedSchema: SchemaV6.self)
+        let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        let container = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+            configurations: [configuration])
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        XCTAssertEqual(try V5MigrationSnapshot.current(context), expected)
+        let records = try context.fetch(FetchDescriptor<FuelingRecord>())
+        for record in records { record.notes = "Dirty every migrated row" }
+        try context.save()
+        for record in records { record.notes = notes[record.id] ?? nil }
+        try context.save()
+        let reopened = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+            configurations: [configuration])
+        XCTAssertEqual(try V5MigrationSnapshot.current(ModelContext(reopened)), expected)
+    }
+}
+
+/// Independent reads cover every stored scalar and blob, including nil values.
+/// Native model key paths keep the old and current layouts independently typed.
+@MainActor
+private enum V5MigrationSnapshot {
+    private enum Failure: Error { case unsupportedValue }
+
+    static func businessNumbers(at url: URL) throws -> [[UInt64]] {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        defer { sqlite3_close(database) }
+        var statement: OpaquePointer?
+        guard
+            sqlite3_prepare_v2(
+                database,
+                "SELECT ZODOMETER, ZFUELAMOUNT, ZPRICEPERFUELUNIT, ZTOTALCOST FROM ZFUELINGRECORD ORDER BY Z_PK",
+                -1, &statement, nil) == SQLITE_OK
+        else { throw CocoaError(.fileReadCorruptFile) }
+        defer { sqlite3_finalize(statement) }
+        var rows: [[UInt64]] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            rows.append((0..<4).map { sqlite3_column_double(statement, Int32($0)).bitPattern })
+        }
+        return rows
+    }
+    private static func scalar(_ value: Any) throws -> String {
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let wrapped = mirror.children.first?.value else { return "nil" }
+            return try scalar(wrapped)
+        }
+        switch value {
+        case let value as Double: return "Double:\(value.bitPattern)"
+        case let value as Date: return "Date:\(value.timeIntervalSinceReferenceDate.bitPattern)"
+        case let value as UUID: return "UUID:\(value)"
+        case let value as Data: return "Data:\(value.base64EncodedString())"
+        case let value as String: return "String:\(value)"
+        case let value as Bool: return "Bool:\(value)"
+        case let value as Int: return "Int:\(value)"
+        default: throw Failure.unsupportedValue
+        }
+    }
+    private static func values<Model>(_ model: Model, _ keys: [PartialKeyPath<Model>]) throws -> [String] {
+        try keys.map { try scalar(model[keyPath: $0]) }
+    }
+    static func old(_ context: ModelContext) throws -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        for value in try context.fetch(FetchDescriptor<SchemaV5.Vehicle>()) {
+            result["Vehicle:\(value.id)"] =
+                try values(
+                    value,
+                    [
+                        \.id, \.name, \.make, \.model, \.year, \.createdAt, \.modifiedAt, \.unitSystemRaw,
+                        \.displayUnitSystemRaw, \.cachedTotalSpent, \.cachedTotalDistance, \.cachedTotalFuel,
+                        \.cachedAverageEfficiency, \.cachedAverageCostPerDistance, \.cachedAverageFillUpCost,
+                        \.cachedAveragePricePerFuelUnit, \.cachedBestEfficiency, \.cachedWorstEfficiency,
+                        \.cachedHighestPricePerFuelUnit, \.cachedLowestPricePerFuelUnit, \.cachedRecordCount,
+                        \.cacheLastUpdated,
+                    ]) + [(value.fuelingRecords ?? []).map { $0.id.uuidString }.sorted().joined(separator: ",")]
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.FuelingRecord>()) {
+            result["FuelingRecord:\(value.id)"] =
+                try values(
+                    value,
+                    [
+                        \.id, \.date, \.odometer, \.pricePerFuelUnit, \.fuelAmount, \.totalCost, \.fillUpTypeRaw,
+                        \.notes, \.createdAt, \.modifiedAt, \.cachedPreviousOdometer, \.cachedDistanceDriven,
+                        \.cachedEfficiency, \.cachedCostPerDistance,
+                    ]) + [value.vehicle.id.uuidString]
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.SyncChange>()) {
+            result["SyncChange:\(value.key)"] = try values(
+                value, [\.key, \.recordName, \.recordTypeRaw, \.operationRaw, \.generation, \.createdAt, \.originRaw])
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.CloudRecordMetadata>()) {
+            result["CloudRecordMetadata:\(value.key)"] = try values(value, [\.key, \.systemFieldsData])
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.PendingRemoteChange>()) {
+            result["PendingRemoteChange:\(value.key)"] = try values(value, [\.key, \.recordData])
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.SyncCheckpoint>()) {
+            result["SyncCheckpoint:\(value.key)"] = try values(
+                value, [\.key, \.accountID, \.engineState, \.bootstrapCompleted, \.detached, \.cloudGeneration])
+        }
+        for value in try context.fetch(FetchDescriptor<SchemaV5.CloudRecoveryReceipt>()) {
+            result["CloudRecoveryReceipt:\(value.id)"] = try values(
+                value,
+                [\.id, \.scope, \.accountID, \.phaseRaw, \.payload, \.verifiedRecords, \.remoteBackup, \.retainedInbox])
+        }
+        return result
+    }
+    static func current(_ context: ModelContext) throws -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        for value in try context.fetch(FetchDescriptor<Vehicle>()) {
+            result["Vehicle:\(value.id)"] =
+                try values(
+                    value,
+                    [
+                        \.id, \.name, \.make, \.model, \.year, \.createdAt, \.modifiedAt, \.unitSystemRaw,
+                        \.displayUnitSystemRaw, \.cachedTotalSpent, \.cachedTotalDistance, \.cachedTotalFuel,
+                        \.cachedAverageEfficiency, \.cachedAverageCostPerDistance, \.cachedAverageFillUpCost,
+                        \.cachedAveragePricePerFuelUnit, \.cachedBestEfficiency, \.cachedWorstEfficiency,
+                        \.cachedHighestPricePerFuelUnit, \.cachedLowestPricePerFuelUnit, \.cachedRecordCount,
+                        \.cacheLastUpdated,
+                    ]) + [(value.fuelingRecords ?? []).map { $0.id.uuidString }.sorted().joined(separator: ",")]
+        }
+        for value in try context.fetch(FetchDescriptor<FuelingRecord>()) {
+            result["FuelingRecord:\(value.id)"] =
+                try values(
+                    value,
+                    [
+                        \.id, \.date, \.odometer, \.pricePerFuelUnit, \.fuelAmount, \.totalCost, \.fillUpTypeRaw,
+                        \.notes, \.createdAt, \.modifiedAt, \.cachedPreviousOdometer, \.cachedDistanceDriven,
+                        \.cachedEfficiency, \.cachedCostPerDistance,
+                    ]) + [value.vehicle.id.uuidString]
+        }
+        for value in try context.fetch(FetchDescriptor<SyncChange>()) {
+            result["SyncChange:\(value.key)"] = try values(
+                value, [\.key, \.recordName, \.recordTypeRaw, \.operationRaw, \.generation, \.createdAt, \.originRaw])
+        }
+        for value in try context.fetch(FetchDescriptor<CloudRecordMetadata>()) {
+            result["CloudRecordMetadata:\(value.key)"] = try values(value, [\.key, \.systemFieldsData])
+        }
+        for value in try context.fetch(FetchDescriptor<PendingRemoteChange>()) {
+            result["PendingRemoteChange:\(value.key)"] = try values(value, [\.key, \.recordData])
+        }
+        for value in try context.fetch(FetchDescriptor<SyncCheckpoint>()) {
+            result["SyncCheckpoint:\(value.key)"] = try values(
+                value, [\.key, \.accountID, \.engineState, \.bootstrapCompleted, \.detached, \.cloudGeneration])
+        }
+        for value in try context.fetch(FetchDescriptor<CloudRecoveryReceipt>()) {
+            result["CloudRecoveryReceipt:\(value.id)"] = try values(
+                value,
+                [\.id, \.scope, \.accountID, \.phaseRaw, \.payload, \.verifiedRecords, \.remoteBackup, \.retainedInbox])
+        }
+        return result
     }
 }

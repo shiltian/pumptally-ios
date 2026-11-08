@@ -4,6 +4,25 @@ import SwiftData
 
 @MainActor
 final class StatisticsCacheServiceTests: XCTestCase {
+    private var fixtureContainer: ModelContainer!
+
+    override func setUp() async throws {
+        try await MainActor.run {
+            let schema = Schema(versionedSchema: SchemaV6.self)
+            fixtureContainer = try ModelContainer(
+                for: schema,
+                configurations: [
+                    ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                ])
+            fixtureContainer.mainContext.autosaveEnabled = false
+        }
+    }
+
+    private func managed(_ vehicle: Vehicle) -> Vehicle {
+        fixtureContainer.mainContext.insert(vehicle)
+        return vehicle
+    }
+
     private func projection(_ vehicle: Vehicle) -> [String: [UInt64?]] {
         var result: [String: [UInt64?]] = [:]
         for record in vehicle.fuelingRecords ?? [] {
@@ -149,7 +168,7 @@ final class StatisticsCacheServiceTests: XCTestCase {
     }
 
     func testHealthyFullRebuildDoesNotDirtyNativeModels() throws {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [
@@ -178,7 +197,7 @@ final class StatisticsCacheServiceTests: XCTestCase {
     // MARK: - Helper Methods
 
     private func createVehicle(name: String = "Test Car") -> Vehicle {
-        return Vehicle(name: name)
+        return managed(Vehicle(name: name))
     }
 
     private func createRecord(
@@ -191,7 +210,7 @@ final class StatisticsCacheServiceTests: XCTestCase {
         vehicle: Vehicle? = nil
     ) -> FuelingRecord {
         let cost = totalCost ?? (pricePerFuelUnit * fuelAmount)
-        let v = vehicle ?? Vehicle(name: "Helper Vehicle")
+        let v = vehicle ?? managed(Vehicle(name: "Helper Vehicle"))
         return FuelingRecord(
             date: date,
             odometer: odometer,
@@ -840,7 +859,7 @@ final class StatisticsMutationPerformanceTests: XCTestCase {
     private func fixture(_ count: Int) throws -> (ModelContainer, UUID, UUID) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [

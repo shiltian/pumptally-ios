@@ -11,7 +11,7 @@ final class CSVImportServiceTests: XCTestCase {
     }
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

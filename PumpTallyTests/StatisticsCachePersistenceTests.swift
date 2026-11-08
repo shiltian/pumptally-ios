@@ -32,7 +32,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("cache.store")
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = ModelContext(container)
@@ -42,11 +42,11 @@ final class StatisticsCachePersistenceTests: XCTestCase {
         for index in 0..<2 {
             let date = Date(timeIntervalSince1970: 1_000_000 + Double(index))
             let owner = Vehicle(name: "Owner \(index)", createdAt: date)
+            context.insert(owner)
             let record = FuelingRecord(
                 date: date, odometer: 1000.123456789,
                 pricePerFuelUnit: 3.459876543, fuelAmount: 10.123456789, totalCost: 35.123456789,
                 notes: "Original \(index)", createdAt: date, vehicle: owner)
-            context.insert(owner)
             context.insert(record)
             owners.append(owner.id)
             records.append(record.id)
@@ -119,7 +119,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
             container: fixture.container,
             commit: {
                 XCTAssertFalse($0.modelContext.autosaveEnabled)
-                XCTAssertFalse(Thread.isMainThread)
+                assertNativeWriterExecutor()
                 commits.withLock { $0 += 1 }
                 try $0.modelContext.save()
             })
@@ -208,7 +208,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
     func testActualReadOnlySaveFailureLeavesCachesAndDataUntouched() async throws {
         let fixture = try fixture()
         let before = try snapshot(fixture.container)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -326,7 +326,7 @@ final class StatisticsCachePersistenceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         var expected: Snapshot!
         do {
             let container = try ModelContainer(

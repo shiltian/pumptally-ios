@@ -22,7 +22,7 @@ final class CloudRecoveryTests: XCTestCase {
 
         init(count: Int = 4) throws {
             url = FileManager.default.temporaryDirectory.appendingPathComponent("Recovery-\(UUID()).store")
-            let schema = Schema(versionedSchema: SchemaV5.self)
+            let schema = Schema(versionedSchema: SchemaV6.self)
             container = try ModelContainer(
                 for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
             defaults = try XCTUnwrap(UserDefaults(suiteName: "Recovery.\(UUID())"))
@@ -98,7 +98,7 @@ final class CloudRecoveryTests: XCTestCase {
         }
 
         func reopen() throws -> ModelContainer {
-            let schema = Schema(versionedSchema: SchemaV5.self)
+            let schema = Schema(versionedSchema: SchemaV6.self)
             return try ModelContainer(
                 for: schema, migrationPlan: PumpTallyMigrationPlan.self,
                 configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
@@ -534,7 +534,7 @@ final class CloudRecoveryTests: XCTestCase {
                 forResource: "SchemaV4", withExtension: "store", subdirectory: "Fixtures"))
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("CopiedRecovery-\(UUID()).store")
         try FileManager.default.copyItem(at: original, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         func open() throws -> ModelContainer {
             try ModelContainer(
                 for: schema, migrationPlan: PumpTallyMigrationPlan.self,

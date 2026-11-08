@@ -11,7 +11,7 @@ final class ChartInputTests: XCTestCase {
     private var fixtureContainer: ModelContainer?
 
     private func fixture() throws -> (ModelContainer, Vehicle, [FuelingRecord]) {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Chart-\(UUID()).store")
         let container = try ModelContainer(
             for: schema,

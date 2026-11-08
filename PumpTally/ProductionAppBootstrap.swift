@@ -6,7 +6,7 @@ import SwiftData
 @MainActor
 enum AppBootstrap {
     static func makeEnvironment() throws -> ApplicationEnvironment {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             migrationPlan: PumpTallyMigrationPlan.self,

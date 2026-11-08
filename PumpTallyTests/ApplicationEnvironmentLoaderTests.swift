@@ -32,7 +32,7 @@ final class ApplicationEnvironmentLoaderTests: XCTestCase {
     }
 
     private func openStore(at url: URL? = nil) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)

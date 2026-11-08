@@ -51,7 +51,7 @@ actor VehicleHistoryReader: ModelActor {
         let averageEfficiency = displayUnit.efficiencyValue(vehicle.cachedAverageEfficiency ?? 0, from: storageUnit)
         var records: [FuelingHistoryRecord] = []
         let query = FetchDescriptor<FuelingRecord>(
-            predicate: #Predicate { $0.vehicle.id == vehicleID },
+            predicate: #Predicate { $0.vehicleRelationship?.id == vehicleID },
             sortBy: [SortDescriptor(\.date), SortDescriptor(\.odometer)])
         try modelContext.enumerate(query, batchSize: 256) { record in
             try Task.checkCancellation()
@@ -201,6 +201,7 @@ final class VehicleHistoryModel: ObservableObject {
     init(container: ModelContainer, vehicleID: UUID, repository: VehicleHistoryRepository? = nil) {
         self.repository = repository ?? VehicleHistoryRepository(container: container, vehicleID: vehicleID)
         saveObserver = NotificationCenter.default.publisher(for: ModelContext.didSave)
+            .merge(with: NotificationCenter.default.publisher(for: ModelStoreChange.didCommit))
             .filter { Self.isRelevant($0, container: container) }
             .map { [generation = saveGeneration] _ in generation.withLock { $0 &+= 1 } }
             .receive(on: RunLoop.main)
@@ -250,6 +251,9 @@ final class VehicleHistoryModel: ObservableObject {
     /// Inspect the saving context only on its posting executor, and forward a
     /// value signal to MainActor. Journal/checkpoint saves do not reload views.
     nonisolated private static func isRelevant(_ notification: Notification, container: ModelContainer) -> Bool {
+        if let entities = ModelStoreChange.entities(in: notification, container: container) {
+            return !entities.isDisjoint(with: ["Vehicle", "FuelingRecord"])
+        }
         guard let context = notification.object as? ModelContext, context.container === container else { return false }
         let invalidationKey = ModelContext.NotificationKey.invalidatedAllIdentifiers
         if let invalidated = notification.userInfo?[invalidationKey.rawValue] ?? notification.userInfo?[invalidationKey]

@@ -90,6 +90,7 @@ final class SyncRecoveryModel: ObservableObject {
         saveObserver?.cancel()
         observedContainer = container
         saveObserver = NotificationCenter.default.publisher(for: ModelContext.didSave)
+            .merge(with: NotificationCenter.default.publisher(for: ModelStoreChange.didCommit))
             .filter { Self.isRelevant($0, container: container) }
             .map { [generation = saveGeneration] _ in generation.withLock { $0 &+= 1 } }
             .receive(on: RunLoop.main)
@@ -100,6 +101,9 @@ final class SyncRecoveryModel: ObservableObject {
     /// Context inspection is synchronous on the saving executor, before only
     /// a value invalidation is sent to MainActor. Checkpoints do not rerun review.
     nonisolated private static func isRelevant(_ notification: Notification, container: ModelContainer) -> Bool {
+        if let entities = ModelStoreChange.entities(in: notification, container: container) {
+            return !entities.isDisjoint(with: ["PendingRemoteChange", "SyncChange", "Vehicle", "FuelingRecord"])
+        }
         guard let context = notification.object as? ModelContext, context.container === container else { return false }
         let invalidationKey = ModelContext.NotificationKey.invalidatedAllIdentifiers
         if let value = notification.userInfo?[invalidationKey.rawValue] ?? notification.userInfo?[invalidationKey] {

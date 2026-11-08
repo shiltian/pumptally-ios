@@ -124,7 +124,7 @@ final class SyncSafetyTests: XCTestCase {
         let codec = CloudRecordCodec(zoneID: CKRecordZone.ID(zoneName: "test"))
         let incoming = codec.fuelingRecordToCKRecord(
             record, vehicleRecordID: codec.vehicleToCKRecord(record.vehicle).recordID)
-        context.delete(record.vehicle)
+        VehiclePersistenceService.stageDeletion(record.vehicle, in: context)
         try context.save()
         try await SyncPersistenceStore(container: container).capture(modifications: [incoming], deletions: [])
         let assessment = try SyncReviewService.assessment(in: context)
@@ -241,9 +241,9 @@ final class SyncSafetyTests: XCTestCase {
     func testInboxAndCheckpointSurviveDiskContainerReopen() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // Keep this isolated store until SwiftData releases its SQLite handles.
         let url = directory.appendingPathComponent("sync.store")
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         let checkpoint = Data("opaque committed engine state".utf8)
         var recordName = ""
@@ -433,7 +433,7 @@ final class SyncSafetyTests: XCTestCase {
     }
 
     private func store() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         return try ModelContainer(
             for: schema,
             configurations: [
@@ -444,11 +444,11 @@ final class SyncSafetyTests: XCTestCase {
     private func fixture(_ context: ModelContext) throws -> FuelingRecord {
         let vehicle = Vehicle(name: "Car", createdAt: t1)
         vehicle.modifiedAt = t1
+        context.insert(vehicle)
         let record = FuelingRecord(
             date: t1, odometer: 1000, pricePerFuelUnit: 3.5,
             fuelAmount: 10, totalCost: 35, createdAt: t1, vehicle: vehicle)
         record.modifiedAt = t1
-        context.insert(vehicle)
         context.insert(record)
         try context.save()
         return record

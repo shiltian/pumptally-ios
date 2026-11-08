@@ -189,14 +189,18 @@ struct CloudReconciliationService: Sendable {
         }
 
         // CloudKit deletions carry no timestamps; the existing policy is delete-wins.
-        for deletedID in deletedRecordIDs {
-            guard let id = UUID(uuidString: deletedID.recordName) else { continue }
-            if let vehicle = vehicleMap[id] {
-                context.delete(vehicle)
-            } else if let record = recordMap[id] {
+        let deletedIDs = Set(deletedRecordIDs.compactMap { UUID(uuidString: $0.recordName) })
+        let deletedOwners = deletedIDs.intersection(vehicleMap.keys)
+        // Process independent children while every owner is still valid. A
+        // parent deletion owns its whole graph regardless of delivery order.
+        for id in deletedIDs where !deletedOwners.contains(id) {
+            if let record = recordMap[id], !deletedOwners.contains(record.vehicle.id) {
                 result.affectedVehicleIDs.insert(record.vehicle.id)
                 context.delete(record)
             }
+        }
+        for id in deletedOwners {
+            if let vehicle = vehicleMap[id] { VehiclePersistenceService.stageDeletion(vehicle, in: context) }
         }
         return result
     }

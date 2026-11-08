@@ -2,12 +2,31 @@ import XCTest
 import SwiftData
 @testable import PumpTally
 
+@MainActor
 final class VehicleTests: XCTestCase {
+    private var fixtureContainer: ModelContainer!
+
+    override func setUp() async throws {
+        try await MainActor.run {
+            let schema = Schema(versionedSchema: SchemaV6.self)
+            fixtureContainer = try ModelContainer(
+                for: schema,
+                configurations: [
+                    ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                ])
+            fixtureContainer.mainContext.autosaveEnabled = false
+        }
+    }
+
+    private func managed(_ vehicle: Vehicle) -> Vehicle {
+        fixtureContainer.mainContext.insert(vehicle)
+        return vehicle
+    }
 
     // MARK: - Initialization Tests
 
     func testInitializationWithDefaultValues() {
-        let vehicle = Vehicle(name: "My Car")
+        let vehicle = managed(Vehicle(name: "My Car"))
 
         XCTAssertEqual(vehicle.name, "My Car")
         XCTAssertNil(vehicle.make)
@@ -23,7 +42,8 @@ final class VehicleTests: XCTestCase {
         let customId = UUID()
         let customDate = Date(timeIntervalSince1970: 1000000)
 
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             id: customId,
             name: "Daily Driver",
             make: "Toyota",
@@ -31,7 +51,7 @@ final class VehicleTests: XCTestCase {
             year: 2023,
             createdAt: customDate,
             unitSystem: .metric
-        )
+            ))
 
         XCTAssertEqual(vehicle.id, customId)
         XCTAssertEqual(vehicle.name, "Daily Driver")
@@ -46,12 +66,12 @@ final class VehicleTests: XCTestCase {
     // MARK: - Unit System Tests
 
     func testUnitSystemDefaultsToImperial() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
         XCTAssertEqual(vehicle.unitSystem, .imperial)
     }
 
     func testUnitSystemAccessor() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         vehicle.unitSystem = .metric
         XCTAssertEqual(vehicle.unitSystem, .metric)
@@ -63,7 +83,7 @@ final class VehicleTests: XCTestCase {
     }
 
     func testUnitSystemFallbackForInvalidRaw() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
         vehicle.unitSystemRaw = "invalid"
         XCTAssertEqual(vehicle.unitSystem, .imperial) // Fallback
     }
@@ -73,7 +93,7 @@ final class VehicleTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let vehicle = Vehicle(name: "Metric Car", unitSystem: .metric)
+        let vehicle = managed(Vehicle(name: "Metric Car", unitSystem: .metric))
         let record = FuelingRecord(
             odometer: 12_345.6,
             pricePerFuelUnit: 1.789,
@@ -105,51 +125,55 @@ final class VehicleTests: XCTestCase {
     // MARK: - Display Name Tests
 
     func testDisplayNameWithMakeModelAndYear() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "My Car",
             make: "Honda",
             model: "Accord",
             year: 2022
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "2022 Honda Accord")
     }
 
     func testDisplayNameWithMakeAndModelOnly() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "My Car",
             make: "Honda",
             model: "Accord",
             year: nil
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "Honda Accord")
     }
 
     func testDisplayNameWithNameOnly() {
-        let vehicle = Vehicle(name: "Family Van")
+        let vehicle = managed(Vehicle(name: "Family Van"))
 
         XCTAssertEqual(vehicle.displayName, "Family Van")
     }
 
     func testDisplayNameWithMakeOnlyFallsBackToName() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "My Car",
             make: "Honda",
             model: nil,
             year: nil
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "My Car")
     }
 
     func testDisplayNameWithModelOnlyFallsBackToName() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "My Car",
             make: nil,
             model: "Accord",
             year: nil
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "My Car")
     }
@@ -157,13 +181,13 @@ final class VehicleTests: XCTestCase {
     // MARK: - Sorted Records Tests
 
     func testSortedRecordsEmptyWhenNoRecords() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         XCTAssertTrue(vehicle.sortedRecords.isEmpty)
     }
 
     func testSortedRecordsReturnsMostRecentFirst() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         let oldDate = Date(timeIntervalSince1970: 1000000)
         let newDate = Date(timeIntervalSince1970: 2000000)
@@ -195,7 +219,7 @@ final class VehicleTests: XCTestCase {
     }
 
     func testSortedRecordsAndLastRecordUseOdometerForEqualTimestamps() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
         let sameDate = Date(timeIntervalSince1970: 1_000_000)
         let lower = FuelingRecord(
             date: sameDate,
@@ -222,13 +246,13 @@ final class VehicleTests: XCTestCase {
     // MARK: - Last Record Tests
 
     func testLastRecordReturnsNilWhenNoRecords() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         XCTAssertNil(vehicle.lastRecord)
     }
 
     func testLastRecordReturnsMostRecentRecord() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         let oldDate = Date(timeIntervalSince1970: 1000000)
         let newDate = Date(timeIntervalSince1970: 2000000)
@@ -262,13 +286,13 @@ final class VehicleTests: XCTestCase {
     // MARK: - Cache Status Tests
 
     func testNeedsCacheRebuildWhenNoCacheExists() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         XCTAssertTrue(vehicle.needsCacheRebuild)
     }
 
     func testNeedsCacheRebuildWhenCacheCountMismatch() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         vehicle.cacheLastUpdated = Date()
         vehicle.cachedRecordCount = 5
@@ -277,7 +301,7 @@ final class VehicleTests: XCTestCase {
     }
 
     func testNeedsCacheRebuildFalseWhenCacheMatches() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         vehicle.cacheLastUpdated = Date()
         vehicle.cachedRecordCount = 0
@@ -286,7 +310,7 @@ final class VehicleTests: XCTestCase {
     }
 
     func testNeedsCacheRebuildWhenRecordCountIsNil() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         vehicle.cacheLastUpdated = Date()
         vehicle.cachedRecordCount = nil
@@ -297,7 +321,7 @@ final class VehicleTests: XCTestCase {
     // MARK: - Invalidate Cache Tests
 
     func testInvalidateCacheClearsAllCachedValues() {
-        let vehicle = Vehicle(name: "Test Car")
+        let vehicle = managed(Vehicle(name: "Test Car"))
 
         // Set all cached values
         vehicle.cachedTotalSpent = 1000.0
@@ -336,30 +360,32 @@ final class VehicleTests: XCTestCase {
     // MARK: - Edge Cases
 
     func testVehicleWithEmptyName() {
-        let vehicle = Vehicle(name: "")
+        let vehicle = managed(Vehicle(name: ""))
 
         XCTAssertEqual(vehicle.name, "")
         XCTAssertEqual(vehicle.displayName, "")
     }
 
     func testVehicleWithZeroYear() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "Test Car",
             make: "Toyota",
             model: "Corolla",
             year: 0
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "0 Toyota Corolla")
     }
 
     func testVehicleWithNegativeYear() {
-        let vehicle = Vehicle(
+        let vehicle = managed(
+            Vehicle(
             name: "Test Car",
             make: "Toyota",
             model: "Corolla",
             year: -1
-        )
+            ))
 
         XCTAssertEqual(vehicle.displayName, "-1 Toyota Corolla")
     }

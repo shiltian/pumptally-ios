@@ -1,8 +1,9 @@
 import Combine
+import Foundation
 import SwiftData
 
 /// One sequential consumer owns write ordering across native SwiftData actors.
-/// Each request gets a fresh context, including after rollback. Accepted requests
+/// Each request gets a fresh context, including after failure. Accepted requests
 /// finish atomically; cancellation is checked before accepting another request.
 @MainActor
 final class OwnedModelStore: ObservableObject {
@@ -64,7 +65,13 @@ final class OwnedModelStore: ObservableObject {
 @ModelActor
 actor ModelStoreActor {
     static func make(container: ModelContainer) async -> ModelStoreActor {
-        await Task.detached(priority: .utility) { ModelStoreActor(modelContainer: container) }.value
+        if #available(iOS 18, *) {
+            return await Task.detached(priority: .utility) { ModelStoreActor(modelContainer: container) }.value
+        }
+        // iOS 17 doesn't refresh @Query values after a private-queue save.
+        // Constructing here selects SwiftData's native main-queue executor;
+        // each command still owns a fresh context and the same serial boundary.
+        return await MainActor.run { ModelStoreActor(modelContainer: container) }
     }
 
     func transaction<Result: Sendable>(
@@ -74,11 +81,40 @@ actor ModelStoreActor {
         modelContext.autosaveEnabled = false
         do {
             let result = try stage(self)
-            if modelContext.hasChanges { try commit(self) }
+            if modelContext.hasChanges {
+                var entities: Set<String> = []
+                if #unavailable(iOS 18) {
+                    let models =
+                        modelContext.insertedModelsArray + modelContext.changedModelsArray
+                        + modelContext.deletedModelsArray
+                    entities = Set(models.map { String(describing: type(of: $0)) })
+                }
+                try commit(self)
+                if #unavailable(iOS 18) {
+                    // iOS 17 doesn't emit the public ModelContext save notification
+                    // for these commits. Send only value metadata after success.
+                    NotificationCenter.default.post(
+                        name: ModelStoreChange.didCommit, object: modelContainer, userInfo: ["entities": entities])
+                }
+            }
             return result
         } catch {
-            modelContext.rollback()
+            // Newer SwiftData requires a clean context when releasing its actor.
+            // iOS 17 can trap while rolling back a failed deletion; discard that
+            // command's fresh context with autosaving disabled instead.
+            if #available(iOS 18, *) { modelContext.rollback() }
             throw error
         }
+    }
+}
+
+enum ModelStoreChange {
+    static let didCommit = Notification.Name("PumpTally.ModelStore.didCommit")
+
+    static func entities(in notification: Notification, container: ModelContainer) -> Set<String>? {
+        guard notification.name == didCommit, let source = notification.object as? ModelContainer,
+            source === container
+        else { return nil }
+        return notification.userInfo?["entities"] as? Set<String>
     }
 }

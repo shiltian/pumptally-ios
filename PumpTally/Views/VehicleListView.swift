@@ -86,7 +86,8 @@ struct VehicleRowView: View {
         self.vehicle = vehicle
         let id = vehicle.id
         var descriptor = FetchDescriptor<FuelingRecord>(
-            predicate: #Predicate { $0.vehicle.id == id }, sortBy: [SortDescriptor(\.date, order: .reverse)])
+            predicate: #Predicate { $0.vehicleRelationship?.id == id },
+            sortBy: [SortDescriptor(\.date, order: .reverse)])
         descriptor.fetchLimit = 1
         _latestRecords = Query(descriptor)
     }
@@ -289,7 +290,7 @@ struct VehicleDetailView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV5.self)
+    let schema = Schema(versionedSchema: SchemaV6.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

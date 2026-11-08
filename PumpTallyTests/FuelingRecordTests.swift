@@ -2,7 +2,28 @@ import XCTest
 import SwiftData
 @testable import PumpTally
 
+@MainActor
 final class FuelingRecordTests: XCTestCase {
+    private var fixtureContainer: ModelContainer!
+
+    override func setUp() async throws {
+        try await MainActor.run {
+            let schema = Schema(versionedSchema: SchemaV6.self)
+            fixtureContainer = try ModelContainer(
+                for: schema,
+                configurations: [
+                    ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                ])
+            fixtureContainer.mainContext.autosaveEnabled = false
+            fixtureContainer.mainContext.insert(testVehicle)
+        }
+    }
+
+    private func managed(_ vehicle: Vehicle) -> Vehicle {
+        fixtureContainer.mainContext.insert(vehicle)
+        return vehicle
+    }
+
     private let testVehicle = Vehicle(name: "Test Car")
 
     // MARK: - Initialization Tests
@@ -25,6 +46,44 @@ final class FuelingRecordTests: XCTestCase {
         XCTAssertNotNil(record.id)
         XCTAssertNotNil(record.date)
         XCTAssertNotNil(record.createdAt)
+    }
+
+    @MainActor
+    func testNewRecordsHaveOneOwnerBeforeSavingAndAfterReopening() throws {
+        // Keep the isolated store until SwiftData releases its SQLite handles.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Ownership-\(UUID()).store")
+        let schema = Schema(versionedSchema: SchemaV6.self)
+        let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let vehicle = Vehicle(name: "Existing vehicle")
+        context.insert(vehicle)
+        try context.save()
+
+        let records = (0..<2).map { index in
+            FuelingRecord(
+                odometer: 1000.123456789 + Double(index) * 300, pricePerFuelUnit: 3.459876543,
+                fuelAmount: 10.123456789, totalCost: 35.123456789, vehicle: vehicle)
+        }
+        XCTAssertEqual(vehicle.fuelingRecords?.count, 2)
+        XCTAssertTrue(records.allSatisfy { $0.vehicle === vehicle })
+        for record in records { context.insert(record) }
+        StatisticsCacheService.recalculateAllStatistics(for: vehicle)
+        try context.save()
+
+        let reopened = try ModelContainer(for: schema, configurations: [configuration])
+        let saved = ModelContext(reopened)
+        let owner = try XCTUnwrap(saved.fetch(FetchDescriptor<Vehicle>()).first)
+        XCTAssertEqual(owner.cachedRecordCount, 2)
+        XCTAssertEqual(Set((owner.fuelingRecords ?? []).map(\.id)), Set(records.map(\.id)))
+        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<FuelingRecord>()), 2)
+        for record in try saved.fetch(FetchDescriptor<FuelingRecord>()) {
+            XCTAssertEqual(record.vehicle.id, vehicle.id)
+            XCTAssertEqual(record.fuelAmount.bitPattern, 10.123456789.bitPattern)
+            XCTAssertEqual(record.pricePerFuelUnit.bitPattern, 3.459876543.bitPattern)
+            XCTAssertEqual(record.totalCost.bitPattern, 35.123456789.bitPattern)
+        }
     }
 
     func testInitializationWithCustomValues() {

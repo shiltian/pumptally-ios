@@ -9,7 +9,7 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
     private let codec = CloudRecordCodec(zoneID: NativeCloudSyncEnvironment.zoneID)
 
     private func context() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
@@ -20,10 +20,10 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
 
     private func insertRecord(in context: ModelContext) throws -> FuelingRecord {
         let owner = Vehicle(name: "Owner")
+        context.insert(owner)
         let record = FuelingRecord(
             odometer: 1000.123456789, pricePerFuelUnit: 3.459876543,
             fuelAmount: 10.123456789, totalCost: 35.123456789, vehicle: owner)
-        context.insert(owner)
         context.insert(record)
         try SyncChangeJournal.enqueue(record, in: context)
         try context.save()

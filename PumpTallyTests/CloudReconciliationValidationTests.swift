@@ -12,7 +12,7 @@ final class CloudReconciliationValidationTests: XCTestCase {
     private let newerDate = Date(timeIntervalSince1970: 2_000_000)
 
     private func fixture() throws -> (ModelContext, FuelingRecord) {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [
@@ -21,10 +21,10 @@ final class CloudReconciliationValidationTests: XCTestCase {
         let context = ModelContext(container)
         context.autosaveEnabled = false
         let vehicle = Vehicle(name: "Original vehicle", createdAt: originalDate)
+        context.insert(vehicle)
         let record = FuelingRecord(
             date: originalDate, odometer: 1000, pricePerFuelUnit: 3.5,
             fuelAmount: 10, totalCost: 35, notes: "Original note", createdAt: originalDate, vehicle: vehicle)
-        context.insert(vehicle)
         context.insert(record)
         try context.save()
         return (context, record)
@@ -148,22 +148,25 @@ final class CloudReconciliationValidationTests: XCTestCase {
         StatisticsCacheService.recalculateAllStatistics(for: owner)
         try context.save()
         let codec = CloudRecordCodec(zoneID: zoneID)
-        let remoteOwner = Vehicle(id: owner.id, name: owner.name, createdAt: originalDate)
         let target = rows[40]
-        let remote = FuelingRecord(
-            id: target.id, date: target.date, odometer: target.odometer + 10,
-            pricePerFuelUnit: target.pricePerFuelUnit, fuelAmount: 12, totalCost: target.totalCost,
-            createdAt: originalDate, vehicle: remoteOwner)
-        remote.modifiedAt = newerDate
         let incoming = codec.fuelingRecordToCKRecord(
-            remote, vehicleRecordID: codec.vehicleToCKRecord(remoteOwner).recordID)
+            target,
+            vehicleRecordID: codec.vehicleToCKRecord(owner).recordID)
+        incoming[CloudRecordCodec.CloudFieldKey.FuelingRecord.odometer] = target.odometer + 10
+        incoming[CloudRecordCodec.CloudFieldKey.FuelingRecord.fuelAmount] = 12.0
+        incoming[CloudRecordCodec.CloudFieldKey.FuelingRecord.modifiedAt] = newerDate
+        let validated = try CloudMeasurementPayload.confirmedLegacyRecord(incoming, unit: owner.unitSystem)
         let removedID = rows[20].id
+        let removedModelID = rows[20].persistentModelID
         let result = try CloudReconciliationService(codec: codec).stageRemoteChanges(
-            changedRecords: [incoming],
+            changedRecords: [validated],
             deletedRecordIDs: [CKRecord.ID(recordName: removedID.uuidString, zoneID: zoneID)], context: context)
         XCTAssertEqual(result.affectedVehicleIDs, [owner.id])
         context.processPendingChanges()
-        let dirty = Set(context.changedModelsArray.compactMap { ($0 as? FuelingRecord)?.id })
+        let dirty = Set(
+            context.changedModelsArray.filter { $0.persistentModelID != removedModelID }.compactMap {
+                ($0 as? FuelingRecord)?.id
+            })
         XCTAssertTrue(dirty.isSubset(of: [removedID, rows[21].id, rows[40].id, rows[41].id]))
         XCTAssertTrue(dirty.contains(rows[40].id))
         XCTAssertEqual(rows[40].fuelAmount, 12)
@@ -171,6 +174,36 @@ final class CloudReconciliationValidationTests: XCTestCase {
         XCTAssertEqual(rows[21].cachedDistanceDriven, 600)
         try context.save()
         XCTAssertEqual(try ModelContext(context.container).fetchCount(FetchDescriptor<FuelingRecord>()), 79)
+    }
+
+    func testParentAndChildDeletionsPreserveOtherDataInEitherDeliveryOrder() throws {
+        for parentFirst in [true, false] {
+            let (context, record) = try fixture()
+            let codec = CloudRecordCodec(zoneID: zoneID)
+            let ownerID = codec.vehicleToCKRecord(record.vehicle).recordID
+            let childID = codec.fuelingRecordToCKRecord(record, vehicleRecordID: ownerID).recordID
+            let survivor = Vehicle(name: "Untouched", unitSystem: .metric)
+            context.insert(survivor)
+            let preserved = FuelingRecord(
+                odometer: 1234.56789, pricePerFuelUnit: 1.23456789, fuelAmount: 23.456789,
+                totalCost: 34.56789, notes: "Keep exactly", vehicle: survivor)
+            context.insert(preserved)
+            try context.save()
+            _ = try CloudReconciliationService(codec: codec).stageRemoteChanges(
+                changedRecords: [], deletedRecordIDs: parentFirst ? [ownerID, childID] : [childID, ownerID],
+                context: context)
+            try context.save()
+            let fresh = ModelContext(context.container)
+            XCTAssertEqual(try fresh.fetch(FetchDescriptor<Vehicle>()).map(\.id), [survivor.id])
+            let remaining = try fresh.fetch(FetchDescriptor<FuelingRecord>())
+            XCTAssertEqual(remaining.map(\.id), [preserved.id])
+            XCTAssertEqual(remaining.first?.vehicle.id, survivor.id)
+            XCTAssertEqual(remaining.first?.notes, "Keep exactly")
+            XCTAssertEqual(remaining.first?.odometer.bitPattern, 1234.56789.bitPattern)
+            XCTAssertEqual(remaining.first?.pricePerFuelUnit.bitPattern, 1.23456789.bitPattern)
+            XCTAssertEqual(remaining.first?.fuelAmount.bitPattern, 23.456789.bitPattern)
+            XCTAssertEqual(remaining.first?.totalCost.bitPattern, 34.56789.bitPattern)
+        }
     }
 
     func testNotesOnlyDownloadPreservesStatisticsAndNumericBitsAfterSave() throws {
@@ -213,11 +246,17 @@ final class CloudReconciliationValidationTests: XCTestCase {
             record.vehicle.cacheLastUpdated = originalDate
             try context.save()
             let codec = CloudRecordCodec(zoneID: zoneID)
-            change(record)
-            record.modifiedAt = newerDate
+            let remoteContext = ModelContext(context.container)
+            remoteContext.autosaveEnabled = false
+            let id = record.id
+            let remote = try XCTUnwrap(
+                remoteContext.fetch(
+                    FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.id == id })
+                ).first)
+            change(remote)
+            remote.modifiedAt = newerDate
             let incoming = codec.fuelingRecordToCKRecord(
-                record, vehicleRecordID: codec.vehicleToCKRecord(record.vehicle).recordID)
-            context.rollback()
+                remote, vehicleRecordID: codec.vehicleToCKRecord(remote.vehicle).recordID)
             let result = try CloudReconciliationService(codec: codec).applyRemoteChanges(
                 changedRecords: [incoming], deletedRecordIDs: [], context: context)
             XCTAssertEqual(result.affectedVehicleIDs, [record.vehicle.id])

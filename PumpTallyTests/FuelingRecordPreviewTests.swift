@@ -26,7 +26,7 @@ final class FuelingRecordPreviewTests: XCTestCase {
         previousIsFirst: Bool, previousType: FillUpType,
         currentType: FillUpType, storageUnit: UnitSystem, displayUnit: UnitSystem
     ) throws {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])

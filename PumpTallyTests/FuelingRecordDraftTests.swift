@@ -297,7 +297,7 @@ final class FuelingRecordEditingPersistenceTests: XCTestCase {
     }
 
     private func makeStore(at url: URL? = nil) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -319,7 +319,7 @@ final class FuelingRecordEditingPersistenceTests: XCTestCase {
     func testNotesEditSurvivesDiskReopenWithExactMeasurements() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // Keep this isolated store until SwiftData releases its SQLite handles.
         let url = directory.appendingPathComponent("fixture.store")
         var original: FuelingRecordValues!
         var id: UUID!

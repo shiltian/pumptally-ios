@@ -1,4 +1,5 @@
 import CloudKit
+import os
 
 /// Compiled into the isolated Testing app only. It supplies SDK boundary values
 /// while the application runs its real startup, persistence and event handling.
@@ -8,7 +9,16 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
     var scopeIdentifier = "isolated-test-container/FuelioZone/private"
     var records = CloudSyncSnapshot()
     var status = CKAccountStatus.available
-    var userID = "isolated-test-account"
+    private struct Observation: Sendable {
+        var userID = "isolated-test-account"
+        var driverCreations = 0
+    }
+    private nonisolated let observation = OSAllocatedUnfairLock(initialState: Observation())
+    nonisolated var userID: String {
+        get { observation.withLock { $0.userID } }
+        set { observation.withLock { $0.userID = newValue } }
+    }
+    nonisolated var driverCreationCount: Int { observation.withLock { $0.driverCreations } }
     var accountError: Error?
     var snapshotError: Error?
     var zoneError: Error?
@@ -63,6 +73,7 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
             return result
         }
         drivers.append(driver)
+        observation.withLock { $0.driverCreations += 1 }
         return driver
     }
 

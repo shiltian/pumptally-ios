@@ -112,6 +112,7 @@ struct AddVehicleView: View {
 
     private func saveVehicle() async {
         guard !isSaving else { return }
+        hideKeyboard()
         isSaving = true
         defer { isSaving = false }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -137,7 +138,7 @@ struct AddVehicleView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV5.self)
+    let schema = Schema(versionedSchema: SchemaV6.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

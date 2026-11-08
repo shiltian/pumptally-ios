@@ -17,7 +17,7 @@ struct RecoveryReadFixture {
         context.autosaveEnabled = false
         let owner = history.vehicleID
         let records = try context.fetch(
-            FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.vehicle.id == owner }))
+            FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.vehicleRelationship?.id == owner }))
         let codec = CloudRecordCodec(zoneID: NativeCloudSyncEnvironment.zoneID)
         var bytes: [String: Data] = [:]
         for (index, record) in records.prefix(incomingCount).enumerated() {
@@ -271,7 +271,7 @@ final class SyncRecoveryReadTests: XCTestCase {
     }
 
     private func deletionFixture(owners: Int) throws -> DeletionFixture {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [
@@ -284,10 +284,10 @@ final class SyncRecoveryReadTests: XCTestCase {
         var remainingOwner = UUID()
         for index in 0...owners {
             let vehicle = Vehicle(name: "Owner \(index)")
+            context.insert(vehicle)
             let local = FuelingRecord(
                 odometer: 1000.123456789, pricePerFuelUnit: 3.459876543,
                 fuelAmount: 10.123456789, totalCost: 35.123456789, vehicle: vehicle)
-            context.insert(vehicle)
             context.insert(local)
             let template = codec.fuelingRecordToCKRecord(
                 local, vehicleRecordID: codec.vehicleToCKRecord(vehicle).recordID)

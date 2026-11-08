@@ -53,7 +53,18 @@ final class FuelingRecord {
     var createdAt: Date = Date()
     var modifiedAt: Date?
 
-    var vehicle: Vehicle
+    @Relationship(originalName: "vehicle")
+    var vehicleRelationship: Vehicle?
+
+    /// App commands construct records with an owner. The optional backing
+    /// relationship lets iOS 17 maintain its inverse correctly.
+    var vehicle: Vehicle {
+        get {
+            guard let vehicleRelationship else { preconditionFailure("Fueling record has no vehicle") }
+            return vehicleRelationship
+        }
+        set { vehicleRelationship = newValue }
+    }
 
     // MARK: - Cached Computed Values (for performance)
     // These are pre-computed and stored to avoid O(n²) lookups
@@ -93,7 +104,7 @@ final class FuelingRecord {
         self.fillUpTypeRaw = fillUpType.rawValue
         self.notes = notes
         self.createdAt = createdAt
-        self.vehicle = vehicle
+        self.vehicleRelationship = vehicle
     }
 
     // MARK: - Cached Value Accessors

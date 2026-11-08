@@ -61,7 +61,9 @@ struct InitialSyncReconciler: Sendable {
         for change in try context.fetch(FetchDescriptor<SyncChange>()) { context.delete(change) }
         for pending in try context.fetch(FetchDescriptor<PendingRemoteChange>()) { context.delete(pending) }
         for metadata in try context.fetch(FetchDescriptor<CloudRecordMetadata>()) { context.delete(metadata) }
-        for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) { context.delete(vehicle) }
+        for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) {
+            VehiclePersistenceService.stageDeletion(vehicle, in: context)
+        }
         context.processPendingChanges()
 
         var vehicles: [UUID: Vehicle] = [:]
@@ -117,6 +119,7 @@ struct InitialSyncReconciler: Sendable {
         var affected: Set<UUID> = []
         for record in try context.fetch(
             FetchDescriptor<FuelingRecord>(predicate: #Predicate { recordIDs.contains($0.id) }))
+        where !vehicleIDs.contains(record.vehicle.id)
         {
             affected.insert(record.vehicle.id)
             context.delete(record)
@@ -128,7 +131,7 @@ struct InitialSyncReconciler: Sendable {
             for child in vehicle.fuelingRecords ?? [] where !recordIDs.contains(child.id) {
                 try SyncChangeJournal.enqueue(child, operation: .delete, in: context)
             }
-            context.delete(vehicle)
+            VehiclePersistenceService.stageDeletion(vehicle, in: context)
         }
         context.processPendingChanges()
         return affected

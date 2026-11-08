@@ -35,7 +35,7 @@ struct StatisticsCachePersistenceService: Sendable {
             query.fetchLimit = 1
             guard let vehicle = try context.fetch(query).first else { return false }
             let count = try context.fetchCount(
-                FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.vehicle.id == vehicleID }))
+                FetchDescriptor<FuelingRecord>(predicate: #Predicate { $0.vehicleRelationship?.id == vehicleID }))
             guard vehicle.cacheLastUpdated == nil || vehicle.cachedRecordCount != count else { return false }
             StatisticsCacheService.recalculateAllStatistics(for: vehicle)
             return true

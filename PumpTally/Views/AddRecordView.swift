@@ -96,6 +96,8 @@ struct AddRecordView: View {
 
     private func saveRecord() async {
         guard !isSaving else { return }
+        focusedField = nil
+        hideKeyboard()
         isSaving = true
         defer { isSaving = false }
         let validation = chronologyValidation
@@ -114,7 +116,7 @@ struct AddRecordView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV5.self)
+    let schema = Schema(versionedSchema: SchemaV6.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

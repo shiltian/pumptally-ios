@@ -18,7 +18,7 @@ private final class PersistenceFixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         url = directory.appendingPathComponent("store")
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let context = ModelContext(container)
@@ -172,7 +172,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("statistics-copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         var expected: [String: [String: String]] = [:]
         func business(_ fingerprint: [String: [String: String]]) -> [String: [String: String]] {
@@ -215,7 +215,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("csv-copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         var expected: [String: [String: String]] = [:]
         do {
@@ -251,7 +251,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("copy.store")
         try FileManager.default.copyItem(at: source, to: url)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         var expected: [String: [String: String]] = [:]
         do {
             let container = try ModelContainer(
@@ -334,7 +334,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
             commit: { actor in
                 let context = actor.modelContext
                 commits.withLock { $0 += 1 }
-                XCTAssertFalse(Thread.isMainThread)
+                assertNativeWriterExecutor()
                 XCTAssertFalse(context.autosaveEnabled)
                 XCTAssertEqual(try fixture.vehicle(context).cachedRecordCount, 3)
                 XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 1)
@@ -429,7 +429,7 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
     func testRealReadOnlyStoreRejectsEveryRecordCommandWithoutChangingData() async throws {
         let fixture = try PersistenceFixture()
         let before = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -530,21 +530,16 @@ final class FuelingRecordPersistenceServiceTests: XCTestCase {
 final class VehiclePersistenceServiceTests: XCTestCase {
     private enum Failure: Error { case diskFull }
 
-    /// Isolates the native cascade contract from the application's commands.
-    /// Optimized runs can log an invalidated-model diagnostic during deletion;
-    /// this checks the SDK operation and the surviving graph independently.
-    func testNativeCascadeDeletePreservesTheSurvivingGraphWithoutApplicationCommands() throws {
+    func testVehicleDeletionPreservesEverySurvivingValueFromAnUnloadedGraph() async throws {
         let fixture = try PersistenceFixture()
         let before = try fixture.fingerprint()
-        let context = fixture.context
-        context.delete(try fixture.vehicle(context))
-        try context.save()
+        try await VehiclePersistenceService(container: fixture.container).delete(vehicleID: fixture.vehicleID)
         let saved = fixture.context
         XCTAssertEqual(try saved.fetch(FetchDescriptor<Vehicle>()).map(\.id), [fixture.otherVehicleID])
         XCTAssertEqual(try saved.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
-        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<SyncChange>()), 0)
+        XCTAssertEqual(try saved.fetchCount(FetchDescriptor<SyncChange>()), fixture.recordIDs.count + 1)
         let after = try fixture.fingerprint()
-        for (key, value) in after { XCTAssertEqual(value, before[key]) }
+        for (key, value) in after where !key.hasPrefix("Journal:") { XCTAssertEqual(value, before[key]) }
     }
 
     func testFailedLegacyUnitDecisionPreservesMeasurementsAndInboxUntilRetry() async throws {
@@ -557,7 +552,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
         try await SyncPersistenceStore(container: fixture.container).capture(modifications: [incoming], deletions: [])
         let item = try XCTUnwrap(SyncReviewService.items(in: context).first)
         let original = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -594,7 +589,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
         context.insert(childDecision)
         try context.save()
         let original = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [
@@ -633,7 +628,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
             container: fixture.container,
             commit: {
                 commits.withLock { $0 += 1 }
-                XCTAssertFalse(Thread.isMainThread)
+                assertNativeWriterExecutor()
                 XCTAssertEqual(try $0.modelContext.fetchCount(FetchDescriptor<SyncChange>()), 1)
                 try $0.modelContext.save()
             }
@@ -742,7 +737,7 @@ final class VehiclePersistenceServiceTests: XCTestCase {
     func testRealReadOnlyStoreRejectsEveryVehicleCommandWithoutChangingData() async throws {
         let fixture = try PersistenceFixture()
         let before = try fixture.fingerprint()
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = try ModelContainer(
             for: schema,
             configurations: [

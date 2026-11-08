@@ -55,18 +55,18 @@ final class CloudSyncRuntimeTests: XCTestCase {
     }
 
     private func runtime(url: URL? = nil) throws -> Runtime {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let configuration =
             url.map { ModelConfiguration(schema: schema, url: $0, cloudKitDatabase: .none) }
             ?? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = ModelContext(container)
         let vehicle = Vehicle(name: "Runtime fixture", createdAt: Date(timeIntervalSince1970: 1_000_000))
+        context.insert(vehicle)
         let record = FuelingRecord(
             date: Date(timeIntervalSince1970: 1_000_000), odometer: 1000.123456789,
             pricePerFuelUnit: 3.459876543, fuelAmount: 10.123456789, totalCost: 35.123456789,
             notes: "baseline", createdAt: Date(timeIntervalSince1970: 1_000_000), vehicle: vehicle)
-        context.insert(vehicle)
         context.insert(record)
         try context.save()
         let environment = TestingCloudSyncEnvironment()
@@ -596,7 +596,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
     func testCheckpointAndCapturedInboxSurviveDiskStoreReopen() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // Keep this isolated store until SwiftData releases its SQLite handles.
         let url = directory.appendingPathComponent("sync.store")
         let state = Data("opaque adapter state".utf8)
         var expectedID: UUID!
@@ -611,7 +611,7 @@ final class CloudSyncRuntimeTests: XCTestCase {
             await runtime.driver.emit(.checkpoint(state))
             await runtime.service.stopMonitoring()
         }
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let reopened = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
         let environment = TestingCloudSyncEnvironment()

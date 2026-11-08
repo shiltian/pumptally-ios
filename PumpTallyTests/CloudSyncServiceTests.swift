@@ -15,6 +15,9 @@ import SwiftData
 @MainActor
 final class CloudSyncServiceTests: XCTestCase {
 
+    private var retainedContainers: [ModelContainer] = []
+    private var retainedContexts: [ModelContext] = []
+
     // MARK: - Fixtures
 
     private let t1 = Date(timeIntervalSince1970: 1_000_000)
@@ -22,15 +25,17 @@ final class CloudSyncServiceTests: XCTestCase {
     private let t3 = Date(timeIntervalSince1970: 3_000_000)
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
             cloudKitDatabase: .none
         )
         let container = try ModelContainer(for: schema, configurations: [config])
+        retainedContainers.append(container)
         let context = ModelContext(container)
         context.autosaveEnabled = false
+        retainedContexts.append(context)
         return context
     }
 
@@ -55,7 +60,8 @@ final class CloudSyncServiceTests: XCTestCase {
         createdAt: Date,
         modifiedAt: Date?,
         vehicle: Vehicle
-    ) -> FuelingRecord {
+    ) throws -> FuelingRecord {
+        if vehicle.modelContext == nil { try makeContext().insert(vehicle) }
         let r = FuelingRecord(
             id: id,
             date: createdAt,
@@ -69,6 +75,19 @@ final class CloudSyncServiceTests: XCTestCase {
         )
         r.modifiedAt = modifiedAt
         return r
+    }
+
+    private func makeRemoteRecord(
+        id: UUID = UUID(), odometer: Double, createdAt: Date, modifiedAt: Date?, vehicle: Vehicle
+    ) throws -> FuelingRecord {
+        // A remote client owns a separate graph, even when IDs match locally.
+        let owner = makeVehicle(
+            id: vehicle.id, name: vehicle.name,
+            createdAt: vehicle.createdAt, modifiedAt: vehicle.modifiedAt)
+        owner.unitSystem = vehicle.unitSystem
+        return try makeRecord(
+            id: id, odometer: odometer, createdAt: createdAt,
+            modifiedAt: modifiedAt, vehicle: owner)
     }
 
     private func assertVehicleWirePayload(
@@ -162,13 +181,13 @@ final class CloudSyncServiceTests: XCTestCase {
         let service = makeService()
         let context = try makeContext()
         let localVehicle = makeVehicle(name: "Irreplaceable", createdAt: t1, modifiedAt: t2)
-        let localRecord = makeRecord(
+        context.insert(localVehicle)
+        let localRecord = try makeRecord(
             odometer: 321,
             createdAt: t1,
             modifiedAt: t2,
             vehicle: localVehicle
         )
-        context.insert(localVehicle)
         context.insert(localRecord)
         try context.save()
 
@@ -197,7 +216,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
     // MARK: - CloudKit wire-format hard gate
 
-    func testVehicleToCKRecord_matchesExactWireContract() {
+    func testVehicleToCKRecord_matchesExactWireContract() throws {
         let service = makeService()
         let vehicle = Vehicle(
             id: UUID(uuidString: "135A3623-A1B2-4C3D-8E9F-0123456789AB")!,
@@ -213,7 +232,7 @@ final class CloudSyncServiceTests: XCTestCase {
         assertVehicleWirePayload(service.vehicleToCKRecord(vehicle), matches: vehicle)
     }
 
-    func testFuelingRecordToCKRecord_matchesExactWireContract() {
+    func testFuelingRecordToCKRecord_matchesExactWireContract() throws {
         let service = makeService()
         let vehicle = Vehicle(
             id: UUID(uuidString: "246B4734-B2C3-4D5E-9F01-123456789ABC")!,
@@ -221,6 +240,7 @@ final class CloudSyncServiceTests: XCTestCase {
             createdAt: t1,
             unitSystem: .imperial
         )
+        try makeContext().insert(vehicle)
         let fuelingRecord = FuelingRecord(
             id: UUID(uuidString: "357C5845-C3D4-4E6F-A012-23456789ABCD")!,
             date: t2,
@@ -258,10 +278,10 @@ final class CloudSyncServiceTests: XCTestCase {
         XCTAssertEqual(restored["vehicleModifiedAt"] as? Date, t2)
     }
 
-    func testCKRecordMapping_omitsNilOptionalFields() {
+    func testCKRecordMapping_omitsNilOptionalFields() throws {
         let service = makeService()
         let vehicle = makeVehicle(name: "Minimal Vehicle", createdAt: t1, modifiedAt: nil)
-        let fuelingRecord = makeRecord(
+        let fuelingRecord = try makeRecord(
             odometer: 10,
             createdAt: t1,
             modifiedAt: nil,
@@ -303,7 +323,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
         let oldVehicle = makeVehicle(name: "Local Only", createdAt: t1, modifiedAt: t1)
         context.insert(oldVehicle)
-        context.insert(makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: oldVehicle))
+        context.insert(try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: oldVehicle))
         try context.save()
 
         let cloudVehicle = Vehicle(
@@ -315,7 +335,7 @@ final class CloudSyncServiceTests: XCTestCase {
             unitSystem: .metric
         )
         cloudVehicle.modifiedAt = t3
-        let cloudRecord = makeRecord(odometer: 500, createdAt: t2, modifiedAt: t3, vehicle: cloudVehicle)
+        let cloudRecord = try makeRemoteRecord(odometer: 500, createdAt: t2, modifiedAt: t3, vehicle: cloudVehicle)
         cloudRecord.date = t3
         cloudRecord.pricePerFuelUnit = 1.789
         cloudRecord.fuelAmount = 42.125
@@ -368,14 +388,14 @@ final class CloudSyncServiceTests: XCTestCase {
 
         let localVehicle = makeVehicle(name: "Irreplaceable Local", createdAt: t1, modifiedAt: t2)
         context.insert(localVehicle)
-        let localRecord = makeRecord(odometer: 321, createdAt: t1, modifiedAt: t2, vehicle: localVehicle)
+        let localRecord = try makeRecord(odometer: 321, createdAt: t1, modifiedAt: t2, vehicle: localVehicle)
         context.insert(localRecord)
         try context.save()
 
         // Structurally valid record, but its parent is absent from the proposed
         // cloud snapshot. Validation must fail before deleting local models.
         let absentVehicle = makeVehicle(name: "Missing Parent", createdAt: t1, modifiedAt: t1)
-        let orphan = makeRecord(odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
+        let orphan = try makeRecord(odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
         let orphanCK = service.fuelingRecordToCKRecord(
             orphan,
             vehicleRecordID: service.vehicleToCKRecord(absentVehicle).recordID
@@ -423,7 +443,7 @@ final class CloudSyncServiceTests: XCTestCase {
     func testReplaceLocalData_rejectsMalformedFuelingRecordBeforeMutation() throws {
         let service = makeService()
         let vehicle = makeVehicle(name: "Parent", createdAt: t1, modifiedAt: t2)
-        let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let record = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         let vehicleCK = service.vehicleToCKRecord(vehicle)
         let malformed = service.fuelingRecordToCKRecord(record, vehicleRecordID: vehicleCK.recordID)
         malformed[CloudRecordCodec.CloudFieldKey.FuelingRecord.totalCost] = nil
@@ -437,7 +457,7 @@ final class CloudSyncServiceTests: XCTestCase {
     func testReplaceLocalData_rejectsDuplicateFuelingRecordBeforeMutation() throws {
         let service = makeService()
         let vehicle = makeVehicle(name: "Parent", createdAt: t1, modifiedAt: t2)
-        let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let record = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         let vehicleCK = service.vehicleToCKRecord(vehicle)
         let duplicate = service.fuelingRecordToCKRecord(record, vehicleRecordID: vehicleCK.recordID)
 
@@ -462,7 +482,7 @@ final class CloudSyncServiceTests: XCTestCase {
     func testReplaceLocalData_rejectsNonFiniteFuelValueBeforeMutation() throws {
         let service = makeService()
         let vehicle = makeVehicle(name: "Parent", createdAt: t1, modifiedAt: t2)
-        let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let record = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         let vehicleCK = service.vehicleToCKRecord(vehicle)
         let nonFinite = service.fuelingRecordToCKRecord(
             record,
@@ -478,7 +498,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
     // MARK: - resolveConflict (pure decision, incl. nil-modifiedAt legacy data)
 
-    func testResolveConflict_cloudModifiedNewer_cloudWins() {
+    func testResolveConflict_cloudModifiedNewer_cloudWins() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: t3, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
@@ -486,7 +506,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_localModifiedNewer_localWins() {
+    func testResolveConflict_localModifiedNewer_localWins() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t3, localCreatedAt: t1),
@@ -494,7 +514,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_equalModified_isTie() {
+    func testResolveConflict_equalModified_isTie() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: t2, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
@@ -502,7 +522,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_nilModified_fallsBackToCreatedAt() {
+    func testResolveConflict_nilModified_fallsBackToCreatedAt() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: nil, cloudCreatedAt: t2, localModifiedAt: nil, localCreatedAt: t1),
@@ -515,7 +535,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_legacyLocalNilModified_vs_cloudEdit_cloudWins() {
+    func testResolveConflict_legacyLocalNilModified_vs_cloudEdit_cloudWins() throws {
         // Legacy local record (never edited → nil modifiedAt) vs a genuine remote edit.
         XCTAssertEqual(
             SyncConflictResolver.resolve(
@@ -524,7 +544,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_localEdit_vs_legacyCloudNilModified_localWins() {
+    func testResolveConflict_localEdit_vs_legacyCloudNilModified_localWins() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: nil, cloudCreatedAt: t1, localModifiedAt: t2, localCreatedAt: t1),
@@ -532,7 +552,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testResolveConflict_allNil_isTie() {
+    func testResolveConflict_allNil_isTie() throws {
         XCTAssertEqual(
             SyncConflictResolver.resolve(
                 cloudModifiedAt: nil, cloudCreatedAt: nil, localModifiedAt: nil, localCreatedAt: nil),
@@ -548,7 +568,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
         // A brand-new vehicle + its record, neither present locally yet.
         let vehicle = makeVehicle(name: "New Car", createdAt: t1, modifiedAt: t1)
-        let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
+        let record = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
 
         let vehicleCK = service.vehicleToCKRecord(vehicle)
         let recordCK = service.fuelingRecordToCKRecord(record, vehicleRecordID: vehicleCK.recordID)
@@ -688,7 +708,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
         let vehicle = makeVehicle(name: "Car", createdAt: t1, modifiedAt: t1)
         context.insert(vehicle)
-        let local = makeRecord(odometer: 500, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let local = try makeRecord(odometer: 500, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         local.date = t2
         local.pricePerFuelUnit = 4.125
         local.fuelAmount = 11.75
@@ -699,7 +719,8 @@ final class CloudSyncServiceTests: XCTestCase {
         try context.save()
 
         // Older cloud copy of the same fueling record with a different odometer.
-        let cloudCopy = makeRecord(id: local.id, odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
+        let cloudCopy = try makeRemoteRecord(
+            id: local.id, odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
         let vehicleRecordID = service.vehicleToCKRecord(vehicle).recordID
         let cloudCK = service.fuelingRecordToCKRecord(cloudCopy, vehicleRecordID: vehicleRecordID)
 
@@ -722,11 +743,12 @@ final class CloudSyncServiceTests: XCTestCase {
 
         let vehicle = makeVehicle(name: "Car", createdAt: t1, modifiedAt: t1)
         context.insert(vehicle)
-        let local = makeRecord(odometer: 500, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
+        let local = try makeRecord(odometer: 500, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
         context.insert(local)
         try context.save()
 
-        let cloudCopy = makeRecord(id: local.id, odometer: 777, createdAt: t1, modifiedAt: t3, vehicle: vehicle)
+        let cloudCopy = try makeRemoteRecord(
+            id: local.id, odometer: 777, createdAt: t1, modifiedAt: t3, vehicle: vehicle)
         cloudCopy.date = t2
         cloudCopy.pricePerFuelUnit = 4.999
         cloudCopy.fuelAmount = 9.25
@@ -783,7 +805,7 @@ final class CloudSyncServiceTests: XCTestCase {
         // A fueling record whose parent vehicle is neither present locally nor
         // in this change set (mimics the parent's fetch failing during a pull).
         let absentVehicle = makeVehicle(name: "Absent", createdAt: t1, modifiedAt: t1)
-        let orphan = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
+        let orphan = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
         let orphanCK = service.fuelingRecordToCKRecord(
             orphan,
             vehicleRecordID: CKRecord.ID(recordName: absentVehicle.id.uuidString)
@@ -806,7 +828,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let vehicle = makeVehicle(name: "Car", createdAt: t1, modifiedAt: t1)
         context.insert(vehicle)
         // Local record carries a NEWER edit (t3) than the cloud ever saw.
-        let local = makeRecord(odometer: 500, createdAt: t1, modifiedAt: t3, vehicle: vehicle)
+        let local = try makeRecord(odometer: 500, createdAt: t1, modifiedAt: t3, vehicle: vehicle)
         context.insert(local)
         try context.save()
 
@@ -822,7 +844,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let context = try makeContext()
         let vehicle = makeVehicle(name: "Deleted Car", createdAt: t1, modifiedAt: t3)
         context.insert(vehicle)
-        context.insert(makeRecord(odometer: 500, createdAt: t1, modifiedAt: t3, vehicle: vehicle))
+        context.insert(try makeRecord(odometer: 500, createdAt: t1, modifiedAt: t3, vehicle: vehicle))
         try context.save()
 
         try service.applyRemoteChanges(
@@ -847,14 +869,15 @@ final class CloudSyncServiceTests: XCTestCase {
 
         let vehicle = makeVehicle(name: "Local Car", createdAt: t1, modifiedAt: t2)
         context.insert(vehicle)
-        let record = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let record = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         context.insert(record)
         try context.save()
 
         // Older cloud copies of the same records.
         let cloudVehicle = makeVehicle(id: vehicle.id, name: "Old Cloud Car", createdAt: t1, modifiedAt: t1)
         let cloudVehicleCK = service.vehicleToCKRecord(cloudVehicle)
-        let cloudRecord = makeRecord(id: record.id, odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: cloudVehicle)
+        let cloudRecord = try makeRemoteRecord(
+            id: record.id, odometer: 999, createdAt: t1, modifiedAt: t1, vehicle: cloudVehicle)
         let cloudRecordCK = service.fuelingRecordToCKRecord(cloudRecord, vehicleRecordID: cloudVehicleCK.recordID)
 
         let uploads = try service.reconcileMerge(
@@ -914,11 +937,11 @@ final class CloudSyncServiceTests: XCTestCase {
         let context = try makeContext()
         let vehicle = makeVehicle(name: "Car", createdAt: t1, modifiedAt: t1)
         context.insert(vehicle)
-        let localRecord = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
+        let localRecord = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: vehicle)
         context.insert(localRecord)
         try context.save()
 
-        let cloudRecord = makeRecord(
+        let cloudRecord = try makeRemoteRecord(
             id: localRecord.id,
             odometer: 250,
             createdAt: t1,
@@ -992,7 +1015,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
         vehicle.modifiedAt = t2
         context.insert(vehicle)
-        let record = makeRecord(odometer: 123, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
+        let record = try makeRecord(odometer: 123, createdAt: t1, modifiedAt: t2, vehicle: vehicle)
         record.notes = "Local-only record"
         context.insert(record)
         try context.save()
@@ -1014,7 +1037,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let context = try makeContext()
 
         let cloudVehicle = makeVehicle(name: "Cloud Only", createdAt: t1, modifiedAt: t1)
-        let cloudRecord = makeRecord(
+        let cloudRecord = try makeRemoteRecord(
             odometer: 345,
             createdAt: t1,
             modifiedAt: t2,
@@ -1046,7 +1069,7 @@ final class CloudSyncServiceTests: XCTestCase {
         let service = makeService()
         let context = try makeContext()
         let absentVehicle = makeVehicle(name: "Absent", createdAt: t1, modifiedAt: t1)
-        let orphan = makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
+        let orphan = try makeRecord(odometer: 100, createdAt: t1, modifiedAt: t1, vehicle: absentVehicle)
         let orphanCK = service.fuelingRecordToCKRecord(
             orphan,
             vehicleRecordID: service.vehicleToCKRecord(absentVehicle).recordID
@@ -1093,7 +1116,7 @@ final class CloudSyncServiceTests: XCTestCase {
 
     // MARK: - Automatic push echo suppression
 
-    func testRemoteApplySaveRemainsSuppressedAfterDebounce() {
+    func testRemoteApplySaveRemainsSuppressedAfterDebounce() throws {
         XCTAssertFalse(
             CloudSyncService.shouldScheduleAutomaticPush(
                 wasSuppressedWhenSaved: true,
@@ -1102,7 +1125,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testOrdinaryLocalSaveSchedulesAutomaticPush() {
+    func testOrdinaryLocalSaveSchedulesAutomaticPush() throws {
         XCTAssertTrue(
             CloudSyncService.shouldScheduleAutomaticPush(
                 wasSuppressedWhenSaved: false,
@@ -1111,7 +1134,7 @@ final class CloudSyncServiceTests: XCTestCase {
         )
     }
 
-    func testCurrentSuppressionPreventsAutomaticPush() {
+    func testCurrentSuppressionPreventsAutomaticPush() throws {
         XCTAssertFalse(
             CloudSyncService.shouldScheduleAutomaticPush(
                 wasSuppressedWhenSaved: false,

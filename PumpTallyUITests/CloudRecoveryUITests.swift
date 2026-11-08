@@ -53,7 +53,9 @@ final class CloudRecoveryUITests: XCTestCase {
             app.buttons["Done"].tap()
             app.staticTexts["Recovery UI Fixture"].tap()
             app.tabBars.buttons["History"].tap()
-            XCTAssertTrue(app.staticTexts["800 records"].waitForExistence(timeout: 10), file: file, line: line)
+            XCTAssertTrue(
+                app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "800 records")).firstMatch
+                    .waitForExistence(timeout: 10), file: file, line: line)
             XCTAssertTrue(app.staticTexts["Trusted recovery record 799"].exists, file: file, line: line)
             app.terminate()
             if pass == 0 {

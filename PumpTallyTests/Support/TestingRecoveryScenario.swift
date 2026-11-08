@@ -21,7 +21,7 @@ enum TestingRecoveryScenario {
         let storeURL = directory.appendingPathComponent("local.store")
         let cloudURL = directory.appendingPathComponent("synthetic-cloud.json")
         let existed = FileManager.default.fileExists(atPath: storeURL.path)
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema, migrationPlan: PumpTallyMigrationPlan.self,
             configurations: [ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)])

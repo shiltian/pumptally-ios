@@ -51,7 +51,7 @@ enum AppBootstrap {
         let blocker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data("Unavailable store directory".utf8).write(to: blocker)
         defer { try? FileManager.default.removeItem(at: blocker) }
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         _ = try ModelContainer(
             for: schema, migrationPlan: PumpTallyMigrationPlan.self,
             configurations: [
@@ -61,7 +61,7 @@ enum AppBootstrap {
     }
 
     private static func makeContainer(arguments: [String]) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let readOnly = arguments.contains("--ui-testing-read-only-store")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("UIFixture-\(UUID()).store")
         let configuration =
@@ -79,12 +79,12 @@ enum AppBootstrap {
 
     private static func seedFixture(in context: ModelContext, arguments: [String]) throws {
         let vehicle = Vehicle(name: "UI Test Vehicle")
+        context.insert(vehicle)
         let record = FuelingRecord(
             date: Date(timeIntervalSince1970: 1_700_000_000),
             odometer: 1000.123456789, pricePerFuelUnit: 3.459876543,
             fuelAmount: 10.123456789, totalCost: 35.123456789,
             notes: "Original UI note", vehicle: vehicle)
-        context.insert(vehicle)
         context.insert(record)
         if arguments.contains("--ui-testing-zero-fuel") { record.fuelAmount = 0 }
         if arguments.contains("--ui-testing-two-records") {

@@ -19,7 +19,7 @@ final class SyncPerformanceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // Model executors release SQLite handles asynchronously. Keep these
         // isolated files in the test app temporary directory until its cleanup.
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [

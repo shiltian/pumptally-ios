@@ -13,7 +13,7 @@ struct VehicleHistoryFixture {
     let values: [UUID: FuelingRecordValues]
 
     init(count: Int, unrelated: Int = 0) throws {
-        let schema = Schema(versionedSchema: SchemaV5.self)
+        let schema = Schema(versionedSchema: SchemaV6.self)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("History-\(UUID()).store")
         container = try ModelContainer(
             for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])

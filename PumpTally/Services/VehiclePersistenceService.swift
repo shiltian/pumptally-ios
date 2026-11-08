@@ -69,7 +69,7 @@ struct VehiclePersistenceService: Sendable {
                 try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
             }
             try SyncChangeJournal.enqueue(vehicle, operation: .delete, in: context)
-            context.delete(vehicle)
+            VehiclePersistenceService.stageDeletion(vehicle, in: context)
         }
     }
 
@@ -94,13 +94,20 @@ struct VehiclePersistenceService: Sendable {
             for record in try context.fetch(FetchDescriptor<FuelingRecord>()) {
                 try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
             }
-            // The relationship's native cascade owns child deletion. Deleting
-            // children separately leaves invalidated models in that traversal.
             for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) {
                 try SyncChangeJournal.enqueue(vehicle, operation: .delete, in: context)
-                context.delete(vehicle)
+                VehiclePersistenceService.stageDeletion(vehicle, in: context)
             }
         }
+    }
+
+    /// Delete the whole graph in the caller's transaction. iOS 17 doesn't
+    /// reliably cascade; detach first so newer runtimes never traverse deleted children.
+    static func stageDeletion(_ vehicle: Vehicle, in context: ModelContext) {
+        let children = vehicle.fuelingRecords ?? []
+        vehicle.fuelingRecords = []
+        for child in children { context.delete(child) }
+        context.delete(vehicle)
     }
 
     /// Staged by review in its owned transaction after revalidating the exact

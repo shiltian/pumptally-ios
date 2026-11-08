@@ -15,7 +15,7 @@ final class Vehicle {
     var unitSystemRaw: String = UnitSystem.imperial.rawValue
     var displayUnitSystemRaw: String?
 
-    @Relationship(deleteRule: .cascade, inverse: \FuelingRecord.vehicle)
+    @Relationship(deleteRule: .cascade, inverse: \FuelingRecord.vehicleRelationship)
     var fuelingRecords: [FuelingRecord]?
 
     // MARK: - Cached Statistics (for performance)

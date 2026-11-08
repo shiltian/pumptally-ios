@@ -135,6 +135,16 @@ extension ApplicationLifecycleCoordinator {
 
 /// A test-only checkpoint for observing UI state before an atomic background
 /// save proceeds. Only the worker waits; the XCTest method awaits the command.
+func assertNativeWriterExecutor(
+    isMain: Bool = Thread.isMainThread, file: StaticString = #filePath, line: UInt = #line
+) {
+    if #available(iOS 18, *) {
+        XCTAssertFalse(isMain, file: file, line: line)
+    } else {
+        XCTAssertTrue(isMain, file: file, line: line)
+    }
+}
+
 func observeOnMainActor(_ observation: @escaping @MainActor @Sendable () -> Void) throws {
     let completed = DispatchSemaphore(value: 0)
     Task { @MainActor in

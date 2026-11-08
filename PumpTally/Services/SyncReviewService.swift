@@ -237,7 +237,7 @@ enum SyncReviewService {
                     for child in vehicle.fuelingRecords ?? [] {
                         try SyncChangeJournal.enqueue(child, operation: .delete, in: context)
                     }
-                    context.delete(vehicle)
+                    VehiclePersistenceService.stageDeletion(vehicle, in: context)
                 }
             }
         }

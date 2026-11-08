@@ -342,7 +342,7 @@ struct SettingsView: View {
 }
 
 #Preview {
-    let schema = Schema(versionedSchema: SchemaV5.self)
+    let schema = Schema(versionedSchema: SchemaV6.self)
     let container = try! ModelContainer(
         for: schema,
         configurations: [

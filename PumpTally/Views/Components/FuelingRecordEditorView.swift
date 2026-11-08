@@ -17,7 +17,7 @@ struct FuelingRecordEditorView: View {
         self.selection = selection
         self.onSave = onSave
         let id = vehicle.id
-        _records = Query(filter: #Predicate<FuelingRecord> { $0.vehicle.id == id })
+        _records = Query(filter: #Predicate<FuelingRecord> { $0.vehicleRelationship?.id == id })
     }
 
     var body: some View {
