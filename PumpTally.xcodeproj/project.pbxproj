@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D30000000000000000000007 /* SyncRecoveryReadPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */; };
+		D30000000000000000000005 /* SyncRecoveryReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000006 /* SyncRecoveryReadTests.swift */; };
+		D30000000000000000000003 /* SyncRecoveryReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000004 /* SyncRecoveryReader.swift */; };
+		D30000000000000000000001 /* PendingRemoteInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000002 /* PendingRemoteInbox.swift */; };
 		D20000000000000000000003 /* VehicleHistoryPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */; };
 		D20000000000000000000001 /* VehicleHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* VehicleHistoryTests.swift */; };
 		D10000000000000000000005 /* FuelingRecordEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000006 /* FuelingRecordEditorView.swift */; };
@@ -150,6 +154,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadPerformanceTests.swift; sourceTree = "<group>"; };
+		D30000000000000000000006 /* SyncRecoveryReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadTests.swift; sourceTree = "<group>"; };
+		D30000000000000000000004 /* SyncRecoveryReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReader.swift; sourceTree = "<group>"; };
+		D30000000000000000000002 /* PendingRemoteInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRemoteInbox.swift; sourceTree = "<group>"; };
 		D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryPerformanceTests.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* VehicleHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryTests.swift; sourceTree = "<group>"; };
 		D10000000000000000000006 /* FuelingRecordEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordEditorView.swift; sourceTree = "<group>"; };
@@ -435,6 +443,8 @@
 				W100000829B30001 /* CloudReconciliationService.swift */,
 				BE0000000000000000000102 /* OwnedModelStore.swift */,
 				D10000000000000000000004 /* VehicleHistoryReader.swift */,
+				D30000000000000000000004 /* SyncRecoveryReader.swift */,
+				D30000000000000000000002 /* PendingRemoteInbox.swift */,
 				AC0000000000000000000002 /* CloudSyncDriver.swift */,
 				AC0000000000000000000102 /* SyncActivity.swift */,
 				BA0000000000000000000000 /* InitialSyncProposal.swift */,
@@ -545,6 +555,8 @@
 				K100000229AC0001 /* PrecomputedChartDataTests.swift */,
 				K100000429AC0001 /* HistoryRecordsQueryTests.swift */,
 				D20000000000000000000002 /* VehicleHistoryTests.swift */,
+				D30000000000000000000006 /* SyncRecoveryReadTests.swift */,
+				D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */,
 				D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */,
 				L100000429AD0001 /* OdometerChronologyValidatorTests.swift */,
 				N100000429AE0001 /* FuelingRecordPersistenceServiceTests.swift */,
@@ -772,6 +784,8 @@
 				BE0000000000000000000201 /* PersistenceValues.swift in Sources */,
 				BE0000000000000000000101 /* OwnedModelStore.swift in Sources */,
 				D10000000000000000000003 /* VehicleHistoryReader.swift in Sources */,
+				D30000000000000000000003 /* SyncRecoveryReader.swift in Sources */,
+				D30000000000000000000001 /* PendingRemoteInbox.swift in Sources */,
 				BD0000000000000000000011 /* CloudChangeBatchBuilder.swift in Sources */,
 				AC0000000000000000000001 /* CloudSyncDriver.swift in Sources */,
 				C417E02B86436A1EA92FAE07 /* SyncPersistenceError.swift in Sources */,
@@ -891,6 +905,8 @@
 				K100000129AC0001 /* PrecomputedChartDataTests.swift in Sources */,
 				K100000329AC0001 /* HistoryRecordsQueryTests.swift in Sources */,
 				D20000000000000000000001 /* VehicleHistoryTests.swift in Sources */,
+				D30000000000000000000005 /* SyncRecoveryReadTests.swift in Sources */,
+				D30000000000000000000007 /* SyncRecoveryReadPerformanceTests.swift in Sources */,
 				D20000000000000000000003 /* VehicleHistoryPerformanceTests.swift in Sources */,
 				L100000329AD0001 /* OdometerChronologyValidatorTests.swift in Sources */,
 				N100000329AE0001 /* FuelingRecordPersistenceServiceTests.swift in Sources */,

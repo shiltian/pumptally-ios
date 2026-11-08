@@ -10,6 +10,8 @@ The `PumpTallyBenchmarks` scheme selects Release optimization with isolated test
 
 `VehicleHistoryPerformanceTests` measures cold fetch/index/chart preparation for single-vehicle histories of 800, 3,200 and 12,800 records, plus cached search and paging at 12,800. Fixture creation is excluded. The UI receives 50-row pages and at most 200 chart points per series; the background value catalog and exact chart summaries still cover the whole vehicle history. Search/sort/page requests reuse that catalog until a relevant save. Native save generation and request checks reject stale results. These measurements cover read preparation, not complete screen-rendering latency; preserve the result metrics rather than asserting a portable timing budget.
 
+`SyncRecoveryReadPerformanceTests` measures fresh retained-inbox decoding and recovery assessment at 800, 3,200 and 12,800 pending changes, plus one pending change among 12,800 local records. Fixture writes are excluded. Read/decode counters assert one inbox load per operation, one archive decode per modification, and local fetches scoped to referenced records. Multi-parent deletion, retained raw payloads, rollback and stale assessment checks run in `SyncRecoveryReadTests`. The decoded inbox is operation-scoped; separate sync operations reread current state. These are preparation measurements, not full Settings rendering or network timings.
+
 Check formatting on changed Swift lines, or add `--fix` to apply changes:
 
 ```sh

@@ -19,6 +19,7 @@ struct SyncDatabase: Sendable {
         var clearedKeys: Set<String> = []
         var acknowledged: [String: String] = [:]
         var errors: [CKError] = []
+        var inboxMetrics = PendingRemoteInbox.Metrics()
     }
 
     struct Status: Sendable {
@@ -104,8 +105,6 @@ struct SyncDatabase: Sendable {
         }
     }
 
-    private typealias PendingRemoteChangePayload = SyncPersistenceStore.PendingPayload
-
     private enum DecodedRemoteChange {
         case modification(CKRecord)
         case deletion(recordID: CKRecord.ID, recordType: String)
@@ -162,8 +161,17 @@ struct SyncDatabase: Sendable {
 
     func applyInbox(in context: ModelContext) throws -> Effects {
         var effects = Effects()
-        let entries = try loadPendingRemoteChanges(in: context)
-            .filter { $0.change.recordID.zoneID == zoneID }
+        let inbox = try PendingRemoteInbox(in: context)
+        effects.inboxMetrics = inbox.metrics
+        let entries = try inbox.entries.map { entry -> PendingRemoteChangeEntry in
+            let change: DecodedRemoteChange
+            switch try entry.decoded.get() {
+            case .modification(let record): change = .modification(record)
+            case .deletion(let name, let type):
+                change = .deletion(recordID: CKRecord.ID(recordName: name, zoneID: zoneID), recordType: type)
+            }
+            return PendingRemoteChangeEntry(key: entry.key, change: change)
+        }.filter { $0.change.recordID.zoneID == zoneID }
         guard !entries.isEmpty else { return effects }
 
         for entry in entries {
@@ -195,9 +203,11 @@ struct SyncDatabase: Sendable {
                 metadataKey(type: entry.value, recordName: entry.key.recordName)
             })
         let localDeleteKeys = Set(
-            try context.fetch(FetchDescriptor<SyncChange>())
-                .filter { $0.operationRaw == SyncChangeJournal.Operation.delete.rawValue && $0.originRaw != nil }
-                .map(\.key))
+            try context.fetch(
+                FetchDescriptor<SyncChange>(
+                    predicate: #Predicate { $0.operationRaw == "delete" && $0.originRaw != nil }
+                )
+            ).map(\.key))
         let changedRecords = modificationsByID.values.filter { record in
             let key = metadataKey(type: record.recordType, recordName: record.recordID.recordName)
             return !deletedKeys.contains(key) && !localDeleteKeys.contains(key)
@@ -225,6 +235,7 @@ struct SyncDatabase: Sendable {
         }
         let deletedRecordIDs = Array(deletionsByID.keys)
         var discardedInboxKeys = Set<String>()
+        var discardedRecordIDs = Set<CKRecord.ID>()
 
         for (recordID, recordType) in deletionsByID where recordType == RecordType.vehicle {
             guard let vehicleID = UUID(uuidString: recordID.recordName) else { continue }
@@ -235,10 +246,15 @@ struct SyncDatabase: Sendable {
                     try SyncChangeJournal.enqueue(child, operation: .delete, in: context)
                 }
             }
-            discardedInboxKeys.formUnion(try removePendingRemoteChildren(of: vehicleID, in: context))
+            let removed = try removePendingRemoteChildren(of: vehicleID, inbox: inbox, in: context)
+            discardedInboxKeys.formUnion(removed.keys)
+            discardedRecordIDs.formUnion(removed.recordIDs)
         }
 
-        for record in changedRecords {
+        // These children already have deletion intent. Reconciliation must not
+        // defer them back into the inbox after their parent has been removed.
+        let applicableRecords = changedRecords.filter { !discardedRecordIDs.contains($0.recordID) }
+        for record in applicableRecords {
             try storeSystemFields(from: record, in: context)
         }
         for recordID in deletedRecordIDs {
@@ -246,9 +262,9 @@ struct SyncDatabase: Sendable {
         }
 
         let result = try reconciliationService.stageRemoteChanges(
-            changedRecords: changedRecords.filter { !echoedBases.contains($0.recordID) },
+            changedRecords: applicableRecords.filter { !echoedBases.contains($0.recordID) },
             deletedRecordIDs: deletedRecordIDs,
-            context: context
+            context: context, retainedInboxIDs: Set(applicableRecords.map(\.recordID))
         )
         for record in result.recordsToUpload {
             effects.additions.append(.saveRecord(record.recordID))
@@ -290,35 +306,18 @@ struct SyncDatabase: Sendable {
     }
 
     func blockedVehicleNames(in context: ModelContext) throws -> Set<String> {
-        Set(
-            try loadPendingRemoteChanges(in: context).compactMap { entry in
-                guard case .modification(let record) = entry.change else { return nil }
-                if record.recordType == RecordType.vehicle { return record.recordID.recordName }
-                return record[CloudFieldKey.FuelingRecord.vehicleRef] as? String
-            })
-    }
-
-    private func loadPendingRemoteChanges(in context: ModelContext) throws -> [PendingRemoteChangeEntry] {
-        return try context.fetch(FetchDescriptor<PendingRemoteChange>()).map { pending in
-            let payload = try PendingRemoteChangePayload.decode(pending.recordData)
-            switch payload.kind {
-            case .modification:
-                guard let record = try payload.record() else { throw CocoaError(.fileReadCorruptFile) }
-                return PendingRemoteChangeEntry(key: pending.key, change: .modification(record))
-            case .deletion:
-                let recordID = CKRecord.ID(recordName: payload.recordName, zoneID: zoneID)
-                return PendingRemoteChangeEntry(
-                    key: pending.key, change: .deletion(recordID: recordID, recordType: payload.recordType))
-            }
-        }
+        try PendingRemoteInbox(in: context).blockedVehicleNames()
     }
 
     /// Removes unresolved remote children after their parent is deleted and
     /// returns the inbox keys removed so callers don't delete them twice.
-    private func removePendingRemoteChildren(of vehicleID: UUID, in context: ModelContext) throws -> Set<String> {
+    private func removePendingRemoteChildren(
+        of vehicleID: UUID, inbox: PendingRemoteInbox, in context: ModelContext
+    ) throws -> (keys: Set<String>, recordIDs: Set<CKRecord.ID>) {
         var removedKeys = Set<String>()
-        for pending in try loadPendingRemoteChanges(in: context) {
-            guard case .modification(let record) = pending.change,
+        var removedIDs = Set<CKRecord.ID>()
+        for pending in inbox.children(of: vehicleID.uuidString) {
+            guard case .modification(let record) = try pending.decoded.get(),
                 record.recordType == RecordType.fuelingRecord,
                 record[CloudFieldKey.FuelingRecord.vehicleRef] as? String == vehicleID.uuidString
             else { continue }
@@ -330,8 +329,9 @@ struct SyncDatabase: Sendable {
             )
             try deleteInboxEntry(key: pending.key, in: context)
             removedKeys.insert(pending.key)
+            removedIDs.insert(record.recordID)
         }
-        return removedKeys
+        return (removedKeys, removedIDs)
     }
 
     private func removeJournalEntries(for recordID: CKRecord.ID, in context: ModelContext) throws -> Set<String> {

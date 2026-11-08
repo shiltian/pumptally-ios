@@ -45,7 +45,7 @@ final class SyncSafetyTests: XCTestCase {
         try await SyncPersistenceStore(container: container).capture(modifications: [legacy, malformed], deletions: [])
 
         let assessment = try SyncReviewService.assessment(in: context)
-        XCTAssertEqual(assessment.unitConfirmations.map(\.record.recordID), [legacy.recordID])
+        XCTAssertEqual(assessment.unitConfirmations.map(\.recordID), [legacy.recordID])
         XCTAssertEqual(assessment.diagnostics.map(\.reason), [.malformedRecord])
         let row = try XCTUnwrap(
             ModelContext(container).fetch(FetchDescriptor<PendingRemoteChange>()).first {
@@ -146,7 +146,7 @@ final class SyncSafetyTests: XCTestCase {
         try await SyncPersistenceStore(container: container).capture(modifications: [parent, incoming], deletions: [])
 
         let parentItem = try XCTUnwrap(SyncReviewService.items(in: context).first)
-        XCTAssertEqual(parentItem.record.recordID, parent.recordID)
+        XCTAssertEqual(parentItem.recordID, parent.recordID)
         XCTAssertEqual(try SyncReviewService.items(in: context).count, 1)
         try await SyncReviewService.confirm(
             parentItem, sourceUnit: .metric, writer: OwnedModelStore(container: context.container))
@@ -154,7 +154,7 @@ final class SyncSafetyTests: XCTestCase {
         let updated = try XCTUnwrap(saved.fetch(FetchDescriptor<FuelingRecord>()).first)
         XCTAssertEqual(updated.vehicle.unitSystem, .metric)
         XCTAssertEqual(updated.odometer, UnitSystem.metric.distanceValue(1000, from: .imperial))
-        XCTAssertEqual(try SyncReviewService.items(in: context).map(\.record.recordID), [incoming.recordID])
+        XCTAssertEqual(try SyncReviewService.items(in: context).map(\.recordID), [incoming.recordID])
     }
 
     func testVerifiedSignInPreservesCheckpointInboxAndPendingChanges() async throws {
@@ -330,7 +330,7 @@ final class SyncSafetyTests: XCTestCase {
             _ = caughtError
         }
         XCTAssertEqual(record.odometer, 1000)
-        XCTAssertEqual(try SyncReviewService.items(in: context).first?.record["odometer"] as? Double, 1400)
+        XCTAssertEqual(try SyncReviewService.items(in: context).first?.odometer, 1400)
     }
 
     func testExplicitLegacyMeasurementConfirmationPreservesAndAppliesItsUnits() async throws {

@@ -18,15 +18,11 @@ struct SettingsView: View {
     @Query private var vehicles: [Vehicle]
     @Query(filter: #Predicate<CloudRecoveryReceipt> { $0.phaseRaw != "completed" && $0.phaseRaw != "superseded" })
     private var pendingReplacements: [CloudRecoveryReceipt]
-    @Query(sort: \PendingRemoteChange.key) private var pendingRemoteChanges: [PendingRemoteChange]
-    @Query(filter: #Predicate<SyncChange> { $0.operationRaw == "delete" && $0.originRaw == nil }, sort: \SyncChange.key)
-    private var legacyDeletions: [SyncChange]
     @StateObject private var syncRecovery = SyncRecoveryModel()
 
     private var recoverySource: SyncRecoveryModel.Source {
         SyncRecoveryModel.Source(
-            keys: pendingRemoteChanges.map(\.key), payloads: pendingRemoteChanges.map(\.recordData),
-            deletionGenerations: legacyDeletions.map(\.generation), isSyncing: stateManager.syncStatus.isInProgress)
+            revision: syncRecovery.revision, isSyncing: stateManager.syncStatus.isInProgress)
     }
 
     private var totalRecordCount: Int {
@@ -210,7 +206,9 @@ struct SettingsView: View {
                 case .diagnostics: SyncDiagnosticsView(recovery: syncRecovery)
                 }
             }
-            .task(id: recoverySource) { syncRecovery.reload(in: modelContext) }
+            .task(id: recoverySource) {
+                await syncRecovery.reload(in: modelContext, revision: recoverySource.revision)
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

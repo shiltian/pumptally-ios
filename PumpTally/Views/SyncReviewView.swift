@@ -5,28 +5,6 @@ enum SyncRecoveryDestination: Hashable {
     case measurementUnits, previousDeletions, diagnostics
 }
 
-@MainActor
-final class SyncRecoveryModel: ObservableObject {
-    struct Source: Equatable {
-        let keys: [String]
-        let payloads: [Data]
-        let deletionGenerations: [String]
-        let isSyncing: Bool
-    }
-
-    @Published private(set) var assessment = SyncReviewService.Assessment()
-    @Published private(set) var loadError: String?
-
-    func reload(in context: ModelContext) {
-        do {
-            assessment = try SyncReviewService.assessment(in: ModelContext(context.container))
-            loadError = nil
-        } catch {
-            loadError = String(localized: "Recovery information could not be loaded. Try again.")
-        }
-    }
-}
-
 struct SyncMeasurementReviewView: View {
     @EnvironmentObject private var writer: OwnedModelStore
     @Environment(\.modelContext) private var context
@@ -48,10 +26,10 @@ struct SyncMeasurementReviewView: View {
                         }
                     } else {
                         Text("Confirm the units used for these incoming measurements before they are applied.")
-                        if let odometer = item.record["odometer"] as? Double {
+                        if let odometer = item.odometer {
                             LabeledContent("Odometer", value: odometer.formatted())
                         }
-                        if let fuel = item.record["fuelAmount"] as? Double {
+                        if let fuel = item.fuelAmount {
                             LabeledContent("Fuel", value: fuel.formatted())
                         }
                         Picker(
@@ -106,8 +84,7 @@ struct SyncMeasurementReviewView: View {
 
     private func sourceUnit(for item: SyncReviewService.Item) -> UnitSystem? {
         if item.isVehicle {
-            return (item.record[CloudRecordCodec.CloudFieldKey.Vehicle.unitSystemRaw] as? String).flatMap(
-                UnitSystem.init(rawValue:))
+            return item.incomingUnit
         }
         return selectedUnits[item.id]
     }
@@ -116,7 +93,7 @@ struct SyncMeasurementReviewView: View {
         Task {
             do {
                 try await operation()
-                recovery.reload(in: context)
+                await recovery.reload(in: context)
             } catch { errorMessage = error.localizedDescription }
         }
     }
@@ -161,7 +138,7 @@ struct SyncDeletionReviewView: View {
         Task {
             do {
                 try await SyncReviewService.resolveLegacyDeletions(apply: apply, writer: writer)
-                recovery.reload(in: context)
+                await recovery.reload(in: context)
             } catch { errorMessage = error.localizedDescription }
 
         }
@@ -187,7 +164,7 @@ struct SyncDiagnosticsView: View {
             Button("Retry Sync") {
                 Task {
                     await cloudSyncService.synchronizeNow()
-                    recovery.reload(in: context)
+                    await recovery.reload(in: context)
                 }
             }
             .disabled(cloudSyncService.stateManager.syncStatus.isInProgress)

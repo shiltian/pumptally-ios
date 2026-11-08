@@ -70,13 +70,14 @@ struct CloudReconciliationService: Sendable {
     /// The caller owns the save so an engine event can commit acknowledgements
     /// and conflict resolution together.
     func stageRemoteChanges(
-        changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID], context: ModelContext
+        changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID], context: ModelContext,
+        retainedInboxIDs: Set<CKRecord.ID> = []
     ) throws -> RemoteApplyResult {
         let result = try reconcile(
             changedRecords: changedRecords, deletedRecordIDs: deletedRecordIDs,
             local: makeIncrementalIndexes(
                 changedRecords: changedRecords, deletedRecordIDs: deletedRecordIDs, context: context),
-            context: context)
+            context: context, retainedInboxIDs: retainedInboxIDs)
         for record in result.recordsToUpload {
             let type: SyncChangeJournal.RecordType
             switch record.recordType {
@@ -100,7 +101,7 @@ struct CloudReconciliationService: Sendable {
 
     private func reconcile(
         changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID],
-        local: LocalIndexes, context: ModelContext
+        local: LocalIndexes, context: ModelContext, retainedInboxIDs: Set<CKRecord.ID> = []
     ) throws -> RemoteApplyResult {
         var result = RemoteApplyResult()
         result.indexedVehicleCount = local.vehicles.count
@@ -112,7 +113,7 @@ struct CloudReconciliationService: Sendable {
         where record.recordType != CloudRecordCodec.RecordType.vehicle
             && record.recordType != CloudRecordCodec.RecordType.fuelingRecord
         {
-            try deferRecord(record, in: context)
+            try deferRecord(record, retainedInboxIDs: retainedInboxIDs, in: context)
             result.deferredRecordNames.insert(record.recordID.recordName)
         }
 
@@ -123,13 +124,13 @@ struct CloudReconciliationService: Sendable {
                 snapshot = try CloudSnapshotValidator().validate(vehicleRecords: [cloud], fuelingRecordRecords: [])
                     .vehicles[0]
             } catch {
-                try deferRecord(cloud, in: context)
+                try deferRecord(cloud, retainedInboxIDs: retainedInboxIDs, in: context)
                 result.deferredRecordNames.insert(cloud.recordID.recordName)
                 continue
             }
             if let existing = vehicleMap[snapshot.id] {
                 guard existing.unitSystem == snapshot.unitSystem else {
-                    try deferRecord(cloud, in: context)
+                    try deferRecord(cloud, retainedInboxIDs: retainedInboxIDs, in: context)
                     result.deferredRecordNames.insert(cloud.recordID.recordName)
                     continue
                 }
@@ -148,19 +149,19 @@ struct CloudReconciliationService: Sendable {
 
         for cloud in changedRecords where cloud.recordType == CloudRecordCodec.RecordType.fuelingRecord {
             guard let id = UUID(uuidString: cloud.recordID.recordName), fuelingRecordID(from: cloud) == id else {
-                try deferRecord(cloud, in: context)
+                try deferRecord(cloud, retainedInboxIDs: retainedInboxIDs, in: context)
                 result.deferredRecordNames.insert(cloud.recordID.recordName)
                 continue
             }
             guard let ownerID = parentVehicleID(from: cloud), let owner = vehicleMap[ownerID] else {
-                try deferRecord(cloud, in: context)
+                try deferRecord(cloud, retainedInboxIDs: retainedInboxIDs, in: context)
                 result.unresolvedChildIDs.append(id)
                 result.deferredRecordNames.insert(cloud.recordID.recordName)
                 continue
             }
             let snapshot: CloudSnapshotValidator.FuelingRecordSnapshot
             do { snapshot = try codec.decodeFuelingRecord(cloud, owner: owner, existing: recordMap[id]) } catch {
-                try deferRecord(cloud, in: context)
+                try deferRecord(cloud, retainedInboxIDs: retainedInboxIDs, in: context)
                 result.deferredRecordNames.insert(cloud.recordID.recordName)
                 continue
             }
@@ -200,7 +201,12 @@ struct CloudReconciliationService: Sendable {
         return result
     }
 
-    private func deferRecord(_ record: CKRecord, in context: ModelContext) throws {
+    private func deferRecord(
+        _ record: CKRecord, retainedInboxIDs: Set<CKRecord.ID>, in context: ModelContext
+    ) throws {
+        // Replaying an inbox must keep the original archive, including fields
+        // this client cannot interpret. Fresh remote records still get staged.
+        guard !retainedInboxIDs.contains(record.recordID) else { return }
         try SyncPersistenceStore.stageInbound(
             .init(
                 kind: .modification, recordName: record.recordID.recordName, recordType: record.recordType,
