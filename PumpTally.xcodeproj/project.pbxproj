@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A7D100000000000000000003 /* SyncQAAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D100000000000000000004 /* SyncQAAppBootstrap.swift */; };
 		A7D000000000000000000001 /* InPlaceUpgradeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D000000000000000000002 /* InPlaceUpgradeUITests.swift */; };
 		D30000000000000000000007 /* SyncRecoveryReadPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */; };
 		D30000000000000000000005 /* SyncRecoveryReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000006 /* SyncRecoveryReadTests.swift */; };
@@ -155,6 +156,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A7D100000000000000000004 /* SyncQAAppBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncQAAppBootstrap.swift; sourceTree = "<group>"; };
+		A7D100000000000000000001 /* ApplicationSyncQA.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ApplicationSyncQA.xcconfig; sourceTree = "<group>"; };
+		A7D100000000000000000002 /* SyncQA.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SyncQA.entitlements; sourceTree = "<group>"; };
 		A7D000000000000000000002 /* InPlaceUpgradeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InPlaceUpgradeUITests.swift; sourceTree = "<group>"; };
 		D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadPerformanceTests.swift; sourceTree = "<group>"; };
 		D30000000000000000000006 /* SyncRecoveryReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadTests.swift; sourceTree = "<group>"; };
@@ -361,6 +365,7 @@
 				AC0000000000000000000202 /* ApplicationLifecycleCoordinator.swift */,
 				AA0000000000000000000002 /* ApplicationEnvironment.swift */,
 				AA0000000000000000000004 /* ProductionAppBootstrap.swift */,
+				A7D100000000000000000004 /* SyncQAAppBootstrap.swift */,
 				A1000004296A0001 /* ContentView.swift */,
 				A1000002296A0002 /* Models */,
 				A1000003296A0002 /* Views */,
@@ -498,6 +503,8 @@
 		AEFFFFFFFFFFFFFFFFFFFFFE /* Config */ = {
 			isa = PBXGroup;
 			children = (
+				A7D100000000000000000001 /* ApplicationSyncQA.xcconfig */,
+				A7D100000000000000000002 /* SyncQA.entitlements */,
 				B00000000000000000000002 /* ApplicationBenchmark.xcconfig */,
 				AE0000000000000000000003 /* ApplicationProduction.xcconfig */,
 				AE0000000000000000000005 /* ApplicationTesting.xcconfig */,
@@ -804,6 +811,7 @@
 				AC0000000000000000000301 /* TestingCloudSyncEnvironment.swift in Sources */,
 				AA0000000000000000000001 /* ApplicationEnvironment.swift in Sources */,
 				AA0000000000000000000003 /* ProductionAppBootstrap.swift in Sources */,
+				A7D100000000000000000003 /* SyncQAAppBootstrap.swift in Sources */,
 				AA0000000000000000000005 /* TestingAppBootstrap.swift in Sources */,
 				BE6E07F8FA3F5D2EF7BC67D5 /* TestingRecoveryScenario.swift in Sources */,
 				Z500000129B60001 /* SyncReviewView.swift in Sources */,
@@ -970,6 +978,48 @@
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A7D100000000000000000100 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000000 /* ProjectDevelopment.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
+		A7D100000000000000000101 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A7D100000000000000000001 /* ApplicationSyncQA.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
+		A7D100000000000000000102 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000006 /* UnitTests.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
+		A7D100000000000000000103 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE0000000000000000000009 /* UITests.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
+		A7D100000000000000000104 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF0000000000000000000019 /* CloudKitProbe.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
+		A7D100000000000000000105 /* SyncQA */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AF000000000000000000001A /* CloudKitProtocolTests.xcconfig */;
+			buildSettings = {
+			};
+			name = SyncQA;
+		};
 		1EBB78303096F3450095BB3D /* Benchmark */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1145,6 +1195,7 @@
 		A10000FB296A0001 /* Build configuration list for PBXProject "PumpTally" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000100 /* SyncQA */,
 				A1000107296A0001 /* Debug */,
 				A1000108296A0001 /* Release */,
 				B00000000000000000000003 /* Benchmark */,
@@ -1156,6 +1207,7 @@
 		A1000109296A0001 /* Build configuration list for PBXNativeTarget "PumpTally" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000101 /* SyncQA */,
 				A100010A296A0001 /* Debug */,
 				A100010B296A0001 /* Release */,
 				B00000000000000000000004 /* Benchmark */,
@@ -1167,6 +1219,7 @@
 		AF000000000000000000000F /* Build configuration list for PBXNativeTarget "CloudKitProbe" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000104 /* SyncQA */,
 				AF0000000000000000000011 /* Debug */,
 				AF0000000000000000000012 /* Release */,
 				AF0000000000000000000013 /* Testing */,
@@ -1178,6 +1231,7 @@
 		AF0000000000000000000010 /* Build configuration list for PBXNativeTarget "CloudKitProtocolTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000105 /* SyncQA */,
 				AF0000000000000000000014 /* Debug */,
 				AF0000000000000000000015 /* Release */,
 				AF0000000000000000000016 /* Testing */,
@@ -1189,6 +1243,7 @@
 		B1000010296B0001 /* Build configuration list for PBXNativeTarget "PumpTallyTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000102 /* SyncQA */,
 				B1000014296B0001 /* Debug */,
 				B1000015296B0001 /* Release */,
 				B00000000000000000000005 /* Benchmark */,
@@ -1200,6 +1255,7 @@
 		UI0000000000000000000006 /* Build configuration list for PBXNativeTarget "PumpTallyUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				A7D100000000000000000103 /* SyncQA */,
 				UI0000000000000000000010 /* Debug */,
 				UI0000000000000000000011 /* Release */,
 				B00000000000000000000006 /* Benchmark */,

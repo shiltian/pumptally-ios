@@ -57,6 +57,8 @@ Complete installed-app upgrade checks are documented in [UPGRADE_TESTING.md](UPG
 
 ## Live CloudKit tests
 
+For full application delivery between two physical phones, use the separate [SyncQA setup and checklist](DEVICE_SYNC_TESTING.md). Its native transport uses only the Development test container and a separate local bundle. The ordinary Testing app uses fake cloud responses.
+
 The separate `CloudKitProtocol` scheme uses the `CloudKitProbe` app and only the Development container `iCloud.me.tianshilei.fuelio.CloudKitProbe`. It has no access to the PumpTally store. Tests create uniquely named synthetic zones and remove them after successful test scopes.
 
 On November 8, 2026, all nine native protocol tests passed on a physical iPhone 17 Pro Max running iOS 27.2 (24B119), built with Xcode 27.2 (27B52). There were no failures, skips or reported runtime warnings. Signed-binary isolation verification passed before installation. All nine synthetic zone scopes acknowledged cleanup.

@@ -1,0 +1,9 @@
+// Full application with native sync, isolated from the published app's data.
+// Used only by the SyncQA configuration; ordinary schemes do not use this.
+#include "ApplicationProduction.xcconfig"
+
+CLOUDKIT_TEST_CONTAINER_IDENTIFIER = iCloud.me.tianshilei.fuelio.CloudKitProbe
+CODE_SIGN_ENTITLEMENTS = Config/SyncQA.entitlements
+EXCLUDED_SOURCE_FILE_NAMES = Testing*.swift ProductionAppBootstrap.swift
+INFOPLIST_KEY_CFBundleDisplayName = PumpTally Sync QA
+PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.SyncQA

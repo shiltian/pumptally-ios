@@ -3,6 +3,6 @@
 
 CODE_SIGN_ENTITLEMENTS =
 ENABLE_PREVIEWS = NO
-EXCLUDED_SOURCE_FILE_NAMES = ProductionAppBootstrap.swift
+EXCLUDED_SOURCE_FILE_NAMES = ProductionAppBootstrap.swift SyncQA*.swift
 INFOPLIST_KEY_CFBundleDisplayName = PumpTally Tests
 PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio.testing

@@ -3,6 +3,6 @@
 
 CODE_SIGN_ENTITLEMENTS = PumpTally/PumpTally.entitlements
 ENABLE_PREVIEWS = YES
-EXCLUDED_SOURCE_FILE_NAMES = Testing*.swift
+EXCLUDED_SOURCE_FILE_NAMES = Testing*.swift SyncQA*.swift
 INFOPLIST_KEY_CFBundleDisplayName = PumpTally
 PRODUCT_BUNDLE_IDENTIFIER = me.tianshilei.fuelio
