@@ -4,118 +4,6 @@
     "--" : {
       "shouldTranslate" : false
     },
-    "Counts can differ while changes are pending." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los recuentos pueden diferir mientras haya cambios pendientes."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有待同步的更改时，数量可能不同。"
-          }
-        }
-      }
-    },
-    "Load More" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cargar más"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加载更多"
-          }
-        }
-      }
-    },
-    "Replacing iCloud data is unavailable while older app versions may still be using it." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La opción de reemplazar los datos de iCloud no está disponible mientras las versiones anteriores de la app puedan seguir usándolos."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旧版 App 可能仍在使用 iCloud 数据，因此暂时无法替换。"
-          }
-        }
-      }
-    },
-    "Unable to Load History" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo cargar el historial"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法加载历史记录"
-          }
-        }
-      }
-    },
-    "Your fueling history could not be loaded. Please try again." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo cargar tu historial de repostajes. Inténtalo de nuevo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法加载你的加油历史记录。请重试。"
-          }
-        }
-      }
-    },
-    "Your saved replacement data has been kept on this device." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los datos guardados para el reemplazo se han conservado en este dispositivo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用于替换的已保存数据仍保留在此设备上。"
-          }
-        }
-      }
-    },
-    "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud ya contiene datos de combustible. Puedes combinar ambas copias. Usar la copia de iCloud reemplaza la copia local de este dispositivo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 中已有加油数据。你可以合并两份数据。使用 iCloud 中的数据会替换此设备上的本地数据。"
-          }
-        }
-      }
-    },
     "—" : {
       "shouldTranslate" : false
     },
@@ -1122,6 +1010,22 @@
         }
       }
     },
+    "Counts can differ while changes are pending." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los recuentos pueden diferir mientras haya cambios pendientes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有待同步的更改时，数量可能不同。"
+          }
+        }
+      }
+    },
     "CSV file saved successfully." : {
       "localizations" : {
         "es" : {
@@ -1539,6 +1443,7 @@
       }
     },
     "Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -2030,6 +1935,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud"
+          }
+        }
+      }
+    },
+    "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud ya contiene datos de combustible. Puedes combinar ambas copias. Usar la copia de iCloud reemplaza la copia local de este dispositivo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 中已有加油数据。你可以合并两份数据。使用 iCloud 中的数据会替换此设备上的本地数据。"
           }
         }
       }
@@ -2526,6 +2447,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "升/百公里"
+          }
+        }
+      }
+    },
+    "Load More" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargar más"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加载更多"
           }
         }
       }
@@ -3428,6 +3365,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除本地数据"
+          }
+        }
+      }
+    },
+    "Replacing iCloud data is unavailable while older app versions may still be using it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La opción de reemplazar los datos de iCloud no está disponible mientras las versiones anteriores de la app puedan seguir usándolos."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旧版 App 可能仍在使用 iCloud 数据，因此暂时无法替换。"
           }
         }
       }
@@ -4654,6 +4607,22 @@
         }
       }
     },
+    "Unable to Load History" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cargar el historial"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载历史记录"
+          }
+        }
+      }
+    },
     "Unable to open the selected file. Please try again." : {
       "localizations" : {
         "es" : {
@@ -5022,6 +4991,22 @@
         }
       }
     },
+    "Your fueling history could not be loaded. Please try again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cargar tu historial de repostajes. Inténtalo de nuevo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载你的加油历史记录。请重试。"
+          }
+        }
+      }
+    },
     "Your fueling records will appear here" : {
       "localizations" : {
         "es" : {
@@ -5050,6 +5035,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法打开你保存的数据。请重试。"
+          }
+        }
+      }
+    },
+    "Your saved replacement data has been kept on this device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos guardados para el reemplazo se han conservado en este dispositivo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于替换的已保存数据仍保留在此设备上。"
           }
         }
       }
