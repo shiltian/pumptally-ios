@@ -50,6 +50,7 @@
          </TestableReference>
          <TestableReference skipped="NO" parallelizable="NO">
             <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="UI0000000000000000000005" BuildableName="PumpTallyUITests.xctest" BlueprintName="PumpTallyUITests" ReferencedContainer="container:PumpTally.xcodeproj"/>
+            <SkippedTests><Test Identifier="InPlaceUpgradeUITests"/></SkippedTests>
          </TestableReference>
       </Testables>
       <CommandLineArguments>

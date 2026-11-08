@@ -53,6 +53,8 @@ Assume older released clients remain active; their installed count is unknown. T
 
 This gate prevents the new app from initiating the unsafe replacement. It cannot stop an older app from deleting or replacing the shared zone itself; new-client generation/zone-deletion checks must continue to pause sync and preserve local values when that happens. Ordinary sync and explicit merge remain available. Do not re-enable bulk replacement based on a usage count, a client-version registry, or an instruction to update or close other devices: offline or unknown legacy clients cannot be ruled out that way.
 
+Complete installed-app upgrade checks are documented in [UPGRADE_TESTING.md](UPGRADE_TESTING.md). They run unchanged v1.1–v1.5 source-tag Release apps, populate their actual stores, install the current Release app without uninstalling, then verify persisted values through editing, saving and reopening. The report distinguishes direct UI population from restored historical state on iOS 17.
+
 ## Live CloudKit tests
 
 The separate `CloudKitProtocol` scheme uses the `CloudKitProbe` app and only the Development container `iCloud.me.tianshilei.fuelio.CloudKitProbe`. It has no access to the PumpTally store. Tests create uniquely named synthetic zones and remove them after successful test scopes.

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A7D000000000000000000001 /* InPlaceUpgradeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D000000000000000000002 /* InPlaceUpgradeUITests.swift */; };
 		D30000000000000000000007 /* SyncRecoveryReadPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */; };
 		D30000000000000000000005 /* SyncRecoveryReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000006 /* SyncRecoveryReadTests.swift */; };
 		D30000000000000000000003 /* SyncRecoveryReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000004 /* SyncRecoveryReader.swift */; };
@@ -154,6 +155,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A7D000000000000000000002 /* InPlaceUpgradeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InPlaceUpgradeUITests.swift; sourceTree = "<group>"; };
 		D30000000000000000000008 /* SyncRecoveryReadPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadPerformanceTests.swift; sourceTree = "<group>"; };
 		D30000000000000000000006 /* SyncRecoveryReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReadTests.swift; sourceTree = "<group>"; };
 		D30000000000000000000004 /* SyncRecoveryReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecoveryReader.swift; sourceTree = "<group>"; };
@@ -581,6 +583,7 @@
 			isa = PBXGroup;
 			children = (
 				17654FD8232F5FADEA3CBD69 /* CloudRecoveryUITests.swift */,
+				A7D000000000000000000002 /* InPlaceUpgradeUITests.swift */,
 				UI0000000000000000000002 /* FuelingRecordUITests.swift */,
 			);
 			path = PumpTallyUITests;
@@ -922,6 +925,7 @@
 			files = (
 				UI0000000000000000000001 /* FuelingRecordUITests.swift in Sources */,
 				D3D5EBAB1E1AA1024FC33B43 /* CloudRecoveryUITests.swift in Sources */,
+				A7D000000000000000000001 /* InPlaceUpgradeUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
