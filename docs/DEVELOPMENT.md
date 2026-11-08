@@ -8,6 +8,8 @@ Use **iPhone 17 Pro Max** as the build and test destination. The `PumpTally` sch
 
 The `PumpTallyBenchmarks` scheme selects Release optimization with isolated test dependencies. Run performance cases separately from functional tests; the CI workflow lists the individual suites.
 
+`VehicleHistoryPerformanceTests` measures cold fetch/index/chart preparation for single-vehicle histories of 800, 3,200 and 12,800 records, plus cached search and paging at 12,800. Fixture creation is excluded. The UI receives 50-row pages and at most 200 chart points per series; the background value catalog and exact chart summaries still cover the whole vehicle history. Search/sort/page requests reuse that catalog until a relevant save. Native save generation and request checks reject stale results. These measurements cover read preparation, not complete screen-rendering latency; preserve the result metrics rather than asserting a portable timing budget.
+
 Check formatting on changed Swift lines, or add `--fix` to apply changes:
 
 ```sh

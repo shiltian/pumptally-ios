@@ -3,28 +3,10 @@ import SwiftData
 
 struct DashboardView: View {
     let vehicle: Vehicle
-    let records: [FuelingRecord]
-
-    @AppStorage private var metricEfficiencyFormatRaw: String
-
-    init(vehicle: Vehicle, records: [FuelingRecord]) {
-        self.vehicle = vehicle
-        self.records = records
-        _metricEfficiencyFormatRaw = AppStorage(
-            wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
-            MetricEfficiencyFormat.storageKey(for: vehicle.id)
-        )
-    }
+    let data: VehicleHistoryPresentation
+    let metricEfficiencyFormat: MetricEfficiencyFormat
 
     private var units: UnitSystem { vehicle.displayUnitSystem }
-
-    private var metricEfficiencyFormat: MetricEfficiencyFormat {
-        MetricEfficiencyFormat(rawValue: metricEfficiencyFormatRaw) ?? .defaultFormat
-    }
-
-    private var recordCount: Int {
-        records.count
-    }
 
     // Use cached statistics from the vehicle model
     private var totalSpent: Double {
@@ -105,10 +87,11 @@ struct DashboardView: View {
                 .padding(.horizontal)
 
                 // Last Fill-up Info - use cached values
-                if let lastRecord = records.max(by: OdometerChronologyValidator.areInIncreasingOrder) {
+                if let lastRecord = data.latestRecord {
                     LastFillUpCard(
                         record: lastRecord,
-                        previousOdometer: lastRecord.getPreviousOdometer(),
+                        previousOdometer: lastRecord.previousOdometer,
+                        efficiencyRaw: data.latestEfficiency,
                         unitSystem: units,
                         metricEfficiencyFormat: metricEfficiencyFormat
                     )
@@ -116,24 +99,21 @@ struct DashboardView: View {
                 }
 
                 // Charts Section
-                if recordCount >= 2 {
+                if data.recordCount >= 2 {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Trends")
                             .font(.appTitle3)
                             .fontWeight(.bold)
                             .padding(.horizontal)
 
-                        ChartView(
-                            input: ChartInput(
-                                vehicle: vehicle, records: records, metricEfficiencyFormat: metricEfficiencyFormat)
-                        )
+                        ChartView(data: data.chartData)
                             .frame(height: 250)
                             .padding(.horizontal)
                     }
                 }
 
                 // Empty state
-                if recordCount == 0 {
+                if data.recordCount == 0 {
                     EmptyRecordsView()
                         .padding(.top, 40)
                 }
@@ -179,21 +159,22 @@ struct StatCard: View {
 }
 
 struct LastFillUpCard: View {
-    let record: FuelingRecord
+    let record: FuelingHistoryRecord
     let previousOdometer: Double
+    let efficiencyRaw: Double
     let unitSystem: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
     // Use cached efficiency if available
     private var efficiencyValue: Double {
         unitSystem.efficiencyDisplayValue(
-            from: unitSystem.efficiencyValue(record.getEfficiency(), from: record.vehicle.unitSystem),
+            from: unitSystem.efficiencyValue(efficiencyRaw, from: record.storageUnit),
             metricFormat: metricEfficiencyFormat
         )
     }
 
     private var hasEfficiency: Bool {
-        record.getEfficiency() > 0
+        efficiencyRaw > 0
     }
 
     var body: some View {
@@ -208,7 +189,7 @@ struct LastFillUpCard: View {
 
                 Spacer()
 
-                Text(record.date.formatted(date: .abbreviated, time: .shortened))
+                Text(record.values.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.appSubheadline)
                     .foregroundColor(.secondary)
             }
@@ -216,7 +197,7 @@ struct LastFillUpCard: View {
             HStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(
-                        "\(unitSystem.fuelValue(record.fuelAmount, from: record.vehicle.unitSystem).formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)"
+                        "\(unitSystem.fuelValue(record.values.fuelAmount, from: record.storageUnit).formatted(.number.precision(.fractionLength(2)))) \(unitSystem.fuelUnit)"
                     )
                         .font(.appButton)
                         .fontWeight(.semibold)
@@ -229,7 +210,7 @@ struct LastFillUpCard: View {
                     .frame(height: 40)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(record.totalCost.currencyFormatted)
+                    Text(record.values.totalCost.currencyFormatted)
                         .font(.appButton)
                         .fontWeight(.semibold)
                     Text("Total")
@@ -262,7 +243,7 @@ struct LastFillUpCard: View {
                 Spacer()
             }
 
-            if record.isPartialFillUp {
+            if record.values.fillUpType == .partial {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.yellow)
@@ -300,7 +281,13 @@ struct EmptyRecordsView: View {
 
 #Preview {
     NavigationStack {
-        DashboardView(vehicle: Vehicle(name: "Test Car"), records: [])
+        DashboardView(
+            vehicle: Vehicle(name: "Test Car"),
+            data: VehicleHistoryPresentation(
+                version: UUID(), recordCount: 0, latestRecord: nil, latestEfficiency: 0,
+                chartData: PrecomputedChartData(
+                    input: ChartInput(records: [], unitSystem: .imperial, rawAverageEfficiency: 0))),
+            metricEfficiencyFormat: .defaultFormat)
     }
     .modelContainer(
         for: [

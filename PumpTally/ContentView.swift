@@ -40,7 +40,7 @@ struct ContentView: View {
             }
             .navigationDestination(for: UUID.self) { vehicleID in
                 if let vehicle = vehicles.first(where: { $0.id == vehicleID }) {
-                    VehicleDetailView(vehicle: vehicle)
+                    VehicleDetailView(vehicle: vehicle, container: writer.container)
                         .onAppear {
                             if lastViewedVehicleID != vehicleID.uuidString {
                                 lastViewedVehicleID = vehicleID.uuidString

@@ -44,6 +44,7 @@
                <Test Identifier="StartupCachePerformanceTests"/>
                <Test Identifier="CSVImportPerformanceTests"/>
                <Test Identifier="StatisticsMutationPerformanceTests"/>
+               <Test Identifier="VehicleHistoryPerformanceTests"/>
             </SkippedTests>
          </TestableReference>
          <TestableReference skipped="NO" parallelizable="NO">

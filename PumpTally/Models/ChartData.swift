@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Pre-computed Chart Data (for performance)
 
 /// Value-only snapshot of the fields chart preparation needs. SwiftData models
-/// stay on the main actor; these snapshots can be sorted and aggregated off-main.
+/// stay on their model executor; only immutable values enter chart preparation.
 struct ChartRecordSnapshot: Equatable, Sendable {
     let id: UUID
     let date: Date
@@ -11,19 +11,6 @@ struct ChartRecordSnapshot: Equatable, Sendable {
     let cachedEfficiency: Double?
     let totalCost: Double
     let pricePerFuelUnit: Double
-
-    @MainActor
-    init(record: FuelingRecord) {
-        id = record.id
-        date = record.date
-        odometer = record.vehicle.displayUnitSystem.distanceValue(record.odometer, from: record.vehicle.unitSystem)
-        cachedEfficiency = record.cachedEfficiency.map {
-            record.vehicle.displayUnitSystem.efficiencyValue($0, from: record.vehicle.unitSystem)
-        }
-        totalCost = record.totalCost
-        pricePerFuelUnit = record.vehicle.displayUnitSystem.priceValue(
-            record.pricePerFuelUnit, from: record.vehicle.unitSystem)
-    }
 
     init(
         id: UUID,
@@ -42,22 +29,12 @@ struct ChartRecordSnapshot: Equatable, Sendable {
     }
 }
 
-/// The complete, immutable dependency of chart preparation and SwiftUI's task.
+/// The complete, immutable dependency of cached chart preparation.
 struct ChartInput: Equatable, Sendable {
     let records: [ChartRecordSnapshot]
     let unitSystem: UnitSystem
     let rawAverageEfficiency: Double
     var metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
-
-    @MainActor
-    init(vehicle: Vehicle, records: [FuelingRecord], metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat) {
-        self.init(
-            records: records.map(ChartRecordSnapshot.init(record:)),
-            unitSystem: vehicle.displayUnitSystem,
-            rawAverageEfficiency: vehicle.displayUnitSystem.efficiencyValue(
-                vehicle.cachedAverageEfficiency ?? 0, from: vehicle.unitSystem),
-            metricEfficiencyFormat: metricEfficiencyFormat)
-    }
 
     init(
         records: [ChartRecordSnapshot], unitSystem: UnitSystem, rawAverageEfficiency: Double,

@@ -69,6 +69,11 @@ jobs:
           set -euo pipefail
           xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/CSVImportPerformance.xcresult -only-testing:PumpTallyTests/CSVImportPerformanceTests test-without-building CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/csv-import-performance.log
           xcrun xcresulttool get test-results metrics --path artifacts/CSVImportPerformance.xcresult > artifacts/csv-import-performance-metrics.json
+      - name: Measure optimized history reads and cached search
+        run: |
+          set -euo pipefail
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTallyBenchmarks -configuration Benchmark -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/benchmarks" -resultBundlePath artifacts/VehicleHistoryPerformance.xcresult -only-testing:PumpTallyTests/VehicleHistoryPerformanceTests -only-testing:PumpTallyTests/VehicleHistoryTests test-without-building CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/history-performance.log
+          xcrun xcresulttool get test-results metrics --path artifacts/VehicleHistoryPerformance.xcresult > artifacts/history-performance-metrics.json
       - name: Measure optimized statistics mutations
         run: |
           set -euo pipefail
@@ -81,7 +86,7 @@ jobs:
       - name: Check persistence and sync races with Thread Sanitizer
         run: |
           set -euo pipefail
-          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Testing -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/thread-sanitizer" -resultBundlePath artifacts/ThreadSanitizer.xcresult -enableThreadSanitizer YES -only-testing:PumpTallyTests/StatisticsCachePersistenceTests -only-testing:PumpTallyTests/StatisticsCacheServiceTests -only-testing:PumpTallyTests/CloudSyncRuntimeTests -only-testing:PumpTallyTests/InitialSyncCommandTests -only-testing:PumpTallyTests/CloudRecoveryTests -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundWriterUsesTheModelExecutor -only-testing:PumpTallyTests/PersistenceObservationTests/testConcurrentRequestsSerializeReadModifySaveWithFreshContexts -only-testing:PumpTallyTests/PersistenceObservationTests/testCancelledSessionCloseDrainsAcceptedSaveAndRejectsQueuedCheckpoint -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundModelActorRollsBackCascadeFailureAndCanRetry -parallel-testing-enabled NO test CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/thread-sanitizer.log
+          xcodebuild -project PumpTally.xcodeproj -scheme PumpTally -configuration Testing -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/thread-sanitizer" -resultBundlePath artifacts/ThreadSanitizer.xcresult -enableThreadSanitizer YES -only-testing:PumpTallyTests/StatisticsCachePersistenceTests -only-testing:PumpTallyTests/StatisticsCacheServiceTests -only-testing:PumpTallyTests/CloudSyncRuntimeTests -only-testing:PumpTallyTests/InitialSyncCommandTests -only-testing:PumpTallyTests/CloudRecoveryTests -only-testing:PumpTallyTests/VehicleHistoryTests -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundWriterUsesTheModelExecutor -only-testing:PumpTallyTests/PersistenceObservationTests/testConcurrentRequestsSerializeReadModifySaveWithFreshContexts -only-testing:PumpTallyTests/PersistenceObservationTests/testCancelledSessionCloseDrainsAcceptedSaveAndRejectsQueuedCheckpoint -only-testing:PumpTallyTests/PersistenceObservationTests/testNativeBackgroundModelActorRollsBackCascadeFailureAndCanRetry -parallel-testing-enabled NO test CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/thread-sanitizer.log
       - name: Analyze production Debug
         run: |
           set -euo pipefail

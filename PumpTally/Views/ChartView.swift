@@ -2,13 +2,12 @@ import SwiftUI
 import Charts
 
 struct ChartView: View {
-    let input: ChartInput
+    let data: PrecomputedChartData
 
     @State private var selectedChart: ChartType = .efficiency
-    @State private var chartData: PrecomputedChartData?
 
-    private var unitSystem: UnitSystem { input.unitSystem }
-    private var metricEfficiencyFormat: MetricEfficiencyFormat { input.metricEfficiencyFormat }
+    private var unitSystem: UnitSystem { data.unitSystem }
+    private var metricEfficiencyFormat: MetricEfficiencyFormat { data.metricEfficiencyFormat }
 
     enum ChartType: CaseIterable {
         case efficiency
@@ -44,41 +43,30 @@ struct ChartView: View {
 
             // Chart - use pre-computed data
             Group {
-                if let data = chartData {
-                    switch selectedChart {
-                    case .efficiency:
-                        EfficiencyChart(
-                            data: data.efficiencyData,
-                            average: data.efficiencyAverage,
-                            yRange: data.efficiencyYRange,
-                            showPoints: data.showPoints,
-                            unitSystem: unitSystem,
-                            metricEfficiencyFormat: metricEfficiencyFormat
-                        )
-                    case .cost:
-                        CostChart(
-                            data: data.costData,
-                            average: data.costAverage,
-                            yRange: data.costYRange
-                        )
-                    case .pricePerFuelUnit:
-                        PricePerFuelUnitChart(data: data.priceData, average: data.priceAverage, yRange: data.priceYRange, showPoints: data.showPoints, unitSystem: unitSystem)
-                    }
-                } else {
-                    ProgressView()
-                        .frame(height: 200)
+                switch selectedChart {
+                case .efficiency:
+                    EfficiencyChart(
+                        data: data.efficiencyData,
+                        average: data.efficiencyAverage,
+                        yRange: data.efficiencyYRange,
+                        showPoints: data.showPoints,
+                        unitSystem: unitSystem,
+                        metricEfficiencyFormat: metricEfficiencyFormat
+                    )
+                case .cost:
+                    CostChart(
+                        data: data.costData,
+                        average: data.costAverage,
+                        yRange: data.costYRange
+                    )
+                case .pricePerFuelUnit:
+                    PricePerFuelUnitChart(
+                        data: data.priceData, average: data.priceAverage, yRange: data.priceYRange,
+                        showPoints: data.showPoints, unitSystem: unitSystem)
                 }
             }
             .padding()
             .cardStyle()
-        }
-        .task(id: input) {
-            let input = input
-            let prepared = await Task.detached(priority: .userInitiated) {
-                PrecomputedChartData(input: input)
-            }.value
-            guard !Task.isCancelled else { return }
-            chartData = prepared
         }
     }
 }
@@ -281,6 +269,8 @@ struct PricePerFuelUnitChart: View {
 }
 
 #Preview {
-    ChartView(input: ChartInput(records: [], unitSystem: .imperial, rawAverageEfficiency: 0))
+    ChartView(
+        data: PrecomputedChartData(input: ChartInput(records: [], unitSystem: .imperial, rawAverageEfficiency: 0))
+    )
         .padding()
 }

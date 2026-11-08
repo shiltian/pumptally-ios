@@ -21,6 +21,73 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testHistorySearchAndNativeSortIncludeRecordsBeyondTheFirstPage() {
+        let app = launch(arguments: ["--ui-testing-history-pages"])
+        let history = app.tabBars.buttons["History"]
+        XCTAssertTrue(history.waitForExistence(timeout: 10))
+        history.tap()
+        XCTAssertTrue(app.staticTexts["120 records"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Paged UI record 119"].exists)
+        XCTAssertFalse(app.staticTexts["Original UI note"].exists)
+        app.swipeDown()
+        let search = app.searchFields.firstMatch
+        if !search.exists {
+            let activate = app.buttons.matching(
+                NSPredicate(format: "label == %@ OR label == %@", "Search", "Search records")
+            ).firstMatch
+            XCTAssertTrue(activate.waitForExistence(timeout: 5))
+            activate.tap()
+        }
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Original UI note")
+        XCTAssertTrue(app.staticTexts["1 records"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Original UI note"].exists)
+        search.buttons["Clear text"].tap()
+        search.typeText("\n")
+        let sort = app.descendants(matching: .any).matching(identifier: "history.sort").firstMatch
+        sort.tap()
+        app.buttons["Oldest First"].tap()
+        XCTAssertTrue(app.staticTexts["120 records"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Original UI note"].waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Native history search and sort"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testHistoryLoadsAnotherPageAndKeepsItAfterEditing() {
+        let app = launch(arguments: ["--ui-testing-history-pages"])
+        let history = app.tabBars.buttons["History"]
+        XCTAssertTrue(history.waitForExistence(timeout: 10))
+        history.tap()
+        XCTAssertTrue(app.staticTexts["120 records"].waitForExistence(timeout: 5))
+        let more = app.buttons["history.loadMore"]
+        for _ in 0..<20 {
+            if more.isHittable { break }
+            app.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(more.isHittable)
+        XCTAssertFalse(app.staticTexts["Original UI note"].exists)
+        more.tap()
+        let next = app.staticTexts["Paged UI record 69"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        next.tap()
+        app.swipeUp()
+        let notes = app.descendants(matching: .any).matching(identifier: "fueling.notes").firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        notes.tap()
+        notes.typeText(" updated")
+        let entered = notes.value as? String ?? ""
+        XCTAssertTrue(entered.contains("updated"))
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts[entered].waitForExistence(timeout: 10))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Edited record retained on the next history page"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testAddOdometerKeyboardDoneIsTrailingAndDismissesTheKeyboard() {
         assertOdometerKeyboardDone(editing: false)
     }

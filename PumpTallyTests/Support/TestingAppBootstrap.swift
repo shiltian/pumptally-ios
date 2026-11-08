@@ -95,6 +95,16 @@ enum AppBootstrap {
                     fillUpType: arguments.contains("--ui-testing-partial-predecessor") ? .partial : .full,
                     notes: "Second UI note", vehicle: vehicle))
         }
+        if arguments.contains("--ui-testing-history-pages") {
+            for index in 1..<120 {
+                context.insert(
+                    FuelingRecord(
+                        date: record.date.addingTimeInterval(Double(index) * 86_400),
+                        odometer: record.odometer + Double(index) * 300, pricePerFuelUnit: 3.5,
+                        fuelAmount: 10, totalCost: Double(20 + index), notes: "Paged UI record \(index)",
+                        vehicle: vehicle))
+            }
+        }
         if arguments.contains("--ui-testing-legacy-record") || arguments.contains("--ui-testing-malformed-record") {
             let codec = CloudRecordCodec(zoneID: CKRecordZone.ID(zoneName: "FuelioZone"))
             let incoming = codec.fuelingRecordToCKRecord(

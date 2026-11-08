@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D20000000000000000000003 /* VehicleHistoryPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */; };
+		D20000000000000000000001 /* VehicleHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* VehicleHistoryTests.swift */; };
+		D10000000000000000000005 /* FuelingRecordEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000006 /* FuelingRecordEditorView.swift */; };
+		D10000000000000000000003 /* VehicleHistoryReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000004 /* VehicleHistoryReader.swift */; };
+		D10000000000000000000001 /* VehicleHistoryData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000002 /* VehicleHistoryData.swift */; };
 		C90000000000000000000001 /* ApplicationEnvironmentLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90000000000000000000002 /* ApplicationEnvironmentLoaderTests.swift */; };
 		C70000000000000000000001 /* CurrencyInputFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C70000000000000000000002 /* CurrencyInputFieldTests.swift */; };
 		CF0000000000000000000004 /* CSVImportPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000005 /* CSVImportPlan.swift */; };
@@ -145,6 +150,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryPerformanceTests.swift; sourceTree = "<group>"; };
+		D20000000000000000000002 /* VehicleHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryTests.swift; sourceTree = "<group>"; };
+		D10000000000000000000006 /* FuelingRecordEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuelingRecordEditorView.swift; sourceTree = "<group>"; };
+		D10000000000000000000004 /* VehicleHistoryReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryReader.swift; sourceTree = "<group>"; };
+		D10000000000000000000002 /* VehicleHistoryData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistoryData.swift; sourceTree = "<group>"; };
 		C90000000000000000000002 /* ApplicationEnvironmentLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnvironmentLoaderTests.swift; sourceTree = "<group>"; };
 		C70000000000000000000002 /* CurrencyInputFieldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyInputFieldTests.swift; sourceTree = "<group>"; };
 		CF0000000000000000000005 /* CSVImportPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportPlan.swift; sourceTree = "<group>"; };
@@ -359,6 +369,7 @@
 				93EEA7A533D0470C80E75F25 /* ChartData.swift */,
 				9CC5D5B3E17F44A090F567DA /* FuelingRecordPreview.swift */,
 				X100000229B40001 /* FuelingRecordDraft.swift */,
+				D10000000000000000000002 /* VehicleHistoryData.swift */,
 				A100000A296A0001 /* Vehicle.swift */,
 				A100000C296A0001 /* FuelingRecord.swift */,
 				E1000002296E0001 /* UnitSystem.swift */,
@@ -423,6 +434,7 @@
 				W100000629B30001 /* SyncConflictResolver.swift */,
 				W100000829B30001 /* CloudReconciliationService.swift */,
 				BE0000000000000000000102 /* OwnedModelStore.swift */,
+				D10000000000000000000004 /* VehicleHistoryReader.swift */,
 				AC0000000000000000000002 /* CloudSyncDriver.swift */,
 				AC0000000000000000000102 /* SyncActivity.swift */,
 				BA0000000000000000000000 /* InitialSyncProposal.swift */,
@@ -532,6 +544,8 @@
 				62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */,
 				K100000229AC0001 /* PrecomputedChartDataTests.swift */,
 				K100000429AC0001 /* HistoryRecordsQueryTests.swift */,
+				D20000000000000000000002 /* VehicleHistoryTests.swift */,
+				D20000000000000000000004 /* VehicleHistoryPerformanceTests.swift */,
 				L100000429AD0001 /* OdometerChronologyValidatorTests.swift */,
 				N100000429AE0001 /* FuelingRecordPersistenceServiceTests.swift */,
 				P100000429AF0001 /* FuelEfficiencyPolicyTests.swift */,
@@ -546,6 +560,7 @@
 			children = (
 				D1000002296D0001 /* CurrencyInputField.swift */,
 				G1000002297A0001 /* FuelingRecordFormView.swift */,
+				D10000000000000000000006 /* FuelingRecordEditorView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -756,6 +771,7 @@
 				BB0000000000000000000001 /* InitialSyncReconciler.swift in Sources */,
 				BE0000000000000000000201 /* PersistenceValues.swift in Sources */,
 				BE0000000000000000000101 /* OwnedModelStore.swift in Sources */,
+				D10000000000000000000003 /* VehicleHistoryReader.swift in Sources */,
 				BD0000000000000000000011 /* CloudChangeBatchBuilder.swift in Sources */,
 				AC0000000000000000000001 /* CloudSyncDriver.swift in Sources */,
 				C417E02B86436A1EA92FAE07 /* SyncPersistenceError.swift in Sources */,
@@ -778,6 +794,7 @@
 				A36DE7908B084FDBAF249F6F /* ChartData.swift in Sources */,
 				12FB4E4F14CA4984BF3F71F6 /* FuelingRecordPreview.swift in Sources */,
 				X100000129B40001 /* FuelingRecordDraft.swift in Sources */,
+				D10000000000000000000001 /* VehicleHistoryData.swift in Sources */,
 				A1000003296A0001 /* ContentView.swift in Sources */,
 				A1000009296A0001 /* Vehicle.swift in Sources */,
 				A100000B296A0001 /* FuelingRecord.swift in Sources */,
@@ -800,6 +817,7 @@
 				Y100000129B50001 /* SyncPersistenceStore.swift in Sources */,
 				F1000001296F0001 /* VehicleSettingsView.swift in Sources */,
 				G1000001297A0001 /* FuelingRecordFormView.swift in Sources */,
+				D10000000000000000000005 /* FuelingRecordEditorView.swift in Sources */,
 				G1000003297A0001 /* iCloudSyncDetailView.swift in Sources */,
 				G1000005297A0001 /* CSVExportImportViews.swift in Sources */,
 				I1000001299A0001 /* PumpTallySchema.swift in Sources */,
@@ -872,6 +890,8 @@
 				D4ECE77CC86A42A388D31016 /* ChartInputTests.swift in Sources */,
 				K100000129AC0001 /* PrecomputedChartDataTests.swift in Sources */,
 				K100000329AC0001 /* HistoryRecordsQueryTests.swift in Sources */,
+				D20000000000000000000001 /* VehicleHistoryTests.swift in Sources */,
+				D20000000000000000000003 /* VehicleHistoryPerformanceTests.swift in Sources */,
 				L100000329AD0001 /* OdometerChronologyValidatorTests.swift in Sources */,
 				N100000329AE0001 /* FuelingRecordPersistenceServiceTests.swift in Sources */,
 				P100000329AF0001 /* FuelEfficiencyPolicyTests.swift in Sources */,

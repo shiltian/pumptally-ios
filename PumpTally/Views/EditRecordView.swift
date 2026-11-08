@@ -12,6 +12,12 @@ struct FuelingRecordEditSelection: Identifiable, Sendable {
         values = FuelingRecordValues(record: record)
         storageUnit = record.vehicle.unitSystem
     }
+
+    init(record: FuelingHistoryRecord) {
+        id = record.id
+        values = record.values
+        storageUnit = record.storageUnit
+    }
 }
 
 struct EditRecordView: View {

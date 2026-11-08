@@ -164,3 +164,30 @@ final class ChartInputTests: XCTestCase {
         XCTAssertEqual(vehicle.cacheLastUpdated, timestamp)
     }
 }
+
+private extension ChartRecordSnapshot {
+    @MainActor
+    init(record: FuelingRecord) {
+        let units = record.vehicle.displayUnitSystem
+        let storage = record.vehicle.unitSystem
+        self.init(
+            id: record.id, date: record.date,
+            odometer: units.distanceValue(record.odometer, from: storage),
+            cachedEfficiency: record.cachedEfficiency.map { units.efficiencyValue($0, from: storage) },
+            totalCost: record.totalCost,
+            pricePerFuelUnit: units.priceValue(record.pricePerFuelUnit, from: storage))
+    }
+}
+
+private extension ChartInput {
+    @MainActor
+    init(vehicle: Vehicle, records: [FuelingRecord], metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat) {
+        self.init(
+            records: records.map(ChartRecordSnapshot.init(record:)),
+            unitSystem: vehicle.displayUnitSystem,
+            rawAverageEfficiency: vehicle.displayUnitSystem.efficiencyValue(
+                vehicle.cachedAverageEfficiency ?? 0, from: vehicle.unitSystem),
+            metricEfficiencyFormat: metricEfficiencyFormat)
+    }
+
+}

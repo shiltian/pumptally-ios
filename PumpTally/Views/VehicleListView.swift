@@ -80,6 +80,16 @@ struct VehicleListView: View {
 
 struct VehicleRowView: View {
     let vehicle: Vehicle
+    @Query private var latestRecords: [FuelingRecord]
+
+    init(vehicle: Vehicle) {
+        self.vehicle = vehicle
+        let id = vehicle.id
+        var descriptor = FetchDescriptor<FuelingRecord>(
+            predicate: #Predicate { $0.vehicle.id == id }, sortBy: [SortDescriptor(\.date, order: .reverse)])
+        descriptor.fetchLimit = 1
+        _latestRecords = Query(descriptor)
+    }
 
     // Use cached record count for performance
     private var recordCount: Int {
@@ -105,7 +115,7 @@ struct VehicleRowView: View {
                     .font(.appHeadline)
                     .fontWeight(.semibold)
 
-                if let lastRecord = vehicle.lastRecord {
+                if let lastRecord = latestRecords.first {
                     Text("Last fill: \(lastRecord.date.formatted(date: .abbreviated, time: .omitted))")
                         .font(.appFootnote)
                         .foregroundColor(.secondary)
@@ -135,13 +145,28 @@ struct VehicleRowView: View {
 
 struct VehicleDetailView: View {
     let vehicle: Vehicle
-    @Query private var records: [FuelingRecord]
+    @StateObject private var history: VehicleHistoryModel
+    @AppStorage private var metricEfficiencyFormatRaw: String
+    private enum Tab: Hashable { case dashboard, history }
+    @State private var selectedTab = Tab.dashboard
 
-    init(vehicle: Vehicle) {
+    init(vehicle: Vehicle, container: ModelContainer) {
         self.vehicle = vehicle
-        let vehicleID = vehicle.id
-        _records = Query(filter: #Predicate<FuelingRecord> { $0.vehicle.id == vehicleID })
+        _history = StateObject(wrappedValue: VehicleHistoryModel(container: container, vehicleID: vehicle.id))
+        _metricEfficiencyFormatRaw = AppStorage(
+            wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
+            MetricEfficiencyFormat.storageKey(for: vehicle.id))
     }
+
+    private var metricEfficiencyFormat: MetricEfficiencyFormat {
+        MetricEfficiencyFormat(rawValue: metricEfficiencyFormatRaw) ?? .defaultFormat
+    }
+
+    private struct ReadKey: Equatable {
+        let revision: UInt64
+        let format: MetricEfficiencyFormat
+    }
+    private var readKey: ReadKey { ReadKey(revision: history.revision, format: metricEfficiencyFormat) }
 
     @State private var showingAddRecord = false
     @State private var pendingSummary: FuelingSummaryData?
@@ -149,20 +174,43 @@ struct VehicleDetailView: View {
     @State private var showingVehicleSettings = false
 
     var body: some View {
-        TabView {
-            DashboardView(vehicle: vehicle, records: records)
-                .tabItem {
-                    Label("Dashboard", systemImage: "gauge.with.dots.needle.67percent")
+        let key = readKey
+        Group {
+            if history.failed {
+                ContentUnavailableView {
+                    Label("Unable to Load History", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("Your fueling history could not be loaded. Please try again.")
+                } actions: {
+                    Button("Try Again", action: history.retry).buttonStyle(.borderedProminent)
                 }
-
-            HistoryView(vehicle: vehicle, records: records)
-                .tabItem {
-                    Label("History", systemImage: "list.bullet.rectangle")
+            } else if let data = history.presentation {
+                TabView(selection: $selectedTab) {
+                    DashboardView(vehicle: vehicle, data: data, metricEfficiencyFormat: metricEfficiencyFormat)
+                        .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.67percent") }
+                        .tag(Tab.dashboard)
+                    HistoryView(
+                        vehicle: vehicle, history: history, metricEfficiencyFormat: metricEfficiencyFormat,
+                        searchText: .constant("")
+                    )
+                    .tabItem { Label("History", systemImage: "list.bullet.rectangle") }
+                    .tag(Tab.history)
                 }
+            } else {
+                ProgressView("Preparing your data…")
+            }
         }
+        .task(id: key) { await history.reload(revision: key.revision, format: key.format) }
         .navigationTitle(vehicle.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    VehicleHistorySearchView(vehicle: vehicle, history: history)
+                } label: {
+                    Label("Search records", systemImage: "magnifyingglass")
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: { showingAddRecord = true }) {
@@ -199,7 +247,7 @@ struct VehicleDetailView: View {
                 }
             }
         }) {
-            AddRecordView(vehicle: vehicle, records: records) { record in
+            FuelingRecordEditorView(vehicle: vehicle) { record in
                 pendingSummary = FuelingSummaryData(
                     record: record,
                     unitSystem: vehicle.displayUnitSystem,
