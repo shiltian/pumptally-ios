@@ -57,6 +57,10 @@ This gate prevents the new app from initiating the unsafe replacement. It cannot
 
 The separate `CloudKitProtocol` scheme uses the `CloudKitProbe` app and only the Development container `iCloud.me.tianshilei.fuelio.CloudKitProbe`. It has no access to the PumpTally store. Tests create uniquely named synthetic zones and remove them after successful test scopes.
 
+On November 8, 2026, all nine native protocol tests passed on a physical iPhone 17 Pro Max running iOS 27.2 (24B119), built with Xcode 27.2 (27B52). There were no failures, skips or reported runtime warnings. Signed-binary isolation verification passed before installation. All nine synthetic zone scopes acknowledged cleanup.
+
+The live checks cover exact Double and wire-date values, fresh/stale guarded saves and deletes, 800-record bounded publication, SDK-sized batches of 250/250/250/54 changes, cancellation at a held delegate boundary and the production guarded adapter. Competing engines run on one phone. App-level two-device delivery, offline/reconnect and account-change scenarios remain separate release checks, alongside production schema verification. Passing the probe does not reenable bulk iCloud replacement.
+
 Connect and unlock an iPhone 17 Pro Max with Developer Mode enabled and an existing iCloud sign-in. A second account and simulator sign-in are unnecessary. Provision the probe's separate container using the settings in `Config/CloudKitProbe.xcconfig`.
 
 Find the phone identifier with `xcodebuild -project PumpTally.xcodeproj -scheme CloudKitProtocol -showdestinations`. Build the probe, verify its actual signed entitlements, and run only after verification succeeds:
