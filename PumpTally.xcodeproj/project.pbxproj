@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C90000000000000000000001 /* ApplicationEnvironmentLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90000000000000000000002 /* ApplicationEnvironmentLoaderTests.swift */; };
 		C70000000000000000000001 /* CurrencyInputFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C70000000000000000000002 /* CurrencyInputFieldTests.swift */; };
 		CF0000000000000000000004 /* CSVImportPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000005 /* CSVImportPlan.swift */; };
 		CF0000000000000000000001 /* SwiftCSV in Frameworks */ = {isa = PBXBuildFile; productRef = CF0000000000000000000002 /* SwiftCSV */; };
@@ -144,6 +145,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C90000000000000000000002 /* ApplicationEnvironmentLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnvironmentLoaderTests.swift; sourceTree = "<group>"; };
 		C70000000000000000000002 /* CurrencyInputFieldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyInputFieldTests.swift; sourceTree = "<group>"; };
 		CF0000000000000000000005 /* CSVImportPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportPlan.swift; sourceTree = "<group>"; };
 		BF0000000000000000000602 /* CloudSyncMappingHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncMappingHarness.swift; sourceTree = "<group>"; };
@@ -524,6 +526,7 @@
 				B3BAD7C3869D45F18BDAC8F3 /* CloudSyncControlTests.swift */,
 				BD0000000000000000000022 /* CloudChangeBatchBuilderTests.swift */,
 				AD0000000000000000000102 /* ApplicationLifecycleTests.swift */,
+				C90000000000000000000002 /* ApplicationEnvironmentLoaderTests.swift */,
 				AB0000000000000000000002 /* CloudReconciliationValidationTests.swift */,
 				Z200000229B60001 /* SyncSafetyTests.swift */,
 				62FD146F1A43425FA8B330B1 /* ChartInputTests.swift */,
@@ -863,6 +866,7 @@
 				0F1C89468A9F4B739305CF43 /* CloudSyncControlTests.swift in Sources */,
 				BD0000000000000000000021 /* CloudChangeBatchBuilderTests.swift in Sources */,
 				AD0000000000000000000101 /* ApplicationLifecycleTests.swift in Sources */,
+				C90000000000000000000001 /* ApplicationEnvironmentLoaderTests.swift in Sources */,
 				AB0000000000000000000001 /* CloudReconciliationValidationTests.swift in Sources */,
 				Z200000129B60001 /* SyncSafetyTests.swift in Sources */,
 				D4ECE77CC86A42A388D31016 /* ChartInputTests.swift in Sources */,

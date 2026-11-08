@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import os
 
@@ -19,20 +20,31 @@ struct ApplicationStartupView<Content: View>: View {
                 ProgressView("Preparing your data…")
                     .accessibilityIdentifier("startup.preparing")
             case .failed(let message):
-                ContentUnavailableView {
-                    Label("Unable to Prepare Your Data", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("Try Again") { Task { await lifecycle.start() } }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("startup.retry")
+                ApplicationStartupFailureView(message: message) {
+                    Task { await lifecycle.start() }
                 }
             case .ready:
                 content()
             }
         }
         .task { await lifecycle.start() }
+    }
+}
+
+private struct ApplicationStartupFailureView: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Unable to Prepare Your Data", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Try Again", action: retry)
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("startup.retry")
+        }
     }
 }
 
@@ -57,7 +69,7 @@ struct CSVImportFile: Identifiable, Sendable {
 /// Each window owns its document request. Item-based presentation delivers the
 /// prepared URL with the sheet instead of coordinating a Boolean with a URL.
 struct ApplicationRootView: View {
-    let environment: ApplicationEnvironment
+    @ObservedObject var loader: ApplicationEnvironmentLoader
     @State private var incomingFile: CSVImportFile?
     @State private var preparedImport: CSVImportFile?
     @State private var importError: String?
@@ -65,9 +77,23 @@ struct ApplicationRootView: View {
     private static let logger = Logger(subsystem: "me.tianshilei.fuelio", category: "CSVImport")
 
     var body: some View {
-        ApplicationStartupView(lifecycle: environment.lifecycle) {
-            ContentView(importedFile: $preparedImport)
+        Group {
+            switch loader.state {
+            case .notStarted, .opening:
+                ProgressView("Preparing your data…")
+                    .accessibilityIdentifier("startup.preparing")
+            case .failed(let message):
+                ApplicationStartupFailureView(message: message, retry: loader.open)
+            case .ready(let environment):
+                ApplicationStartupView(lifecycle: environment.lifecycle) {
+                    ContentView(importedFile: $preparedImport)
+                }
+                .environmentObject(environment.cloudSyncService)
+                .environmentObject(environment.writer)
+                .modelContainer(environment.modelContainer)
+            }
         }
+        .task { loader.open() }
         .onOpenURL { url in
             guard url.pathExtension.lowercased() == "csv" else { return }
             incomingFile = CSVImportFile(url: url)
@@ -87,6 +113,7 @@ struct ApplicationRootView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            guard case .ready(let environment) = loader.state else { return }
             Task { await environment.lifecycle.didBecomeActive() }
         }
         .alert(

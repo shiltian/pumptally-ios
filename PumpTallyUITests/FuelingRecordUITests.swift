@@ -284,6 +284,49 @@ final class FuelingRecordUITests: XCTestCase {
         XCTAssertFalse(app.buttons["app.settings"].exists)
     }
 
+    func testStoreOpenFailureKeepsEditingUnavailableAcrossRetries() {
+        let app = launch(arguments: ["--ui-testing-store-open-failure"])
+        let failure = app.staticTexts["Your saved data could not be opened. Please try again."]
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["fueling.add"].exists)
+        XCTAssertFalse(app.buttons["app.settings"].exists)
+        XCTAssertFalse(app.tabBars.buttons["History"].exists)
+        app.buttons["startup.retry"].tap()
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["fueling.add"].exists)
+        XCTAssertFalse(app.buttons["app.settings"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Native store-open failure and retry"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testStoreOpenRetryReachesSavedHistory() {
+        let app = launch(arguments: ["--ui-testing-store-open-failure", "--ui-testing-store-open-retry"])
+        XCTAssertTrue(app.buttons["startup.retry"].waitForExistence(timeout: 10))
+        app.buttons["startup.retry"].tap()
+        let history = app.tabBars.buttons["History"]
+        XCTAssertTrue(history.waitForExistence(timeout: 10))
+        history.tap()
+        XCTAssertTrue(app.staticTexts["Original UI note"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["startup.retry"].exists)
+    }
+
+    func testCSVOpenedDuringStoreFailureIsPresentedAfterRetry() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Deferred-\(UUID()).csv")
+        try "date,odometer,pricePerFuelUnit,fuelAmount,totalCost\n2024-01-15,1300,3.5,10,35\n".write(
+            to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let app = launch(arguments: ["--ui-testing-store-open-failure", "--ui-testing-store-open-retry"])
+        XCTAssertTrue(app.buttons["startup.retry"].waitForExistence(timeout: 10))
+        app.open(url)
+        XCTAssertFalse(app.buttons["csv.import"].exists)
+        app.buttons["startup.retry"].tap()
+        XCTAssertTrue(app.buttons["csv.import"].waitForExistence(timeout: 10))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["fueling.add"].waitForExistence(timeout: 5))
+    }
+
     func testColdCacheStartupOpensTheSavedHistory() {
         let app = launch(arguments: ["--ui-testing-uncached-store"])
         let history = app.tabBars.buttons["History"]

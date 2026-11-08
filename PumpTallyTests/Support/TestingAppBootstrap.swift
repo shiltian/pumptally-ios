@@ -5,8 +5,16 @@ import SwiftData
 /// factory nor its launch arguments are present in Debug or Release builds.
 @MainActor
 enum AppBootstrap {
+    private static var storeOpenAttempts = 0
+
     static func makeEnvironment() throws -> ApplicationEnvironment {
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--ui-testing-store-open-failure") {
+            storeOpenAttempts += 1
+            if !arguments.contains("--ui-testing-store-open-retry") || storeOpenAttempts == 1 {
+                try openUnavailableStore()
+            }
+        }
         if let recovery = try TestingRecoveryScenario.makeEnvironment(arguments: arguments) { return recovery }
         let container = try makeContainer(arguments: arguments)
         let suite = "PumpTally.Testing"
@@ -35,6 +43,21 @@ enum AppBootstrap {
         return ApplicationEnvironment(
             writer: writer, cloudSyncService: service,
             lifecycle: ApplicationLifecycleCoordinator(writer: writer, syncService: service))
+    }
+
+    /// A file in place of the parent directory makes native container opening
+    /// fail. This fixture never points at an application or user store.
+    private static func openUnavailableStore() throws {
+        let blocker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("Unavailable store directory".utf8).write(to: blocker)
+        defer { try? FileManager.default.removeItem(at: blocker) }
+        let schema = Schema(versionedSchema: SchemaV5.self)
+        _ = try ModelContainer(
+            for: schema, migrationPlan: PumpTallyMigrationPlan.self,
+            configurations: [
+                ModelConfiguration(
+                    schema: schema, url: blocker.appendingPathComponent("records.store"), cloudKitDatabase: .none)
+            ])
     }
 
     private static func makeContainer(arguments: [String]) throws -> ModelContainer {

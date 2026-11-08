@@ -5086,6 +5086,22 @@
         }
       }
     },
+    "Your saved data could not be opened. Please try again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron abrir tus datos guardados. Inténtalo de nuevo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开你保存的数据。请重试。"
+          }
+        }
+      }
+    },
     "Your vehicle or records changed. Review the import again before saving." : {
       "localizations" : {
         "es" : {
