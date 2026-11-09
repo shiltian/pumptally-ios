@@ -22,9 +22,10 @@ A native iOS app for tracking your vehicles' fuel consumption, costs and efficie
 
 ## Getting Started
 
-1. Open `PumpTally.xcodeproj` in Xcode.
-2. Configure your development team and CloudKit container under **Signing & Capabilities**.
-3. Build and run on your device or simulator.
+1. Open `PumpTally.xcodeproj` in Xcode and select the **PumpTally** scheme.
+2. For physical-device builds, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` and enter your development team identifier. This local file is ignored by Git.
+3. Configure bundle identifiers and CloudKit containers for your own Apple Developer team under **Signing & Capabilities**.
+4. Build and run on your device or simulator.
 
 ## Development
 
@@ -36,9 +37,9 @@ Run the functional and UI tests on **iPhone 17 Pro Max**:
 xcodebuild test -project PumpTally.xcodeproj -scheme PumpTally -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -parallel-testing-enabled NO
 ```
 
-The test app uses isolated data and a simulated CloudKit environment; simulator iCloud sign-in is unnecessary. See the [development guide](docs/DEVELOPMENT.md) for additional checks, live CloudKit tests and production schema setup.
+The test app uses isolated data and a simulated CloudKit environment; simulator iCloud sign-in is unnecessary. The [CI workflow](.github/workflows/ios.yml) includes additional persistence, migration, performance, and build-isolation checks. Example import files are available in [SampleData](SampleData).
 
-The [v1.6 release checklist and release notes](docs/RELEASE_1.6.md) record completed verification and remaining distribution steps. Bulk iCloud replacement remains disabled for compatibility with older clients.
+See the [release notes](docs/ReleaseNotes.md) for the latest changes. Bulk iCloud replacement remains disabled for compatibility with older clients.
 
 ## License
 

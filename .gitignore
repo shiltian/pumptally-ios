@@ -27,8 +27,26 @@ Pods/
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.xcarchive/
 
-CLAUDE.md
+# Local signing and credentials
+/Config/Local.xcconfig
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pfx
+*.mobileprovision
+/.aws
 
-# Local planning, review and session notes (keep Cursor rules trackable)
-.cursor/*.md
+# Local planning, development documents and assistant settings
+/AGENTS.md
+/CLAUDE.md
+/.cursor
+/.codex
+/.agents
+
+# Generated icon exports; source vectors and bundled assets stay tracked
+/design/*-1024.png
+/design/*-Preview.png

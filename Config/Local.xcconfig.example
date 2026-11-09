@@ -1,0 +1,3 @@
+// Copy to Local.xcconfig for physical-device builds and archiving.
+// Enter your Apple Developer team identifier; do not add signing credentials.
+DEVELOPMENT_TEAM =

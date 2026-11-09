@@ -3,7 +3,6 @@
 CLOUDKIT_TEST_CONTAINER_IDENTIFIER = iCloud.me.tianshilei.fuelio.CloudKitProbe
 CODE_SIGN_ENTITLEMENTS = CloudKitProtocolTests/Probe.entitlements
 CODE_SIGN_STYLE = Automatic
-DEVELOPMENT_TEAM = F9M3UZ669L
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = CloudKitProtocolTests/Probe-Info.plist
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
