@@ -10,8 +10,8 @@ A native iOS app for tracking your vehicles' fuel consumption, costs and efficie
 - Imperial and Metric units, including MPG, L/100 km and km/L
 - Fueling records with automatic cost calculations, fill-up types and notes
 - Statistics and charts for fuel efficiency, spending and fuel prices
-- Optional iCloud sync, with choices to use local data, use iCloud data or merge both
-- Resumable replacement of iCloud data with a chosen local copy
+- Optional iCloud sync, with choices to use iCloud data or merge both copies
+- Saved sync review and recovery information for changes that need confirmation
 - CSV import and export, with unit conversion and duplicate review
 
 ## Requirements
@@ -28,7 +28,7 @@ A native iOS app for tracking your vehicles' fuel consumption, costs and efficie
 
 ## Development
 
-PumpTally uses SwiftUI, SwiftData and CloudKit's CKSyncEngine. Persistence uses a shared background writer and versioned schema migrations. CSV parsing uses the pinned [SwiftCSV dependency](ThirdParty/SwiftCSV/UPSTREAM.md).
+PumpTally uses SwiftUI, SwiftData and CloudKit's CKSyncEngine. Persistence uses serialized writes and versioned schema migrations. CSV parsing uses the pinned [SwiftCSV dependency](ThirdParty/SwiftCSV/UPSTREAM.md).
 
 Run the functional and UI tests on **iPhone 17 Pro Max**:
 
@@ -37,6 +37,8 @@ xcodebuild test -project PumpTally.xcodeproj -scheme PumpTally -destination 'pla
 ```
 
 The test app uses isolated data and a simulated CloudKit environment; simulator iCloud sign-in is unnecessary. See the [development guide](docs/DEVELOPMENT.md) for additional checks, live CloudKit tests and production schema setup.
+
+The [v1.6 release checklist and release notes](docs/RELEASE_1.6.md) record completed verification and remaining distribution steps. Bulk iCloud replacement remains disabled for compatibility with older clients.
 
 ## License
 
