@@ -161,7 +161,7 @@ enum UnitSystem: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Short price per fuel unit: "$/gal" or "$/L"
+    /// Suffix for a price per fuel unit: "/gal" or "/L"
     var pricePerFuelShort: String {
         switch self {
         case .imperial: return "/gal"
@@ -185,11 +185,12 @@ enum UnitSystem: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Average cost per distance label for dashboard: "Avg $/Mile" or "Avg $/km"
-    var avgCostPerDistanceLabel: String {
+    /// Dashboard label for the average cost per distance in the displayed currency.
+    func avgCostPerDistanceLabel(currencySymbol: String?) -> String {
+        guard let currencySymbol else { return String(localized: "Avg \(costPerDistanceLabel)") }
         switch self {
-        case .imperial: return String(localized: "Avg $/Mile")
-        case .metric: return String(localized: "Avg $/km")
+        case .imperial: return String(localized: "Avg \(currencySymbol)/Mile")
+        case .metric: return String(localized: "Avg \(currencySymbol)/km")
         }
     }
 

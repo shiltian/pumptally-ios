@@ -206,6 +206,8 @@ struct FuelingRecordRow: View {
     let unitSystem: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
+    @Environment(\.locale) private var locale
+
     private var efficiencyDisplay: Double {
         unitSystem.efficiencyDisplayValue(
             from: efficiencyRaw,
@@ -222,6 +224,9 @@ struct FuelingRecordRow: View {
     }
 
     var body: some View {
+        let unitPrice = unitSystem.priceValue(record.values.pricePerFuelUnit, from: record.storageUnit)
+            .currencyFormatted(locale: locale, fractionDigits: 3)
+
         VStack(spacing: 12) {
             // Header with date and cost
             HStack {
@@ -237,7 +242,7 @@ struct FuelingRecordRow: View {
 
                 Spacer()
 
-                Text(record.values.totalCost.currencyFormatted)
+                Text(record.values.totalCost.currencyFormatted(locale: locale))
                     .font(.appTitle3)
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
@@ -253,9 +258,8 @@ struct FuelingRecordRow: View {
                 )
 
                 DetailChip(
-                    icon: "dollarsign",
-                    value:
-                        "\(unitSystem.priceValue(record.values.pricePerFuelUnit, from: record.storageUnit).formatted(.number.precision(.fractionLength(3))))\(unitSystem.pricePerFuelShort)",
+                    icon: "tag",
+                    value: "\(unitPrice)\(unitSystem.pricePerFuelShort)",
                     color: .orange
                 )
 

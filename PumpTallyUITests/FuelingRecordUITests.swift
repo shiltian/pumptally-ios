@@ -21,6 +21,22 @@ final class FuelingRecordUITests: XCTestCase {
         return app
     }
 
+    func testCurrencyDisplaysFollowDeviceRegion() {
+        let app = launch(arguments: ["-AppleLanguages", "(en)", "-AppleLocale", "en_GB"])
+        XCTAssertTrue(app.staticTexts["Avg £/Mile"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(identifier: "£35.12").firstMatch.exists)
+
+        app.buttons["fueling.add"].tap()
+        XCTAssertTrue(app.textFields["fueling.cost"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "£").count, 2)
+        app.buttons["Cancel"].tap()
+
+        app.tabBars.buttons["History"].tap()
+        let unitPrice = app.staticTexts["£3.460/gal"]
+        XCTAssertTrue(unitPrice.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["£35.12"].exists)
+    }
+
     func testFuelingSummaryFollowsDismissalOnceForEachSave() {
         let app = launch()
         for odometer in ["1300", "1600"] {

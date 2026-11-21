@@ -6,6 +6,8 @@ struct DashboardView: View {
     let data: VehicleHistoryPresentation
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
+    @Environment(\.locale) private var locale
+
     private var units: UnitSystem { vehicle.displayUnitSystem }
 
     // Use cached statistics from the vehicle model
@@ -44,8 +46,8 @@ struct DashboardView: View {
                 ], spacing: 16) {
                     StatCard(
                         title: String(localized: "Total Spent"),
-                        value: totalSpent.currencyFormatted,
-                        icon: "dollarsign.circle.fill",
+                        value: totalSpent.currencyFormatted(locale: locale),
+                        icon: "creditcard.circle.fill",
                         color: .orange
                     )
 
@@ -71,15 +73,15 @@ struct DashboardView: View {
                     )
 
                     StatCard(
-                        title: units.avgCostPerDistanceLabel,
-                        value: averageCostPerDistance.currencyFormatted,
+                        title: units.avgCostPerDistanceLabel(currencySymbol: locale.displayCurrencySymbol),
+                        value: averageCostPerDistance.currencyFormatted(locale: locale),
                         icon: "chart.line.uptrend.xyaxis",
                         color: .red
                     )
 
                     StatCard(
                         title: String(localized: "Avg Fill-up"),
-                        value: averageFillUpCost.currencyFormatted,
+                        value: averageFillUpCost.currencyFormatted(locale: locale),
                         icon: "creditcard.fill",
                         color: .teal
                     )
@@ -165,6 +167,8 @@ struct LastFillUpCard: View {
     let unitSystem: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
+    @Environment(\.locale) private var locale
+
     // Use cached efficiency if available
     private var efficiencyValue: Double {
         unitSystem.efficiencyDisplayValue(
@@ -210,7 +214,7 @@ struct LastFillUpCard: View {
                     .frame(height: 40)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(record.values.totalCost.currencyFormatted)
+                    Text(record.values.totalCost.currencyFormatted(locale: locale))
                         .font(.appButton)
                         .fontWeight(.semibold)
                     Text("Total")

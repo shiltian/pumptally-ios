@@ -216,6 +216,7 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
 // MARK: - Preview
 #Preview {
     struct PreviewWrapper: View {
+        @Environment(\.locale) private var locale
         @State private var totalCost: Int = 0
         @State private var gallons: Int = 0
         @State private var price: Int = 0
@@ -224,10 +225,11 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
             Form {
                 Section("Total Cost (2 decimals)") {
                     HStack {
-                        Text("$")
+                        Text(locale.displayCurrencySymbol ?? "")
                         CurrencyInputField(value: $totalCost, decimalPlaces: 2)
                     }
-                    Text("Raw: \(totalCost) cents = $\(String(format: "%.2f", Double(totalCost)/100))")
+                    let cost = (Double(totalCost) / 100).currencyFormatted(locale: locale, fractionDigits: 2)
+                    Text("Raw: \(totalCost) cents = \(cost)")
                         .font(.caption)
                 }
 
@@ -242,7 +244,7 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
 
                 Section("Price (3 decimals)") {
                     HStack {
-                        Text("$")
+                        Text(locale.displayCurrencySymbol ?? "")
                         CurrencyInputField(value: $price, decimalPlaces: 3)
                     }
                     Text("Raw: \(price) mills")

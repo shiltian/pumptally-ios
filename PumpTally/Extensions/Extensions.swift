@@ -125,21 +125,32 @@ extension View {
     }
 }
 
-// MARK: - Double Extensions
+// MARK: - Currency Display
+
+extension Locale {
+    var displayCurrencySymbol: String? {
+        guard let currency else { return nil }
+        return currencySymbol ?? currency.identifier
+    }
+}
 
 extension Double {
-    private static let currencyFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = Locale.current
-        return formatter
-    }()
-
-    /// Format as currency using the device locale (e.g., $3.45)
-    var currencyFormatted: String {
-        Self.currencyFormatter.string(from: NSNumber(value: self)) ?? String(format: "$%.2f", self)
+    /// Format an amount using the locale's currency and number conventions.
+    func currencyFormatted(locale: Locale, fractionDigits: Int? = nil) -> String {
+        guard let currency = locale.currency else {
+            return formatted(.number.locale(locale).precision(.fractionLength(fractionDigits ?? 2)))
+        }
+        let style = FloatingPointFormatStyle<Double>.Currency(code: currency.identifier, locale: locale)
+        if let fractionDigits {
+            return formatted(style.precision(.fractionLength(fractionDigits)))
+        }
+        return formatted(style)
     }
+}
 
+// MARK: - Editable Numbers
+
+extension Double {
     /// A locale-independent representation suitable for editable numeric text
     /// fields. Whole values omit a trailing ".0"; fractional values retain
     /// their stored precision.

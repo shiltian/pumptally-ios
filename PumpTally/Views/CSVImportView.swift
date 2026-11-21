@@ -4,6 +4,7 @@ import os
 
 struct CSVImportView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     let fileURL: URL
     let vehicles: [Vehicle]
@@ -283,7 +284,9 @@ struct CSVImportView: View {
                         value: summary.totalFuel.formatted(.number.precision(.fractionLength(2)))
                             + " " + (plan?.revision.storageUnit.fuelUnit ?? sourceUnit?.fuelUnit ?? ""))
 
-                    SummaryRow(label: "Total Cost", value: String(format: "$%.2f", summary.totalCost))
+                    SummaryRow(
+                        label: "Total Cost",
+                        value: summary.totalCost.currencyFormatted(locale: locale, fractionDigits: 2))
                 }
                 .padding()
                 .background(Color(.systemGray6))

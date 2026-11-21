@@ -279,9 +279,6 @@
     "© 2026 Shilei Tian" : {
       "shouldTranslate" : false
     },
-    "$" : {
-      "shouldTranslate" : false
-    },
     "Actions" : {
       "localizations" : {
         "es" : {
@@ -620,34 +617,34 @@
         }
       }
     },
-    "Avg $/km" : {
+    "Avg %@/km" : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prom. $/km"
+            "value" : "Prom. %@/km"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平均$/km"
+            "value" : "平均%@/km"
           }
         }
       }
     },
-    "Avg $/Mile" : {
+    "Avg %@/Mile" : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prom. $/Milla"
+            "value" : "Prom. %@/Milla"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平均$/英里"
+            "value" : "平均%@/英里"
           }
         }
       }

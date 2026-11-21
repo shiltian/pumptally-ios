@@ -56,6 +56,7 @@ struct FuelingSummaryPopup: View {
     let data: FuelingSummaryData
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,7 +126,7 @@ struct FuelingSummaryPopup: View {
                                 .foregroundColor(.secondary)
 
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text(data.costPerDistance.currencyFormatted)
+                                Text(data.costPerDistance.currencyFormatted(locale: locale))
                                     .font(.appHero2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.orange)
@@ -138,7 +139,7 @@ struct FuelingSummaryPopup: View {
 
                         Spacer()
 
-                        Image(systemName: "dollarsign.circle.fill")
+                        Image(systemName: "creditcard.circle.fill")
                             .font(.system(size: 44))
                             .foregroundStyle(LinearGradient.costIcon)
                     }
@@ -179,14 +180,14 @@ struct FuelingSummaryPopup: View {
 
                     SummaryDetailCard(
                         title: data.unitSystem.pricePerFuelShortLabel,
-                        value: data.pricePerFuelUnit.currencyFormatted,
+                        value: data.pricePerFuelUnit.currencyFormatted(locale: locale),
                         icon: "tag.fill",
                         color: .teal
                     )
 
                     SummaryDetailCard(
                         title: String(localized: "Total Cost"),
-                        value: data.totalCost.currencyFormatted,
+                        value: data.totalCost.currencyFormatted(locale: locale),
                         icon: "creditcard.fill",
                         color: .pink
                     )

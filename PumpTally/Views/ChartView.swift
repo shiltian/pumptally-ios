@@ -4,6 +4,7 @@ import Charts
 struct ChartView: View {
     let data: PrecomputedChartData
 
+    @Environment(\.locale) private var locale
     @State private var selectedChart: ChartType = .efficiency
 
     private var unitSystem: UnitSystem { data.unitSystem }
@@ -16,13 +17,16 @@ struct ChartView: View {
 
         func label(
             for unitSystem: UnitSystem,
-            metricEfficiencyFormat: MetricEfficiencyFormat
+            metricEfficiencyFormat: MetricEfficiencyFormat,
+            currencySymbol: String?
         ) -> String {
             switch self {
             case .efficiency:
                 return unitSystem.efficiencyUnit(for: metricEfficiencyFormat)
             case .cost: return String(localized: "Cost")
-            case .pricePerFuelUnit: return "$\(unitSystem.pricePerFuelShort)"
+            case .pricePerFuelUnit:
+                return currencySymbol.map { "\($0)\(unitSystem.pricePerFuelShort)" }
+                    ?? unitSystem.pricePerFuelShortLabel
             }
         }
     }
@@ -32,11 +36,12 @@ struct ChartView: View {
             // Chart Type Picker
             Picker("Chart Type", selection: $selectedChart) {
                 ForEach(ChartType.allCases, id: \.self) { type in
-                    Text(type.label(
+                    let label = type.label(
                         for: unitSystem,
-                        metricEfficiencyFormat: metricEfficiencyFormat
-                    ))
-                        .tag(type)
+                        metricEfficiencyFormat: metricEfficiencyFormat,
+                        currencySymbol: locale.displayCurrencySymbol
+                    )
+                    Text(label).tag(type)
                 }
             }
             .pickerStyle(.segmented)
@@ -145,6 +150,8 @@ struct CostChart: View {
     let average: Double
     let yRange: ClosedRange<Double>
 
+    @Environment(\.locale) private var locale
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -154,7 +161,7 @@ struct CostChart: View {
 
                 Spacer()
 
-                Text("Avg: \(average.currencyFormatted)")
+                Text("Avg: \(average.currencyFormatted(locale: locale))")
                     .font(.appCaption)
                     .foregroundColor(.orange)
             }
@@ -180,7 +187,7 @@ struct CostChart: View {
                 AxisMarks(position: .leading) { value in
                     AxisValueLabel {
                         if let cost = value.as(Double.self) {
-                            Text(cost.currencyFormatted)
+                            Text(cost.currencyFormatted(locale: locale))
                                 .font(.caption2)
                         }
                     }
@@ -202,6 +209,8 @@ struct PricePerFuelUnitChart: View {
     let showPoints: Bool
     let unitSystem: UnitSystem
 
+    @Environment(\.locale) private var locale
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -211,7 +220,7 @@ struct PricePerFuelUnitChart: View {
 
                 Spacer()
 
-                Text("Avg: \(average.currencyFormatted)")
+                Text("Avg: \(average.currencyFormatted(locale: locale))")
                     .font(.appCaption)
                     .foregroundColor(.green)
             }
@@ -253,7 +262,7 @@ struct PricePerFuelUnitChart: View {
                 AxisMarks(position: .leading) { value in
                     AxisValueLabel {
                         if let price = value.as(Double.self) {
-                            Text(price.currencyFormatted)
+                            Text(price.currencyFormatted(locale: locale))
                                 .font(.caption2)
                         }
                     }

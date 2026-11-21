@@ -25,6 +25,7 @@ struct FuelingRecordFormView: View {
     let storageUnit: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
 
+    @Environment(\.locale) private var locale
     @Binding var draft: FuelingRecordDraft
 
     var focusedField: FocusState<EditableField?>.Binding
@@ -130,14 +131,21 @@ struct FuelingRecordFormView: View {
 
     // MARK: - Fuel Section
 
+    @ViewBuilder
+    private var currencyLabel: some View {
+        if let symbol = locale.displayCurrencySymbol {
+            Text(symbol)
+                .foregroundColor(.secondary)
+        }
+    }
+
     private var fuelSection: some View {
         Section {
             HStack {
                 Text(unitSystem.pricePerFuelLabel)
                     .font(.appBody)
                 Spacer()
-                Text("$")
-                    .foregroundColor(.secondary)
+                currencyLabel
                 CurrencyInputField(
                     value: numericBinding(.pricePerFuelUnit),
                     decimalPlaces: 3,
@@ -166,8 +174,7 @@ struct FuelingRecordFormView: View {
                 Text("Total Cost")
                     .font(.appBody)
                 Spacer()
-                Text("$")
-                    .foregroundColor(.secondary)
+                currencyLabel
                 CurrencyInputField(
                     value: numericBinding(.totalCost),
                     decimalPlaces: 2,
@@ -207,12 +214,12 @@ struct FuelingRecordFormView: View {
 
                 if let cpd = preview?.costPerDistance {
                     HStack {
-                        Image(systemName: "dollarsign.circle")
+                        Image(systemName: "creditcard.circle")
                             .foregroundColor(.orange)
                         Text(unitSystem.costPerDistanceLabel)
                             .font(.appBody)
                         Spacer()
-                        Text(cpd.currencyFormatted)
+                        Text(cpd.currencyFormatted(locale: locale))
                             .font(.appBody)
                             .fontWeight(.semibold)
                             .foregroundColor(.orange)
