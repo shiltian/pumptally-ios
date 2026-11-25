@@ -224,10 +224,16 @@ struct SettingsView: View {
                 Button("Use iCloud Data") { performInitialSync(strategy: .useCloud, proposal: proposal) }
                 Button("Merge Both") { performInitialSync(strategy: .merge, proposal: proposal) }
                 Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text(
-                    "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device."
-                )
+            } message: { proposal in
+                if proposal.deletionsToReview > 0 {
+                    Text(
+                        "Using the iCloud copy replaces the local copy on this device. If you merge both copies, review \(proposal.deletionsToReview) saved deletion requests before sending them to iCloud."
+                    )
+                } else {
+                    Text(
+                        "iCloud already contains fueling data. You can merge both copies. Using the iCloud copy replaces the local copy on this device."
+                    )
+                }
             }
             // Toggle off alert
             .alert("Disable iCloud Sync?", isPresented: $showingToggleOffAlert) {

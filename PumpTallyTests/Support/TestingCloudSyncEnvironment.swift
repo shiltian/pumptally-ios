@@ -21,6 +21,7 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
     nonisolated var driverCreationCount: Int { observation.withLock { $0.driverCreations } }
     var accountError: Error?
     var snapshotError: Error?
+    var countError: Error?
     var zoneError: Error?
     var driverError: Error?
     var snapshotHandler: (() async throws -> CloudSyncSnapshot)?
@@ -54,6 +55,11 @@ final class TestingCloudSyncEnvironment: CloudSyncEnvironment {
         if let snapshotError { throw snapshotError }
         if let snapshotHandler { return try await snapshotHandler() }
         return records
+    }
+
+    func recordCounts() async throws -> (vehicles: Int, fuelingRecords: Int) {
+        if let countError { throw countError }
+        return (records.vehicles.count, records.fuelingRecords.count)
     }
 
     func controlRecord() async throws -> CKRecord? { records.control }

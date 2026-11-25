@@ -110,7 +110,7 @@ struct SyncDeletionReviewView: View {
         List {
             if recovery.assessment.legacyDeletionCount > 0 {
                 Text(
-                    "An older app left \(recovery.assessment.legacyDeletionCount) deletion request(s). Confirm whether these should remove data from iCloud."
+                    "You have \(recovery.assessment.legacyDeletionCount) saved deletion request(s). Confirm whether these should remove data from iCloud."
                 )
                 Button("Review Previous Deletions") { showingDecision = true }
             } else {

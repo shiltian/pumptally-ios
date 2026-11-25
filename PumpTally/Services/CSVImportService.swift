@@ -11,6 +11,7 @@ struct CSVImportRecordSnapshot: Identifiable, Equatable, Sendable {
     let totalCost: Double
     let fillUpType: FillUpType
     let notes: String?
+    var legacyUTCDate: Date? = nil
 }
 
 enum CSVImportError: LocalizedError, Equatable, Sendable {
@@ -41,7 +42,9 @@ enum CSVImportError: LocalizedError, Equatable, Sendable {
 /// Parsing and validation use value types only. SwiftData models are created
 /// only after every row has passed structural and chronology validation.
 enum CSVImportService {
-    static func parse(_ content: String) throws -> [CSVImportRecordSnapshot] {
+    static func parse(
+        _ content: String, dateOnlyTimeZone: TimeZone = .current
+    ) throws -> [CSVImportRecordSnapshot] {
         let logicalRecords = try rows(content)
         guard let header = logicalRecords.first else {
             throw CSVImportError.invalidFile(String(localized: "The file is empty"))
@@ -54,7 +57,7 @@ enum CSVImportService {
         try validateHeader(header.fields)
 
         var records: [CSVImportRecordSnapshot] = []
-        let dateParser = ImportDateParser()
+        let dateParser = ImportDateParser(dateOnlyTimeZone: dateOnlyTimeZone)
 
         for logicalRecord in logicalRecords.dropFirst() {
             let lineNumber = logicalRecord.lineNumber
@@ -66,7 +69,7 @@ enum CSVImportService {
                 )
             }
 
-            guard let date = dateParser.parse(fields[0].trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            guard let parsedDate = dateParser.parse(fields[0].trimmingCharacters(in: .whitespacesAndNewlines)) else {
                 throw CSVImportError.invalidRow(
                     line: lineNumber,
                     reason: String(localized: "the date is invalid")
@@ -103,13 +106,14 @@ enum CSVImportService {
                 CSVImportRecordSnapshot(
                     id: UUID(),
                     lineNumber: lineNumber,
-                    date: date,
+                    date: parsedDate.date,
                     odometer: odometer,
                     pricePerFuelUnit: price,
                     fuelAmount: fuel,
                     totalCost: cost,
                     fillUpType: fillUpType,
-                    notes: notes
+                    notes: notes,
+                    legacyUTCDate: parsedDate.legacyUTCDate
                 )
             )
         }
@@ -272,26 +276,31 @@ enum CSVImportService {
 
     private struct ImportDateParser {
         private let isoFormatter = ISO8601DateFormatter()
+        private let dateOnlyTimeZone: TimeZone
         private let dateFormatters: [DateFormatter]
 
-        init() {
+        init(dateOnlyTimeZone: TimeZone) {
+            self.dateOnlyTimeZone = dateOnlyTimeZone
             dateFormatters = ["yyyy-MM-dd", "MM/dd/yyyy"].map { format in
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "en_US_POSIX")
-                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                formatter.timeZone = dateOnlyTimeZone
                 formatter.dateFormat = format
                 formatter.isLenient = false
                 return formatter
             }
         }
 
-        func parse(_ text: String) -> Date? {
+        func parse(_ text: String) -> (date: Date, legacyUTCDate: Date?)? {
             if let date = isoFormatter.date(from: text) {
-                return date
+                return (date, nil)
             }
             for formatter in dateFormatters {
                 if let date = formatter.date(from: text) {
-                    return date
+                    let offset = dateOnlyTimeZone.secondsFromGMT(for: date)
+                    // Older app versions interpreted date-only input as midnight UTC.
+                    let legacyDate = offset == 0 ? nil : date.addingTimeInterval(TimeInterval(offset))
+                    return (date, legacyDate)
                 }
             }
             return nil

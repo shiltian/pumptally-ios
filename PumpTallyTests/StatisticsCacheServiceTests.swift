@@ -194,6 +194,57 @@ final class StatisticsCacheServiceTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+    func testSavedHistoryRefreshIncludesPendingChangesInCanonicalOrder() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let schema = Schema(versionedSchema: SchemaV6.self)
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(
+                    schema: schema, url: directory.appendingPathComponent("history.store"), cloudKitDatabase: .none)
+            ])
+        let seed = ModelContext(container)
+        seed.autosaveEnabled = false
+        let owner = Vehicle(name: "Edited history")
+        let other = Vehicle(name: "Independent history")
+        seed.insert(owner)
+        seed.insert(other)
+        let first = createRecord(date: Date(timeIntervalSince1970: 0), odometer: 100, vehicle: owner)
+        let removed = createRecord(date: Date(timeIntervalSince1970: 10), odometer: 200, vehicle: owner)
+        let moved = createRecord(date: Date(timeIntervalSince1970: 30), odometer: 300, vehicle: owner)
+        moved.id = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000009"))
+        let last = createRecord(date: Date(timeIntervalSince1970: 40), odometer: 400, vehicle: owner)
+        let unrelated = createRecord(date: Date(timeIntervalSince1970: 20), odometer: 500, vehicle: other)
+        for record in [first, removed, moved, last, unrelated] { seed.insert(record) }
+        seed.processPendingChanges()
+        StatisticsCacheService.recalculateAllStatistics(for: owner)
+        StatisticsCacheService.recalculateAllStatistics(for: other)
+        try seed.save()
+
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let records = try context.fetch(FetchDescriptor<FuelingRecord>())
+        let edited = try XCTUnwrap(records.first { $0.id == moved.id })
+        let previous = FuelingRecordValues(record: edited)
+        edited.date = Date(timeIntervalSince1970: 20)
+        StatisticsCacheService.invalidateIfNeeded(edited, previous: previous)
+        context.delete(try XCTUnwrap(records.first { $0.id == removed.id }))
+        let inserted = createRecord(
+            date: edited.date, odometer: edited.odometer, fillUpType: .partial, vehicle: edited.vehicle)
+        inserted.id = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        context.insert(inserted)
+        context.processPendingChanges()
+
+        StatisticsCacheService.refresh(for: edited.vehicle)
+        XCTAssertEqual(edited.vehicle.cachedRecordCount, 4)
+        XCTAssertEqual(inserted.cachedPreviousOdometer, 100)
+        XCTAssertEqual(edited.cachedPreviousOdometer, 300)
+        XCTAssertNotNil(records.first { $0.id == last.id }?.cachedEfficiency)
+        XCTAssertEqual(records.first { $0.id == unrelated.id }?.cachedPreviousOdometer, 0)
+        assertReference(edited.vehicle)
+    }
+
     // MARK: - Helper Methods
 
     private func createVehicle(name: String = "Test Car") -> Vehicle {

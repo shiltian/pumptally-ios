@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import SwiftData
 import XCTest
 import os
@@ -178,6 +179,108 @@ final class CloudSyncRuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.driver.recordRegistrations.count, registrations)
         await runtime.service.pushPendingLocalChanges()
         XCTAssertEqual(runtime.driver.pendingRecordZoneChanges, [.saveRecord(runtime.cloudID)])
+    }
+
+    func testOrdinaryRecordSaveRegistersWithTheRunningEngine() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        defer { runtime.driver.registrationObserver = nil }
+        let registered = expectation(description: "Journal commit registered with the engine")
+        runtime.driver.registrationObserver = { registered.fulfill() }
+        let original = FuelingRecordValues(record: try runtime.record(in: runtime.context))
+        var proposed = original
+        proposed.notes = "Saved on this device"
+        let saved = try await FuelingRecordPersistenceService(writer: runtime.writer).update(
+            recordID: runtime.recordID, update: .init(original: original, proposed: proposed))
+
+        XCTAssertTrue(saved)
+        await fulfillment(of: [registered], timeout: 5)
+        XCTAssertEqual(runtime.driver.pendingRecordZoneChanges, [.saveRecord(runtime.cloudID)])
+        await runtime.service.stopMonitoring()
+    }
+
+    func testRetryableControlFailureKeepsTheEngineAndRestoresCollateralChanges() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        try await runtime.edit(notes: "Wait for the cloud")
+        await runtime.service.pushPendingLocalChanges()
+        let driver = runtime.driver
+        let prepared = await driver.batch()
+        let batch = try XCTUnwrap(prepared)
+        let business = try XCTUnwrap(batch.businessRecordsToSave.first)
+        let control = try XCTUnwrap(batch.recordsToSave.first { $0.recordType == CloudSyncControl.recordType })
+        driver.remove(pendingRecordZoneChanges: [.saveRecord(business.recordID)])
+
+        await driver.emit(
+            .sentRecords(
+                .init(failedSaves: [
+                    (control, CKError(.zoneBusy)), (business, CKError(.batchRequestFailed)),
+                ])))
+
+        XCTAssertEqual(driver.cancellations, 0)
+        XCTAssertEqual(driver.pendingRecordZoneChanges, [.saveRecord(runtime.cloudID)])
+        XCTAssertEqual(try runtime.journal().count, 1)
+        let retry = await driver.batch()
+        XCTAssertEqual(retry?.businessRecordsToSave.first?.recordID, runtime.cloudID)
+        await runtime.service.stopMonitoring()
+    }
+
+    func testTransientAccountLookupDuringFailedSendKeepsTheDriverAndJournal() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        try await runtime.edit(notes: "Wait for account lookup")
+        await runtime.service.pushPendingLocalChanges()
+        let driver = runtime.driver
+        let prepared = await driver.batch()
+        let batch = try XCTUnwrap(prepared)
+        runtime.environment.accountError = CKError(.networkUnavailable)
+
+        await driver.emit(.sentRecords(.init(failedSaves: batch.recordsToSave.map { ($0, CKError(.networkFailure)) })))
+
+        XCTAssertEqual(driver.cancellations, 0)
+        XCTAssertEqual(try runtime.journal().count, 1)
+        XCTAssertEqual(driver.pendingRecordZoneChanges, [.saveRecord(runtime.cloudID)])
+        runtime.environment.accountError = nil
+        let retry = await driver.batch()
+        XCTAssertEqual(retry?.businessRecordsToSave.first?.recordID, runtime.cloudID)
+        await runtime.service.stopMonitoring()
+    }
+
+    func testResolvingVehicleUnitReviewRefreshesStatusWithoutAnOutboxChange() async throws {
+        let runtime = try runtime()
+        await runtime.service.startMonitoring()
+        let zone = runtime.environment.recordZoneID
+        let incoming = try XCTUnwrap(runtime.environment.records.vehicles.first?.copy() as? CKRecord)
+        incoming[CloudRecordCodec.CloudFieldKey.Vehicle.unitSystemRaw] = UnitSystem.metric.rawValue
+        await runtime.driver.emit(.willFetch)
+        await runtime.driver.emit(.fetchedRecords(modifications: [incoming], deletions: []))
+        await runtime.driver.emit(.fetchedZone(zone, error: nil))
+        await runtime.driver.emit(.didFetch)
+        XCTAssertEqual(runtime.state.syncStatus, .reviewRequired)
+
+        let cleared = expectation(description: "Sync reflects the completed unit review")
+        let observation = runtime.state.$syncStatus.filter { $0 == .synced }.sink { _ in cleared.fulfill() }
+        defer { observation.cancel() }
+        let item = try XCTUnwrap(SyncReviewService.items(in: runtime.context).first)
+        try await SyncReviewService.confirm(item, sourceUnit: .metric, writer: runtime.writer)
+        XCTAssertTrue(try runtime.journal().isEmpty)
+        await fulfillment(of: [cleared], timeout: 5)
+        await runtime.service.stopMonitoring()
+    }
+
+    func testCloudCountsUseTheCountReadAndPropagateFailures() async throws {
+        let runtime = try runtime()
+        runtime.environment.snapshotError = Failure.offline
+        let counts = try await runtime.service.fetchCloudRecordCounts()
+        XCTAssertEqual(counts.vehicles, 1)
+        XCTAssertEqual(counts.fuelingRecords, 1)
+        XCTAssertEqual(runtime.environment.snapshotReads, 0)
+
+        runtime.environment.countError = Failure.offline
+        do {
+            _ = try await runtime.service.fetchCloudRecordCounts()
+            XCTFail("An unavailable count must be reported as an error")
+        } catch Failure.offline {}
     }
 
     func testInitialMergeCommitsMetadataAndLocalWinnerTogether() async throws {

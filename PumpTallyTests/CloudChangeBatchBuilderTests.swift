@@ -174,7 +174,7 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
-    func testOnlySDKSelectedRecordsAreEncodedAndHaveCapturedGenerations() async throws {
+    func testLargeQueueReadsAndEncodesOnlyOneBatchAtATime() async throws {
         let context = try context()
         var pending: [CKSyncEngine.PendingRecordZoneChange] = []
         for index in 0..<800 {
@@ -184,19 +184,57 @@ final class CloudChangeBatchBuilderTests: XCTestCase {
             pending.append(.saveRecord(id(vehicle.id)))
         }
         try context.save()
-        let preparation = await builder(context)
-        let result = try await preparation.build(
-            pendingChanges: pending, control: CloudSyncControl.baseline(in: NativeCloudSyncEnvironment.zoneID))
-        let prepared = try XCTUnwrap(result)
-        let saved = prepared.batch.businessRecordsToSave
-        XCTAssertGreaterThan(saved.count, 0)
-        XCTAssertLessThan(saved.count, pending.count, "The native initializer must exercise a bounded batch")
-        let asyncResult10 = (await preparation.metrics).recordsEncoded
-        XCTAssertEqual(asyncResult10, saved.count)
-        let asyncResult11 = (await preparation.metrics).vehiclesRead
-        XCTAssertEqual(asyncResult11, saved.count)
-        XCTAssertEqual(Set(prepared.generations.keys), Set(saved.map { "Vehicle:\($0.recordID.recordName)" }))
+        let control = try CloudSyncControl.baseline(in: codec.zoneID)
+        var totalJournalReads = 0
+        while !pending.isEmpty {
+            let preparation = await builder(context)
+            let result = try await preparation.build(pendingChanges: pending, control: control)
+            let prepared = try XCTUnwrap(result)
+            let saved = prepared.batch.businessRecordsToSave
+            guard !saved.isEmpty else { return XCTFail("Every batch must make progress") }
+            XCTAssertLessThanOrEqual(prepared.batch.recordsToSave.count, 250)
+            let metrics = await preparation.metrics
+            XCTAssertEqual(metrics.recordsEncoded, saved.count)
+            XCTAssertEqual(metrics.vehiclesRead, saved.count)
+            totalJournalReads += metrics.journalEntriesRead
+            XCTAssertEqual(Set(prepared.generations.keys), Set(saved.map { "Vehicle:\($0.recordID.recordName)" }))
+            let selected: Set<CKSyncEngine.PendingRecordZoneChange> = Set(saved.map { .saveRecord($0.recordID) })
+            pending.removeAll(where: selected.contains)
+        }
+        XCTAssertEqual(totalJournalReads, 800)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncChange>()), 800)
         XCTAssertFalse(context.hasChanges)
+    }
+
+    func testAQueueHeldForReviewStillFillsTheBatchWithLaterEligibleSaves() async throws {
+        let context = try context()
+        let blocked = Vehicle(name: "Unit review required")
+        context.insert(blocked)
+        var pending: [CKSyncEngine.PendingRecordZoneChange] = []
+        for offset in 1...240 {
+            let record = FuelingRecord(
+                odometer: Double(offset), pricePerFuelUnit: 4, fuelAmount: 10, totalCost: 40, vehicle: blocked)
+            context.insert(record)
+            try SyncChangeJournal.enqueue(record, in: context)
+            pending.append(.saveRecord(id(record.id)))
+        }
+        let ready = Vehicle(name: "Ready to upload")
+        context.insert(ready)
+        var eligible: [CKRecord.ID] = []
+        for offset in 1...260 {
+            let record = FuelingRecord(
+                odometer: Double(offset), pricePerFuelUnit: 4, fuelAmount: 10, totalCost: 40, vehicle: ready)
+            context.insert(record)
+            try SyncChangeJournal.enqueue(record, in: context)
+            eligible.append(id(record.id))
+        }
+        try context.save()
+        let preparation = await builder(context, blockedParents: [blocked.id.uuidString])
+        let result = try await preparation.build(
+            pendingChanges: pending + eligible.map { .saveRecord($0) },
+            control: CloudSyncControl.baseline(in: codec.zoneID))
+        XCTAssertEqual(result?.batch.businessRecordsToSave.map(\.recordID), Array(eligible.prefix(249)))
+        let encoded = (await preparation.metrics).recordsEncoded
+        XCTAssertEqual(encoded, 249)
     }
 }

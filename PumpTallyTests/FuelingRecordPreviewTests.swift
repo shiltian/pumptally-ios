@@ -53,11 +53,9 @@ final class FuelingRecordPreviewTests: XCTestCase {
         let draft = FuelingRecordDraft(
             values: FuelingRecordValues(record: current),
             storageUnit: storageUnit, inputUnit: displayUnit)
-        let validation = OdometerChronologyValidator.validate(
-            date: current.date, odometer: current.odometer,
-            records: prior.map(OdometerReadingSnapshot.init(record:)))
-        let preview = try XCTUnwrap(
-            draft.preview(after: FuelingIntervalContext(validation: validation, records: prior)))
+        let history = FuelingRecordEditorHistory(records: prior)
+        let validation = history.validate(date: current.date, odometer: current.odometer)
+        let preview = try XCTUnwrap(draft.preview(after: history.interval(for: validation)))
         context.insert(current)
         context.processPendingChanges()
         StatisticsCacheService.refresh(for: vehicle)
@@ -103,6 +101,27 @@ final class FuelingRecordPreviewTests: XCTestCase {
         let successor = OdometerReadingSnapshot(id: UUID(), date: Date(), odometer: 1000)
         let validation = OdometerChronologyValidation(
             neighbors: .init(predecessor: nil, successor: successor), issue: .notLessThanSuccessor(successor))
-        XCTAssertNil(FuelingIntervalContext(validation: validation, records: []))
+        XCTAssertNil(FuelingRecordEditorHistory(records: []).interval(for: validation))
+    }
+
+    func testEditorValidationTracksOdometerAndHistoryChanges() throws {
+        let vehicle = Vehicle(name: "Preview fixture")
+        let date = Date(timeIntervalSince1970: 1_000_000)
+        let previous = FuelingRecord(
+            date: date, odometer: 1_200, pricePerFuelUnit: 3, fuelAmount: 10, totalCost: 30,
+            fillUpType: .partial, vehicle: vehicle)
+        let proposedDate = date.addingTimeInterval(86_400)
+        let history = FuelingRecordEditorHistory(records: [previous])
+        let initial = try XCTUnwrap(history.validate(date: proposedDate, odometer: 1_300))
+        XCTAssertTrue(initial.isValid)
+        XCTAssertEqual(history.interval(for: initial)?.fillUpType, .partial)
+        XCTAssertFalse(try XCTUnwrap(history.validate(date: proposedDate, odometer: 1_100)).isValid)
+
+        previous.odometer = 1_250
+        previous.fillUpType = .full
+        let updatedHistory = FuelingRecordEditorHistory(records: [previous])
+        let updated = updatedHistory.validate(date: proposedDate, odometer: 1_300)
+        XCTAssertEqual(updatedHistory.interval(for: updated)?.odometer, 1_250)
+        XCTAssertEqual(updatedHistory.interval(for: updated)?.fillUpType, .full)
     }
 }

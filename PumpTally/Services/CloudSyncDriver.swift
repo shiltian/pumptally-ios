@@ -58,6 +58,7 @@ protocol CloudSyncEnvironment {
     func accountID() async throws -> String
     func ensureZone() async throws
     func snapshot() async throws -> CloudSyncSnapshot
+    func recordCounts() async throws -> (vehicles: Int, fuelingRecords: Int)
     func controlRecord() async throws -> CKRecord?
     func makeDriver(state: Data?, receiver: any SyncEngineReceiver, automaticallySync: Bool) throws
         -> any SyncEngineDriver
@@ -111,33 +112,57 @@ final class NativeCloudSyncEnvironment: CloudSyncEnvironment {
         var records: [CKRecord.ID: CKRecord] = [:]
         var other: [CKRecord.ID: CKRecord] = [:]
         var control: CKRecord?
-        var token: CKServerChangeToken?
-        var moreComing = true
-        while moreComing {
-            let page = try await database.recordZoneChanges(inZoneWith: recordZoneID, since: token)
-            for (id, result) in page.modificationResultsByID {
-                let record = try result.get().record
-                switch record.recordType {
-                case CloudRecordType.vehicle: vehicles[id] = record
-                case CloudRecordType.fuelingRecord: records[id] = record
-                case CloudSyncControl.recordType:
-                    _ = try CloudSyncControl(record: record, zone: recordZoneID)
-                    control = record
-                default: other[id] = record
-                }
+        try await readZone(desiredKeys: nil) { record in
+            let id = record.recordID
+            switch record.recordType {
+            case CloudRecordType.vehicle: vehicles[id] = record
+            case CloudRecordType.fuelingRecord: records[id] = record
+            case CloudSyncControl.recordType:
+                _ = try CloudSyncControl(record: record, zone: recordZoneID)
+                control = record
+            default: other[id] = record
             }
-            for deletion in page.deletions {
-                vehicles.removeValue(forKey: deletion.recordID)
-                records.removeValue(forKey: deletion.recordID)
-                other.removeValue(forKey: deletion.recordID)
-                if deletion.recordID == control?.recordID { control = nil }
-            }
-            token = page.changeToken
-            moreComing = page.moreComing
+        } deleting: { id in
+            vehicles.removeValue(forKey: id)
+            records.removeValue(forKey: id)
+            other.removeValue(forKey: id)
+            if id == control?.recordID { control = nil }
         }
         return CloudSyncSnapshot(
             vehicles: Array(vehicles.values), fuelingRecords: Array(records.values),
             control: control, otherRecords: Array(other.values))
+    }
+
+    func recordCounts() async throws -> (vehicles: Int, fuelingRecords: Int) {
+        var vehicles = Set<CKRecord.ID>()
+        var records = Set<CKRecord.ID>()
+        try await readZone(desiredKeys: []) { record in
+            switch record.recordType {
+            case CloudRecordType.vehicle: vehicles.insert(record.recordID)
+            case CloudRecordType.fuelingRecord: records.insert(record.recordID)
+            default: break
+            }
+        } deleting: { id in
+            vehicles.remove(id)
+            records.remove(id)
+        }
+        return (vehicles.count, records.count)
+    }
+
+    private func readZone(
+        desiredKeys: [CKRecord.FieldKey]?, modifying: (CKRecord) throws -> Void, deleting: (CKRecord.ID) -> Void
+    ) async throws {
+        var token: CKServerChangeToken?
+        var moreComing = true
+        while moreComing {
+            try Task.checkCancellation()
+            let page = try await database.recordZoneChanges(
+                inZoneWith: recordZoneID, since: token, desiredKeys: desiredKeys)
+            for result in page.modificationResultsByID.values { try modifying(result.get().record) }
+            for deletion in page.deletions { deleting(deletion.recordID) }
+            token = page.changeToken
+            moreComing = page.moreComing
+        }
     }
 
     func makeDriver(state: Data?, receiver: any SyncEngineReceiver, automaticallySync: Bool) throws

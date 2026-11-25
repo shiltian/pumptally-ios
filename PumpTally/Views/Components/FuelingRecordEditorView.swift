@@ -21,10 +21,11 @@ struct FuelingRecordEditorView: View {
     }
 
     var body: some View {
+        let history = FuelingRecordEditorHistory(records: records)
         if let selection {
-            EditRecordView(selection: selection, vehicle: vehicle, records: records)
+            EditRecordView(selection: selection, vehicle: vehicle, history: history)
         } else {
-            AddRecordView(vehicle: vehicle, records: records, onSave: onSave)
+            AddRecordView(vehicle: vehicle, history: history, onSave: onSave)
         }
     }
 }

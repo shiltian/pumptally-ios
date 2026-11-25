@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import SwiftData
 
@@ -12,12 +13,28 @@ enum InitialSyncStrategy: Sendable {
 struct InitialSyncProposal: Sendable {
     let accountID: String
     let containerID: ObjectIdentifier
-    let hasCloudData: Bool
+    let cloudRecordIDs: Set<CKRecord.ID>
     let localChanges: [String: String]
+    let deletionsToReview: Int
     var cloudGeneration: String = CloudSyncControl.baselineGeneration
 
+    var hasCloudData: Bool { !cloudRecordIDs.isEmpty }
+
+    static func localState(in context: ModelContext) throws -> (changes: [String: String], deletionsToReview: Int) {
+        let journal = try context.fetch(FetchDescriptor<SyncChange>())
+        let detached = try SyncPersistenceStore.isDetached(in: context)
+        return (
+            generations(of: journal),
+            journal.filter { SyncChangeJournal.needsDeletionReview($0, detached: detached) }.count
+        )
+    }
+
     static func localChanges(in context: ModelContext) throws -> [String: String] {
-        try context.fetch(FetchDescriptor<SyncChange>()).reduce(into: [:]) { result, change in
+        try generations(of: context.fetch(FetchDescriptor<SyncChange>()))
+    }
+
+    private static func generations(of journal: [SyncChange]) -> [String: String] {
+        journal.reduce(into: [:]) { result, change in
             result[change.key] = change.generation
         }
     }
@@ -28,6 +45,7 @@ enum InitialSyncError: LocalizedError {
     case alreadyEnabled
     case differentStore
     case localDataChanged
+    case cloudDataChanged
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +58,9 @@ enum InitialSyncError: LocalizedError {
         case .localDataChanged:
             return String(
                 localized: "Local data changed while choosing a sync source. Review the latest data and try again.")
+        case .cloudDataChanged:
+            return String(
+                localized: "iCloud data changed while choosing a sync source. Review the latest data and try again.")
         }
     }
 }

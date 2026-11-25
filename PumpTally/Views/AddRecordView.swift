@@ -3,7 +3,7 @@ import SwiftData
 
 struct AddRecordView: View {
     let vehicle: Vehicle
-    let records: [FuelingRecord]
+    let history: FuelingRecordEditorHistory
     let onSave: ((SavedFuelingRecord) -> Void)?
 
     @State private var isSaving = false
@@ -23,9 +23,9 @@ struct AddRecordView: View {
 
     @FocusState private var focusedField: FuelingRecordFormView.EditableField?
 
-    init(vehicle: Vehicle, records: [FuelingRecord], onSave: ((SavedFuelingRecord) -> Void)? = nil) {
+    init(vehicle: Vehicle, history: FuelingRecordEditorHistory, onSave: ((SavedFuelingRecord) -> Void)? = nil) {
         self.vehicle = vehicle
-        self.records = records
+        self.history = history
         self.onSave = onSave
         _draft = State(
             initialValue: FuelingRecordDraft(storageUnit: vehicle.unitSystem, inputUnit: vehicle.displayUnitSystem))
@@ -36,12 +36,7 @@ struct AddRecordView: View {
     }
 
     private var chronologyValidation: OdometerChronologyValidation? {
-        guard let current = draft.storageOdometer else { return nil }
-        return OdometerChronologyValidator.validate(
-            date: draft.date,
-            odometer: current,
-            records: records.map(OdometerReadingSnapshot.init(record:))
-        )
+        history.validate(date: draft.date, odometer: draft.storageOdometer)
     }
 
     private func isValid(_ validation: OdometerChronologyValidation?) -> Bool {
@@ -51,7 +46,7 @@ struct AddRecordView: View {
 
     var body: some View {
         let validation = chronologyValidation
-        let preview = draft.preview(after: FuelingIntervalContext(validation: validation, records: records))
+        let preview = draft.preview(after: history.interval(for: validation))
 
         NavigationStack {
             Form {
@@ -123,7 +118,7 @@ struct AddRecordView: View {
             ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         ])
     let writer = OwnedModelStore(container: container)
-    return AddRecordView(vehicle: Vehicle(name: "Test Car"), records: [])
+    return AddRecordView(vehicle: Vehicle(name: "Test Car"), history: FuelingRecordEditorHistory(records: []))
         .modelContainer(container)
         .environmentObject(writer)
 }

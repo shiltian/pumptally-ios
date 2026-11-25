@@ -1,6 +1,7 @@
 import XCTest
 @testable import PumpTally
 
+@MainActor
 final class HistoryRecordsQueryTests: XCTestCase {
 
     private let baseDate = Date(timeIntervalSince1970: 1_000_000)
@@ -11,14 +12,22 @@ final class HistoryRecordsQueryTests: XCTestCase {
         cost: Double,
         odometer: Double,
         notes: String? = nil
-    ) -> HistoryRecordSnapshot {
-        HistoryRecordSnapshot(
+    ) -> FuelingHistoryRecord {
+        let record = FuelingRecord(
             id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", idSuffix))!,
             date: baseDate.addingTimeInterval(Double(day) * 86_400),
-            totalCost: cost,
-            odometer: odometer,
-            notes: notes
+            odometer: odometer, pricePerFuelUnit: 3, fuelAmount: 10, totalCost: cost,
+            notes: notes, vehicle: Vehicle(name: "History query fixture")
         )
+        return FuelingHistoryRecord(record: record, storageUnit: .imperial)
+    }
+
+    private func recordIDs(from records: [FuelingHistoryRecord], searchText: String, sortOrder: HistorySortOrder)
+        -> [UUID]
+    {
+        let chronological = records.sorted(by: FuelingHistoryRecord.precedes)
+        var index = HistoryRecordsIndex(chronologicalRecords: chronological, displayUnit: .imperial)
+        return index.positions(searchText: searchText, sortOrder: sortOrder).map { chronological[$0].id }
     }
 
     func testSearchMatchesNotesCostAndOdometer() {
@@ -28,7 +37,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
         let records = [notes, cost, odometer]
 
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "ROAD",
                 sortOrder: .dateDescending
@@ -36,7 +45,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
             [notes.id]
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "12.50",
                 sortOrder: .dateDescending
@@ -44,7 +53,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
             [cost.id]
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "12345",
                 sortOrder: .dateDescending
@@ -60,19 +69,19 @@ final class HistoryRecordsQueryTests: XCTestCase {
         let records = [middleCheap, newestMedium, oldestExpensive]
 
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(from: records, searchText: "", sortOrder: .dateDescending),
+            recordIDs(from: records, searchText: "", sortOrder: .dateDescending),
             [newestMedium.id, middleCheap.id, oldestExpensive.id]
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(from: records, searchText: "", sortOrder: .dateAscending),
+            recordIDs(from: records, searchText: "", sortOrder: .dateAscending),
             [oldestExpensive.id, middleCheap.id, newestMedium.id]
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(from: records, searchText: "", sortOrder: .costHighest),
+            recordIDs(from: records, searchText: "", sortOrder: .costHighest),
             [oldestExpensive.id, newestMedium.id, middleCheap.id]
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(from: records, searchText: "", sortOrder: .costLowest),
+            recordIDs(from: records, searchText: "", sortOrder: .costLowest),
             [middleCheap.id, newestMedium.id, oldestExpensive.id]
         )
     }
@@ -87,7 +96,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
         let descending = [higherID.id, lowerID.id, lowerOdometer.id]
 
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "",
                 sortOrder: .dateAscending
@@ -95,7 +104,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
             ascending
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "",
                 sortOrder: .dateDescending
@@ -103,7 +112,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
             descending
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "",
                 sortOrder: .costLowest
@@ -111,7 +120,7 @@ final class HistoryRecordsQueryTests: XCTestCase {
             ascending
         )
         XCTAssertEqual(
-            HistoryRecordsQuery.recordIDs(
+            recordIDs(
                 from: records,
                 searchText: "",
                 sortOrder: .costHighest

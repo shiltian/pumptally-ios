@@ -157,13 +157,13 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                     try snapshot.control.map { try CloudSyncControl(record: $0, zone: zoneID) }
                     ?? CloudSyncControl.baseline(in: zoneID)
                 try control.requireReady(generation: control.generation)
+                let local = try await writer.transaction { try InitialSyncProposal.localState(in: $0.modelContext) }
                 stateManager.syncStatus = .idle
                 return InitialSyncProposal(
                     accountID: accountID, containerID: ObjectIdentifier(container),
-                    hasCloudData: !snapshot.businessRecords.isEmpty,
-                    localChanges: try await writer.transaction {
-                        try InitialSyncProposal.localChanges(in: $0.modelContext)
-                    }, cloudGeneration: control.generation)
+                    cloudRecordIDs: Set(snapshot.businessRecords.map(\.recordID)),
+                    localChanges: local.changes, deletionsToReview: local.deletionsToReview,
+                    cloudGeneration: control.generation)
             } catch {
                 stateManager.syncStatus = .error(error.localizedDescription)
                 throw error
@@ -202,6 +202,9 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                 let reconciler = InitialSyncReconciler(codec: recordCodec)
                 let plan: InitialSyncReconciler.Plan
                 if case .useCloud = strategy {
+                    guard proposal.hasCloudData,
+                        proposal.cloudRecordIDs.isSubset(of: Set(snapshot.businessRecords.map(\.recordID)))
+                    else { throw InitialSyncError.cloudDataChanged }
                     guard snapshot.otherRecords.isEmpty else { throw CloudRecoveryError.invalidControl }
                     plan = .useCloud(
                         snapshot,
@@ -301,26 +304,8 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
     // MARK: - Cloud Record Counts
 
     /// Fetch the number of vehicles and fueling records currently in CloudKit.
-    func fetchCloudRecordCounts() async -> (vehicles: Int, fuelingRecords: Int) {
-        await operationCoordinator.runExclusive {
-            do {
-                let (vehicles, fuelingRecords) = try await fetchAllCloudRecords()
-                return (vehicles.count, fuelingRecords.count)
-            } catch {
-                Self.logger.error("Failed to fetch cloud record counts: \(error)")
-                return (0, 0)
-            }
-        }
-    }
-
-    // MARK: - Fetch All Cloud Records Helper
-
-    /// Fetch all records from the custom zone using recordZoneChanges (change-token based).
-    /// This avoids CKQuery which requires fields to be marked queryable in the CloudKit dashboard.
-    /// Returns separate arrays for Vehicle and FuelingRecord CKRecords.
-    private func fetchAllCloudRecords() async throws -> (vehicles: [CKRecord], fuelingRecords: [CKRecord]) {
-        let snapshot = try await environment.snapshot()
-        return (snapshot.vehicles, snapshot.fuelingRecords)
+    func fetchCloudRecordCounts() async throws -> (vehicles: Int, fuelingRecords: Int) {
+        try await environment.recordCounts()
     }
 
     // MARK: - Monitoring Local Changes
@@ -374,7 +359,9 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
             return
         }
 
-        saveObserver = NotificationCenter.default.publisher(for: ModelContext.didSave)
+        saveObserver = ModelStoreChange.publisher(
+            in: writer.container, affecting: ["SyncChange", "PendingRemoteChange"]
+        )
             .map { [suppression = localPushSuspensionCount] _ in suppression.withLock { $0 > 0 } }
             .receive(on: RunLoop.main)
             .debounce(for: .seconds(Self.saveDebounceInterval), scheduler: RunLoop.main)
@@ -644,7 +631,18 @@ final class CloudSyncService: ObservableObject, SyncEngineReceiver {
                     apply(effects, to: driver)
                 }
             case .sentRecords(let sent):
-                try await verifyAccount(bound.accountID)
+                do {
+                    try await verifyAccount(bound.accountID)
+                } catch let error as CKError
+                    where CloudSyncControl.isRetriedByEngine(error.code)
+                    && CloudSyncControl.isRetryableFailureOnly(sent)
+                {
+                    // No acknowledgement or conflict data to apply while the
+                    // account lookup is temporarily unavailable.
+                    guard self.syncEngine === driver else { return }
+                    activity.failed(.send, error: error)
+                    break
+                }
                 guard self.syncEngine === driver else { return }
                 let outcome = try bound.control.outcome(of: sent)
                 bound.control = outcome.control

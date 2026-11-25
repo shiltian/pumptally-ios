@@ -79,6 +79,13 @@ struct PrecomputedChartData: Sendable {
             metricEfficiencyFormat: input.metricEfficiencyFormat)
     }
 
+    init(chronologicalInput input: ChartInput) {
+        self.init(
+            chronologicalRecords: input.records, unitSystem: input.unitSystem,
+            rawAverageEfficiency: input.rawAverageEfficiency,
+            metricEfficiencyFormat: input.metricEfficiencyFormat)
+    }
+
     /// Maximum number of individual point markers to display for performance.
     static let maxPointMarkers = 100
     /// Cap every rendered series to bound Swift Charts layout and drawing work.
@@ -90,12 +97,6 @@ struct PrecomputedChartData: Sendable {
         rawAverageEfficiency: Double,
         metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
     ) {
-        self.unitSystem = unitSystem
-        self.metricEfficiencyFormat = metricEfficiencyFormat
-
-        // Sort once, then gather all series and full-data summary statistics in
-        // one pass. Downsampling happens only after the accurate summaries are
-        // known, so averages and axis ranges retain their existing semantics.
         let sorted = records.sorted {
             OdometerChronologyValidator.areInIncreasingOrder(
                 lhsDate: $0.date,
@@ -106,14 +107,26 @@ struct PrecomputedChartData: Sendable {
                 rhsID: $1.id
             )
         }
-        self.showPoints = sorted.count <= Self.maxPointMarkers
+        self.init(
+            chronologicalRecords: sorted, unitSystem: unitSystem,
+            rawAverageEfficiency: rawAverageEfficiency, metricEfficiencyFormat: metricEfficiencyFormat)
+    }
 
+    private init(
+        chronologicalRecords records: [ChartRecordSnapshot], unitSystem: UnitSystem,
+        rawAverageEfficiency: Double, metricEfficiencyFormat: MetricEfficiencyFormat
+    ) {
+        self.unitSystem = unitSystem
+        self.metricEfficiencyFormat = metricEfficiencyFormat
+        self.showPoints = records.count <= Self.maxPointMarkers
+
+        // Downsample after gathering summaries over the complete series.
         var allEfficiencyData: [ChartDataPoint] = []
         var allCostData: [ChartDataPoint] = []
         var allPriceData: [ChartDataPoint] = []
-        allEfficiencyData.reserveCapacity(sorted.count)
-        allCostData.reserveCapacity(sorted.count)
-        allPriceData.reserveCapacity(sorted.count)
+        allEfficiencyData.reserveCapacity(records.count)
+        allCostData.reserveCapacity(records.count)
+        allPriceData.reserveCapacity(records.count)
 
         var efficiencyMinimum: Double?
         var efficiencyMaximum: Double?
@@ -124,7 +137,7 @@ struct PrecomputedChartData: Sendable {
         var priceMinimum: Double?
         var priceMaximum: Double?
 
-        for record in sorted {
+        for record in records {
             let cost = record.totalCost
             allCostData.append(ChartDataPoint(id: record.id, date: record.date, value: cost))
             costTotal += cost
@@ -168,8 +181,8 @@ struct PrecomputedChartData: Sendable {
                 metricFormat: metricEfficiencyFormat
             )
         }
-        costAverage = sorted.isEmpty ? 0 : costTotal / Double(sorted.count)
-        priceAverage = sorted.isEmpty ? 0 : priceTotal / Double(sorted.count)
+        costAverage = records.isEmpty ? 0 : costTotal / Double(records.count)
+        priceAverage = records.isEmpty ? 0 : priceTotal / Double(records.count)
 
         efficiencyYRange = Self.roundedRange(
             minimum: efficiencyMinimum,

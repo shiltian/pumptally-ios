@@ -33,6 +33,15 @@ final class CSVServiceTests: XCTestCase {
         )
     }
 
+    func testSuggestedFilenamesIdentifyBothStorageSystems() {
+        XCTAssertEqual(
+            CSVService.suggestedFilename(vehicleName: "Test Car", storageUnit: .imperial),
+            "Test_Car_fuel_records_mi_USgal")
+        XCTAssertEqual(
+            CSVService.suggestedFilename(vehicleName: "Test Car", storageUnit: .metric),
+            "Test_Car_fuel_records_km_L")
+    }
+
     func testExportEmptyRecordsContainsHeaderAndTrailingNewline() {
         XCTAssertEqual(
             CSVService.exportRecords([]),

@@ -102,18 +102,20 @@ struct FuelingRecordDraft: Sendable {
     private struct NumericInput: Sendable {
         let original: Double
         let scale: Int
-        let initialInput: Int
-        var input: Int
+        let initialInput: Int?
+        var input: Int?
 
-        init(value: Double, decimalPlaces: Int) {
-            original = value
+        init(value: Double?, decimalPlaces: Int) {
+            original = value ?? 0
             scale = decimalPlaces == 2 ? 100 : 1000
-            initialInput = Int(exactly: (value * Double(scale)).rounded()) ?? 0
+            let scale = Double(scale)
+            initialInput = value.map { Int(exactly: ($0 * scale).rounded()) ?? 0 }
             input = initialInput
         }
 
         var value: Double {
-            input == initialInput ? original : Double(input) / Double(scale)
+            guard let input else { return 0 }
+            return input == initialInput ? original : Double(input) / Double(scale)
         }
     }
 
@@ -146,7 +148,7 @@ struct FuelingRecordDraft: Sendable {
         notes = ""
         numericInputs = Dictionary(
             uniqueKeysWithValues: Field.allCases.map {
-                ($0, NumericInput(value: 0, decimalPlaces: $0.decimalPlaces))
+                ($0, NumericInput(value: nil, decimalPlaces: $0.decimalPlaces))
             })
     }
 
@@ -185,22 +187,26 @@ struct FuelingRecordDraft: Sendable {
     var totalCost: Double { value(for: .totalCost) }
 
     var isValid: Bool {
-        guard calculationIsValid, original != nil || editedFields.count == 2,
+        guard calculationIsValid, numericInputs.values.allSatisfy({ $0.input != nil }),
             let values = try? proposedValues()
         else { return false }
         return FuelingRecordValidation.isValid(values, preserving: original)
     }
 
-    func input(for field: Field) -> Int { numericInputs[field]!.input }
+    func input(for field: Field) -> Int? { numericInputs[field]!.input }
     func value(for field: Field) -> Double { numericInputs[field]!.value }
 
-    mutating func edit(_ field: Field, input: Int) {
+    mutating func edit(_ field: Field, input: Int?) {
         guard input != self.input(for: field) else { return }
         numericInputs[field]!.input = input
+        calculationIsValid = true
+        if input == nil, editedFields.contains(field), let calculatedField {
+            numericInputs[calculatedField]!.input = nil
+        }
         editedFields.removeAll { $0 == field }
+        guard input != nil else { return }
         editedFields.append(field)
         editedFields = Array(editedFields.suffix(2))
-        calculationIsValid = true
         calculateRemainingField()
     }
 
@@ -239,26 +245,34 @@ struct FuelingRecordDraft: Sendable {
         return try FuelingRecordUpdate(original: original, proposed: makeValues(), storageUnit: storageUnit)
     }
 
+    private var calculatedField: Field? {
+        guard editedFields.count == 2 else { return nil }
+        return Field.allCases.first { !editedFields.contains($0) }
+    }
+
     private mutating func calculateRemainingField() {
-        guard editedFields.count == 2,
-            let target = Field.allCases.first(where: { !editedFields.contains($0) }),
-            editedFields.allSatisfy({ value(for: $0) > 0 })
-        else { return }
+        guard let target = calculatedField else { return }
+        numericInputs[target]!.input = nil
 
         // Decimal arithmetic and a single rounding boundary avoid recursive
         // binding updates and repeated binary floating-point rounding.
         let operands = editedFields.compactMap {
             Decimal(string: String(value(for: $0)), locale: Locale(identifier: "en_US_POSIX"))
         }
-        guard operands.count == 2, operands.allSatisfy({ !$0.isNaN }) else {
+        guard operands.count == 2, operands.allSatisfy({ !$0.isNaN && $0 >= 0 }) else {
             calculationIsValid = false
             return
         }
         let numbers = Dictionary(uniqueKeysWithValues: zip(editedFields, operands))
         var calculated: Decimal
         switch target {
-        case .pricePerFuelUnit: calculated = numbers[.totalCost]! / numbers[.fuelAmount]!
-        case .fuelAmount: calculated = numbers[.totalCost]! / numbers[.pricePerFuelUnit]!
+        case .pricePerFuelUnit, .fuelAmount:
+            let divisor = numbers[target == .pricePerFuelUnit ? .fuelAmount : .pricePerFuelUnit]!
+            guard divisor > 0 else {
+                calculationIsValid = false
+                return
+            }
+            calculated = numbers[.totalCost]! / divisor
         case .totalCost: calculated = numbers[.pricePerFuelUnit]! * numbers[.fuelAmount]!
         }
         var rounded = Decimal()

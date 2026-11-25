@@ -153,12 +153,6 @@ struct SyncDatabase: Sendable {
         }
     }
 
-    func clearCloudMetadata(in context: ModelContext) throws {
-        for metadata in try context.fetch(FetchDescriptor<CloudRecordMetadata>()) {
-            context.delete(metadata)
-        }
-    }
-
     func applyInbox(in context: ModelContext) throws -> Effects {
         var effects = Effects()
         let inbox = try PendingRemoteInbox(in: context)

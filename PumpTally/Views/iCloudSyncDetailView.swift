@@ -12,9 +12,10 @@ struct iCloudSyncDetailView: View {
         vehicles.reduce(0) { $0 + $1.displayRecordCount }
     }
 
-    @State private var cloudVehicleCount: Int?
-    @State private var cloudRecordCount: Int?
+    @State private var cloudCounts: (vehicles: Int, fuelingRecords: Int)?
     @State private var isLoadingCloudCounts = false
+    @State private var countsUnavailable = false
+    @State private var refreshID = UUID()
 
     var body: some View {
         List {
@@ -29,14 +30,19 @@ struct iCloudSyncDetailView: View {
 
             // iCloud counts
             Section {
-                cloudCountRow(label: "Vehicles", cloudCount: cloudVehicleCount, localCount: vehicles.count)
-                cloudCountRow(label: "Fueling Records", cloudCount: cloudRecordCount, localCount: totalRecordCount)
+                cloudCountRow(label: "Vehicles", cloudCount: cloudCounts?.vehicles, localCount: vehicles.count)
+                cloudCountRow(
+                    label: "Fueling Records", cloudCount: cloudCounts?.fuelingRecords, localCount: totalRecordCount)
             } header: {
                 Text("iCloud Data")
                     .font(.appCaption)
             } footer: {
-                if let vc = cloudVehicleCount, let rc = cloudRecordCount,
-                   (vc != vehicles.count || rc != totalRecordCount) {
+                if countsUnavailable {
+                    Text("Unable to load iCloud counts.")
+                        .font(.appCaption)
+                } else if let cloudCounts,
+                    cloudCounts.vehicles != vehicles.count || cloudCounts.fuelingRecords != totalRecordCount
+                {
                     Text(
                         "Counts can differ while changes are pending."
                     )
@@ -48,7 +54,7 @@ struct iCloudSyncDetailView: View {
             // Actions
             Section {
                 Button {
-                    loadCloudCounts()
+                    refreshID = UUID()
                 } label: {
                     HStack {
                         Label("Refresh Counts", systemImage: "arrow.clockwise")
@@ -83,9 +89,7 @@ struct iCloudSyncDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("iCloud Sync Details")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            loadCloudCounts()
-        }
+        .task(id: refreshID) { await loadCloudCounts() }
     }
 
     @ViewBuilder
@@ -109,21 +113,20 @@ struct iCloudSyncDetailView: View {
         }
     }
 
-    private func loadCloudCounts() {
+    private func loadCloudCounts() async {
         isLoadingCloudCounts = true
-        cloudVehicleCount = nil
-        cloudRecordCount = nil
-        Task {
-            let counts = await cloudSyncService.fetchCloudRecordCounts()
-            await MainActor.run {
-                cloudVehicleCount = counts.vehicles
-                cloudRecordCount = counts.fuelingRecords
-                isLoadingCloudCounts = false
-            }
+        countsUnavailable = false
+        cloudCounts = nil
+        defer { if !Task.isCancelled { isLoadingCloudCounts = false } }
+        do {
+            let counts = try await cloudSyncService.fetchCloudRecordCounts()
+            try Task.checkCancellation()
+            cloudCounts = counts
+        } catch {
+            guard !Task.isCancelled else { return }
+            countsUnavailable = true
         }
     }
-
-
 }
 
 // MARK: - InfoRow

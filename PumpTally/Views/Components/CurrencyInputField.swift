@@ -7,13 +7,13 @@ import UIKit
 /// - Extra digits after decimal limit are ignored
 struct CurrencyInputField: View {
     @Environment(\.locale) private var locale
-    @Binding var value: Int  // Value in smallest units (cents for 2 decimals, mills for 3)
+    @Binding var value: Int?  // Value in smallest units, or nil for missing input.
     let decimalPlaces: Int
     let width: CGFloat
     let accessibilityIdentifier: String
 
     init(
-        value: Binding<Int>,
+        value: Binding<Int?>,
         decimalPlaces: Int = 2,
         width: CGFloat = 100,
         accessibilityIdentifier: String = ""
@@ -53,7 +53,7 @@ private func formatValue(_ value: Int, decimalPlaces: Int, locale: Locale) -> St
 
 // MARK: - UIViewRepresentable
 private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
-    @Binding var value: Int
+    @Binding var value: Int?
     let decimalPlaces: Int
     let locale: Locale
     let accessibilityIdentifier: String
@@ -95,8 +95,8 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
 
     class Coordinator: NSObject, UITextFieldDelegate {
         var parent: CurrencyTextFieldRepresentable
-        private(set) var lastValue: Int
-        private var initialValue: Int
+        private(set) var lastValue: Int?
+        private var initialValue: Int?
         private var isTextEditing = false
         private var multiplier: Int { intPow(10, parent.decimalPlaces) }
         private var separator: String { parent.locale.decimalSeparator ?? "." }
@@ -112,20 +112,32 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
             isTextEditing = false
             lastValue = parent.value
             initialValue = parent.value
-            textField.text = formatValue(parent.value, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+            if let value = parent.value {
+                textField.placeholder = nil
+                textField.text = formatValue(value, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+            } else {
+                textField.text = ""
+                textField.placeholder =
+                    textField.isFirstResponder
+                    ? nil
+                    : formatValue(0, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+            }
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
             isTextEditing = false
             initialValue = parent.value
-            // The initial zero is a display template, not text to append a
-            // pasted number to. Focusing it does not change the bound value.
-            if parent.value == 0 { textField.text = "" }
+            textField.placeholder = nil
         }
         func textFieldDidEndEditing(_ textField: UITextField) { refresh(textField) }
 
         @objc func textChanged(_ textField: UITextField) {
-            guard let value = parsedValue(textField.text ?? "") else {
+            let text = textField.text ?? ""
+            if isEmptyInput(text) {
+                publish(nil)
+                return
+            }
+            guard let value = parsedValue(text) else {
                 refresh(textField)
                 return
             }
@@ -150,41 +162,49 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
                 if let digit = string.first?.wholeNumberValue,
                     string.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) })
                 {
-                    let (shifted, overflow) = parent.value.multipliedReportingOverflow(by: 10)
+                    let (shifted, overflow) = (parent.value ?? 0).multipliedReportingOverflow(by: 10)
                     let (value, additionOverflow) = shifted.addingReportingOverflow(digit)
                     guard !overflow, !additionOverflow, value >= 0, value <= maximumValue else { return false }
                     apply(value, to: textField)
                     return false
                 }
                 if string == separator {
-                    let (value, overflow) = parent.value.multipliedReportingOverflow(by: multiplier)
+                    guard let current = parent.value else {
+                        isTextEditing = true
+                        return true
+                    }
+                    let (value, overflow) = current.multipliedReportingOverflow(by: multiplier)
                     guard !overflow, value >= 0, value <= maximumValue else { return false }
                     isTextEditing = true
-                    let integer = parent.value.formatted(.number.locale(parent.locale).grouping(.never))
+                    let integer = current.formatted(.number.locale(parent.locale).grouping(.never))
                     apply(value, text: integer + separator, to: textField)
                     return false
                 }
             }
             if !isTextEditing, deletesAtEnd {
-                apply(max(parent.value / 10, 0), to: textField)
+                let remaining = (parent.value ?? 0) / 10
+                apply(remaining > 0 ? remaining : nil, to: textField)
                 return false
             }
 
             let candidate = text.replacingCharacters(in: replacementRange, with: string)
-            guard parsedValue(candidate) != nil else { return false }
+            guard isEmptyInput(candidate) || parsedValue(candidate) != nil else { return false }
             isTextEditing = true
             // UIKit owns the replacement and selection, including cut/paste and
             // undo. editingChanged publishes the resulting value exactly once.
             return true
         }
 
+        private func isEmptyInput(_ text: String) -> Bool { text.isEmpty || text == separator }
+
         private func parsedValue(_ text: String) -> Int? {
             // Undo may restore an unchanged legacy value outside today's entry
             // limits. Its original text must still restore its exact value.
-            if text == formatValue(initialValue, decimalPlaces: parent.decimalPlaces, locale: parent.locale) {
+            if let initialValue,
+                text == formatValue(initialValue, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+            {
                 return initialValue
             }
-            if text.isEmpty || text == separator { return 0 }
             var allowed = CharacterSet.decimalDigits
             allowed.formUnion(CharacterSet(charactersIn: separator + (parent.locale.groupingSeparator ?? "")))
             guard text.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
@@ -198,13 +218,16 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
             return NSDecimalNumber(decimal: scaled).intValue
         }
 
-        private func publish(_ value: Int) {
+        private func publish(_ value: Int?) {
             lastValue = value
             if parent.value != value { parent.value = value }
         }
 
-        private func apply(_ value: Int, text: String? = nil, to textField: UITextField) {
-            textField.text = text ?? formatValue(value, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+        private func apply(_ value: Int?, text: String? = nil, to textField: UITextField) {
+            textField.text =
+                text ?? value.map {
+                    formatValue($0, decimalPlaces: parent.decimalPlaces, locale: parent.locale)
+                } ?? ""
             textField.selectedTextRange = textField.textRange(
                 from: textField.endOfDocument, to: textField.endOfDocument)
             publish(value)
@@ -217,9 +240,9 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
 #Preview {
     struct PreviewWrapper: View {
         @Environment(\.locale) private var locale
-        @State private var totalCost: Int = 0
-        @State private var gallons: Int = 0
-        @State private var price: Int = 0
+        @State private var totalCost: Int?
+        @State private var gallons: Int?
+        @State private var price: Int?
 
         var body: some View {
             Form {
@@ -228,8 +251,8 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
                         Text(locale.displayCurrencySymbol ?? "")
                         CurrencyInputField(value: $totalCost, decimalPlaces: 2)
                     }
-                    let cost = (Double(totalCost) / 100).currencyFormatted(locale: locale, fractionDigits: 2)
-                    Text("Raw: \(totalCost) cents = \(cost)")
+                    let cost = (Double(totalCost ?? 0) / 100).currencyFormatted(locale: locale, fractionDigits: 2)
+                    Text("Raw: \(totalCost ?? 0) cents = \(cost)")
                         .font(.caption)
                 }
 
@@ -238,7 +261,7 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
                         CurrencyInputField(value: $gallons, decimalPlaces: 3)
                         Text("gal")
                     }
-                    Text("Raw: \(gallons) mills")
+                    Text("Raw: \(gallons ?? 0) mills")
                         .font(.caption)
                 }
 
@@ -247,7 +270,7 @@ private struct CurrencyTextFieldRepresentable: UIViewRepresentable {
                         Text(locale.displayCurrencySymbol ?? "")
                         CurrencyInputField(value: $price, decimalPlaces: 3)
                     }
-                    Text("Raw: \(price) mills")
+                    Text("Raw: \(price ?? 0) mills")
                         .font(.caption)
                 }
 

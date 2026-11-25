@@ -16,77 +16,57 @@ enum HistorySortOrder: String, CaseIterable, Sendable {
     }
 }
 
-struct HistoryRecordSnapshot: Equatable, Sendable {
-    let id: UUID
-    let date: Date
-    let totalCost: Double
-    let odometer: Double
-    let notes: String?
-
-    init(id: UUID, date: Date, totalCost: Double, odometer: Double, notes: String?) {
-        self.id = id
-        self.date = date
-        self.totalCost = totalCost
-        self.odometer = odometer
-        self.notes = notes
-    }
-}
-
-enum HistoryRecordsQuery {
-    static func recordIDs(from records: [HistoryRecordSnapshot], searchText: String, sortOrder: HistorySortOrder)
-        -> [UUID]
-    {
-        HistoryRecordsIndex(records: records).recordIDs(searchText: searchText, sortOrder: sortOrder)
-    }
-}
-
-/// Sorting and numeric search strings are prepared once for a source revision.
-/// Keystrokes and subsequent pages do not read or format managed models.
+/// Date sorting reuses the source order. Cost sorting and search strings are
+/// built on first use and reused for the life of that source.
 struct HistoryRecordsIndex: Sendable {
-    private struct SearchRecord: Sendable {
-        let id: UUID
-        let notes: String?
+    private struct SearchNumbers: Sendable {
         let cost: String
         let odometer: String
     }
-    private let searchRecords: [SearchRecord]
-    private let chronological: [UUID]
-    private let costAscending: [UUID]
+    private let records: [FuelingHistoryRecord]
+    private let displayUnit: UnitSystem
+    private var searchNumbers: [SearchNumbers]?
+    private var costAscending: [Int]?
 
-    init(records: [HistoryRecordSnapshot]) {
-        searchRecords = records.map {
-            SearchRecord(
-                id: $0.id, notes: $0.notes, cost: String(format: "%.2f", $0.totalCost),
-                odometer: String(format: "%.0f", $0.odometer))
-        }
-        func precedes(_ lhs: HistoryRecordSnapshot, _ rhs: HistoryRecordSnapshot) -> Bool {
-            OdometerChronologyValidator.areInIncreasingOrder(
-                lhsDate: lhs.date, lhsOdometer: lhs.odometer, lhsID: lhs.id,
-                rhsDate: rhs.date, rhsOdometer: rhs.odometer, rhsID: rhs.id)
-        }
-        chronological = records.sorted(by: precedes).map(\.id)
-        costAscending = records.sorted {
-            if $0.totalCost != $1.totalCost { return $0.totalCost < $1.totalCost }
-            return precedes($0, $1)
-        }.map(\.id)
+    init(chronologicalRecords: [FuelingHistoryRecord], displayUnit: UnitSystem) {
+        records = chronologicalRecords
+        self.displayUnit = displayUnit
     }
 
-    func recordIDs(searchText: String, sortOrder: HistorySortOrder) -> [UUID] {
-        let ordered: [UUID]
+    mutating func positions(searchText: String, sortOrder: HistorySortOrder) -> [Int] {
+        let ordered: [Int]
         switch sortOrder {
-        case .dateAscending: ordered = chronological
-        case .dateDescending: ordered = Array(chronological.reversed())
-        case .costLowest: ordered = costAscending
-        case .costHighest: ordered = Array(costAscending.reversed())
+        case .dateAscending:
+            ordered = Array(records.indices)
+        case .dateDescending:
+            ordered = Array(records.indices.reversed())
+        case .costLowest, .costHighest:
+            let ascending =
+                costAscending
+                ?? records.indices.sorted {
+                    let left = records[$0].values.totalCost
+                    let right = records[$1].values.totalCost
+                    if left != right { return left < right }
+                    return $0 < $1
+                }
+            costAscending = ascending
+            ordered = sortOrder == .costLowest ? ascending : Array(ascending.reversed())
         }
         guard !searchText.isEmpty else { return ordered }
+        let numbers =
+            searchNumbers
+            ?? records.map { record in
+                SearchNumbers(
+                    cost: String(format: "%.2f", record.values.totalCost),
+                    odometer: String(
+                        format: "%.0f", displayUnit.distanceValue(record.values.odometer, from: record.storageUnit)))
+            }
+        searchNumbers = numbers
         let query = searchText.lowercased()
-        let matches = Set(
-            searchRecords.lazy.filter {
-                $0.notes?.localizedCaseInsensitiveContains(query) == true || $0.cost.contains(query)
-                    || $0.odometer.contains(query)
-            }.map(\.id))
-        return ordered.filter { matches.contains($0) }
+        return ordered.filter { position in
+            records[position].values.notes?.localizedCaseInsensitiveContains(query) == true
+                || numbers[position].cost.contains(query) || numbers[position].odometer.contains(query)
+        }
     }
 }
 
@@ -108,6 +88,12 @@ struct FuelingHistoryRecord: Identifiable, Equatable, Sendable {
         distanceDriven = record.getDistanceDriven()
         cachedEfficiency = record.cachedEfficiency
         hasIntervalCache = record.cachedPreviousOdometer != nil && record.cachedDistanceDriven != nil
+    }
+
+    static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
+        OdometerChronologyValidator.areInIncreasingOrder(
+            lhsDate: lhs.values.date, lhsOdometer: lhs.values.odometer, lhsID: lhs.id,
+            rhsDate: rhs.values.date, rhsOdometer: rhs.values.odometer, rhsID: rhs.id)
     }
 }
 

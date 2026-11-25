@@ -12,15 +12,56 @@ struct FuelingIntervalContext: Sendable {
         self.fillUpType = fillUpType
         self.isFirstRecord = isFirstRecord
     }
+}
 
-    @MainActor
-    init?(validation: OdometerChronologyValidation?, records: [FuelingRecord]) {
+/// The editor captures live history once when its query updates. Draft edits
+/// reuse the readings, and only chronology inputs can invalidate validation.
+@MainActor
+final class FuelingRecordEditorHistory {
+    private struct Input: Equatable {
+        let date: Date
+        let odometer: Double
+        let original: OdometerReadingSnapshot?
+    }
+
+    private let readings: [OdometerReadingSnapshot]
+    private let fillUpTypes: [UUID: FillUpType]
+    private let firstRecordID: UUID?
+    private var lastValidation: (input: Input, result: OdometerChronologyValidation)?
+
+    init(records: [FuelingRecord]) {
+        var readings: [OdometerReadingSnapshot] = []
+        var fillUpTypes: [UUID: FillUpType] = [:]
+        readings.reserveCapacity(records.count)
+        fillUpTypes.reserveCapacity(records.count)
+        for record in records {
+            let reading = OdometerReadingSnapshot(record: record)
+            readings.append(reading)
+            if fillUpTypes[reading.id] == nil { fillUpTypes[reading.id] = record.fillUpType }
+        }
+        self.readings = readings
+        self.fillUpTypes = fillUpTypes
+        firstRecordID = readings.min(by: OdometerChronologyValidator.areInIncreasingOrder)?.id
+    }
+
+    func validate(date: Date, odometer: Double?, original: OdometerReadingSnapshot? = nil)
+        -> OdometerChronologyValidation?
+    {
+        guard let odometer else { return nil }
+        let input = Input(date: date, odometer: odometer, original: original)
+        if let lastValidation, lastValidation.input == input { return lastValidation.result }
+        let result = OdometerChronologyValidator.validate(
+            date: date, odometer: odometer, records: readings, originalRecord: original)
+        lastValidation = (input, result)
+        return result
+    }
+
+    func interval(for validation: OdometerChronologyValidation?) -> FuelingIntervalContext? {
         guard let validation, validation.isValid, let predecessor = validation.neighbors.predecessor,
-            let previous = records.first(where: { $0.id == predecessor.id })
+            let fillUpType = fillUpTypes[predecessor.id]
         else { return nil }
-        self.init(
-            odometer: previous.odometer, fillUpType: previous.fillUpType,
-            isFirstRecord: records.min(by: OdometerChronologyValidator.areInIncreasingOrder)?.id == previous.id)
+        return FuelingIntervalContext(
+            odometer: predecessor.odometer, fillUpType: fillUpType, isFirstRecord: firstRecordID == predecessor.id)
     }
 }
 

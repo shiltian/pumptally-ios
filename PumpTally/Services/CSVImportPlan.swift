@@ -75,12 +75,20 @@ struct CSVImportPlan: Sendable {
                 odometer: target.distanceValue(row.odometer, from: sourceUnit),
                 pricePerFuelUnit: target.priceValue(row.pricePerFuelUnit, from: sourceUnit),
                 fuelAmount: target.fuelValue(row.fuelAmount, from: sourceUnit), totalCost: row.totalCost,
-                fillUpType: row.fillUpType, notes: row.notes)
+                fillUpType: row.fillUpType, notes: row.notes, legacyUTCDate: row.legacyUTCDate)
         }
-        var seen = Set(existing.map { DuplicateKey(values: $0.values) })
+        let existingKeys = Set(existing.map { DuplicateKey(values: $0.values) })
+        var seen: Set<DuplicateKey> = []
         var duplicates = Set<UUID>()
         for row in self.records {
-            if !seen.insert(DuplicateKey(values: row.values)).inserted { duplicates.insert(row.id) }
+            let values = row.values
+            let key = DuplicateKey(values: values)
+            let repeated = !seen.insert(key).inserted
+            let matchesLegacyDate =
+                row.legacyUTCDate.map {
+                    existingKeys.contains(DuplicateKey(values: values, date: $0))
+                } ?? false
+            if repeated || matchesLegacyDate || existingKeys.contains(key) { duplicates.insert(row.id) }
         }
         possibleDuplicateIDs = duplicates
         // Candidates are reviewed before attempting to insert them. Legacy
@@ -102,8 +110,8 @@ struct CSVImportPlan: Sendable {
         let fill: String
         let notes: String
 
-        init(values: FuelingRecordValues) {
-            second = values.date.timeIntervalSince1970.rounded(.down)
+        init(values: FuelingRecordValues, date: Date? = nil) {
+            second = (date ?? values.date).timeIntervalSince1970.rounded(.down)
             odometer = values.odometer
             price = values.pricePerFuelUnit
             fuel = values.fuelAmount

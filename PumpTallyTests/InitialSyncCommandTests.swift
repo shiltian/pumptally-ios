@@ -382,6 +382,37 @@ final class InitialSyncCommandTests: XCTestCase {
         XCTAssertFalse(fixture.state.iCloudSyncEnabled)
     }
 
+    func testUseCloudRequiresNewConfirmationWhenTheServerLosesAnOfferedRecord() async throws {
+        for keepVehicle in [true, false] {
+            let fixture = try fixture()
+            let store = SyncPersistenceStore(writer: fixture.writer)
+            let checkpoint = Data("previous checkpoint".utf8)
+            try await store.prepare(accountID: fixture.environment.userID)
+            try await store.saveEncodedState(checkpoint)
+            try await fixture.edit(notes: "Keep this local edit")
+            let generation = try fixture.context.fetch(FetchDescriptor<SyncChange>()).first?.generation
+            let proposal = try await fixture.service.prepareInitialSync()
+            XCTAssertTrue(proposal.hasCloudData)
+            fixture.environment.records.fuelingRecords = []
+            if !keepVehicle { fixture.environment.records.vehicles = [] }
+
+            do {
+                try await fixture.service.enableSync(strategy: .useCloud, proposal: proposal)
+                XCTFail("A cloud deletion must invalidate the replacement choice")
+            } catch InitialSyncError.cloudDataChanged {}
+
+            let record = try fixture.record(in: fixture.context)
+            XCTAssertEqual(record.notes, "Keep this local edit")
+            XCTAssertEqual(record.odometer.bitPattern, 1000.123456789.bitPattern)
+            XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<SyncChange>()).first?.generation, generation)
+            let savedCheckpoint = try await store.loadEncodedState()
+            XCTAssertEqual(savedCheckpoint, checkpoint)
+            XCTAssertEqual(fixture.commits.attempts, 0)
+            XCTAssertTrue(fixture.environment.drivers.isEmpty)
+            XCTAssertFalse(fixture.state.iCloudSyncEnabled)
+        }
+    }
+
     func testUseCloudRejectsLocalEditsMadeAfterConfirmationWasPrepared() async throws {
         let fixture = try fixture()
         let proposal = try await fixture.service.prepareInitialSync()
@@ -494,6 +525,54 @@ final class InitialSyncCommandTests: XCTestCase {
         let batch = await fixture.driver.batch()
         XCTAssertEqual(batch?.recordIDsToDelete.map(\.recordName), [fixture.recordID.uuidString])
         XCTAssertTrue(batch?.businessRecordsToSave.isEmpty == true)
+    }
+
+    func testMergeAfterDetachingKeepsCloudRecordUntilTheDeletionIsReviewed() async throws {
+        for apply in [false, true] {
+            let fixture = try fixture()
+            let initial = try await fixture.service.prepareInitialSync()
+            try await fixture.service.enableSync(strategy: .merge, proposal: initial)
+            try await fixture.service.disable(.keepLocalData)
+            try await FuelingRecordPersistenceService(writer: fixture.writer).delete(recordID: fixture.recordID)
+
+            let proposal = try await fixture.service.prepareInitialSync()
+            XCTAssertEqual(proposal.deletionsToReview, 1)
+            try await fixture.service.enableSync(strategy: .merge, proposal: proposal)
+            XCTAssertEqual(fixture.state.syncStatus, .reviewRequired)
+            XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<FuelingRecord>()), 1)
+            let pending = try XCTUnwrap(fixture.context.fetch(FetchDescriptor<SyncChange>()).first)
+            XCTAssertNil(pending.originRaw)
+            XCTAssertTrue(fixture.driver.pendingRecordZoneChanges.isEmpty)
+            XCTAssertEqual(fixture.environment.records.fuelingRecords.count, 1)
+
+            try await SyncReviewService.resolveLegacyDeletions(apply: apply, writer: fixture.writer)
+            fixture.driver.automaticDelivery = true
+            await fixture.service.pushPendingLocalChanges()
+            XCTAssertEqual(fixture.environment.records.fuelingRecords.count, apply ? 0 : 1)
+            XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<FuelingRecord>()), apply ? 0 : 1)
+            XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<SyncChange>()), 0)
+        }
+    }
+
+    func testMergeAfterDetachingRetainsPreviouslyConfirmedDeletion() async throws {
+        let fixture = try fixture()
+        let store = SyncPersistenceStore(writer: fixture.writer)
+        try await store.prepare(accountID: fixture.environment.userID)
+        try await store.detach()
+        let context = fixture.context
+        let record = try fixture.record(in: context)
+        try SyncChangeJournal.enqueue(record, operation: .delete, in: context)
+        let entry = try XCTUnwrap(context.fetch(FetchDescriptor<SyncChange>()).first)
+        entry.originRaw = "confirmed"
+        context.delete(record)
+        try context.save()
+
+        let proposal = try await fixture.service.prepareInitialSync()
+        XCTAssertEqual(proposal.deletionsToReview, 0)
+        try await fixture.service.enableSync(strategy: .merge, proposal: proposal)
+        let batch = await fixture.driver.batch()
+        XCTAssertEqual(batch?.recordIDsToDelete.map(\.recordName), [fixture.recordID.uuidString])
+        XCTAssertEqual(try fixture.context.fetch(FetchDescriptor<SyncChange>()).first?.originRaw, "confirmed")
     }
 
     func testConfirmedVehicleDeletionAlsoQueuesChildrenFirstDiscoveredDuringInitialMerge() async throws {

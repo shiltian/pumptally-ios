@@ -45,13 +45,16 @@ struct FuelingRecordPersistenceService: Sendable {
             let values = try update.merging(into: current)
             guard values != current else { return false }
             try FuelingRecordValidation.validate(values, preserving: current)
-            let readings = (record.vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
-            guard
-                OdometerChronologyValidator.validate(
-                    date: values.date, odometer: values.odometer, records: readings,
-                    originalRecord: OdometerReadingSnapshot(record: record)
-                ).isValid
-            else { throw FuelingRecordEditingError.invalidInput }
+            // The validator accepts an unchanged date and reading for legacy records.
+            if values.date != current.date || values.odometer != current.odometer {
+                let readings = (record.vehicle.fuelingRecords ?? []).map(OdometerReadingSnapshot.init(record:))
+                guard
+                    OdometerChronologyValidator.validate(
+                        date: values.date, odometer: values.odometer, records: readings,
+                        originalRecord: OdometerReadingSnapshot(record: record)
+                    ).isValid
+                else { throw FuelingRecordEditingError.invalidInput }
+            }
             func assign<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<FuelingRecord, Value>, _ value: Value) {
                 if record[keyPath: keyPath] != value { record[keyPath: keyPath] = value }
             }

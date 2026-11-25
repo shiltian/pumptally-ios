@@ -15,7 +15,7 @@ final class SyncRecoveryReadPerformanceTests: XCTestCase {
             let completed = expectation(description: "Assess a retained inbox off MainActor")
             Task {
                 do {
-                    let result = try await SyncRecoveryReader.read(container: container) {
+                    let result = try await ModelStoreReader.read(container: container) {
                         try SyncReviewService.assessment(in: $0.modelContext)
                     }
                     XCTAssertEqual(result.unitConfirmations.count, incomingCount)

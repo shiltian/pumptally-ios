@@ -50,8 +50,8 @@ struct VehicleHistoryFixture {
 
     func source() async throws -> VehicleHistorySource {
         let id = vehicleID
-        return try await VehicleHistoryReader.read(container: container) { reader in
-            try reader.read(vehicleID: id)
+        return try await ModelStoreReader.read(container: container) { reader in
+            try reader.readHistory(vehicleID: id)
         }
     }
 }
@@ -64,10 +64,10 @@ final class VehicleHistoryTests: XCTestCase {
         let fixture = try VehicleHistoryFixture(count: 800, unrelated: 3200)
         let responded = OSAllocatedUnfairLock(initialState: false)
         let id = fixture.vehicleID
-        let source = try await VehicleHistoryReader.read(container: fixture.container) { reader in
+        let source = try await ModelStoreReader.read(container: fixture.container) { reader in
             XCTAssertFalse(Thread.isMainThread)
             try observeOnMainActor { responded.withLock { $0 = true } }
-            let value = try reader.read(vehicleID: id)
+            let value = try reader.readHistory(vehicleID: id)
             XCTAssertFalse(reader.modelContext.hasChanges)
             return value
         }
@@ -107,6 +107,8 @@ final class VehicleHistoryTests: XCTestCase {
                 rhsDate: $0.value.date, rhsOdometer: $0.value.odometer, rhsID: $0.key)
         }.map(\.key)
         XCTAssertEqual(rows.map(\.id), expected)
+        XCTAssertEqual(data.latestRecord?.id, expected.first)
+        XCTAssertEqual(data.chartData.costData.map(\.id), Array(expected.reversed()))
         let searchResult = try await repository.page(
             version: data.version, query: .init(searchText: "RECORD 105", sortOrder: .costHighest), offset: 0)
         let searched = try XCTUnwrap(searchResult)
@@ -130,6 +132,9 @@ final class VehicleHistoryTests: XCTestCase {
             record.notes = "New searchable note"
         }
         let after = try await repository.refresh(revision: 1, format: .defaultFormat)
+        let repeated = try await repository.refresh(revision: 1, format: .defaultFormat)
+        XCTAssertEqual(repeated.version, after.version)
+        XCTAssertEqual(repeated.chartData.costData, after.chartData.costData)
         XCTAssertNotEqual(after.version, before.version)
         let stale = try await repository.page(version: before.version, query: query, offset: 0)
         XCTAssertNil(stale)

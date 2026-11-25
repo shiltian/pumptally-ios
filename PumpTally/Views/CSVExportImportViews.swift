@@ -35,6 +35,7 @@ struct ExportCSVView: View {
     let vehicle: Vehicle
     @Environment(\.dismiss) private var dismiss
     @State private var csvDocument: CSVDocument?
+    @State private var exportFileName: String?
     @State private var showingExporter = false
     @State private var showingSuccess = false
     @State private var isPreparingExport = false
@@ -44,8 +45,8 @@ struct ExportCSVView: View {
         category: "CSVExport"
     )
 
-    private var defaultFileName: String {
-        "\(vehicle.displayName.replacingOccurrences(of: " ", with: "_"))_fuel_records"
+    private var exportUnits: LocalizedStringKey {
+        vehicle.unitSystem == .imperial ? "Miles and US Gallons" : "Kilometers and Liters"
     }
 
     var body: some View {
@@ -59,9 +60,13 @@ struct ExportCSVView: View {
                     .font(.appTitle)
                     .fontWeight(.bold)
 
-                Text("Export \(vehicle.displayRecordCount) records as a CSV file")
-                    .font(.appBody)
-                    .foregroundColor(.secondary)
+                VStack(spacing: 8) {
+                    Text("Export \(vehicle.displayRecordCount) records as a CSV file")
+                        .font(.appBody)
+                    Text(exportUnits)
+                        .font(.appSubheadline)
+                }
+                .foregroundColor(.secondary)
 
                 Button(action: prepareExport) {
                     if isPreparingExport {
@@ -95,7 +100,7 @@ struct ExportCSVView: View {
                 isPresented: $showingExporter,
                 document: csvDocument,
                 contentType: .commaSeparatedText,
-                defaultFilename: defaultFileName
+                defaultFilename: exportFileName
             ) { result in
                 switch result {
                 case .success:
@@ -114,6 +119,7 @@ struct ExportCSVView: View {
 
     private func prepareExport() {
         isPreparingExport = true
+        exportFileName = CSVService.suggestedFilename(vehicleName: vehicle.displayName, storageUnit: vehicle.unitSystem)
         let snapshots = (vehicle.fuelingRecords ?? []).map(CSVService.RecordSnapshot.init(record:))
 
         Task {

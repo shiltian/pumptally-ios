@@ -51,8 +51,7 @@ enum OdometerChronologyValidator {
         records: [OdometerReadingSnapshot],
         excludingRecordID: UUID? = nil
     ) -> OdometerChronologyNeighbors {
-        let candidates = records.filter { $0.id != excludingRecordID }
-
+        let candidates = records.lazy.filter { $0.id != excludingRecordID }
         let predecessor = candidates
             .filter {
                 $0.date < candidateDate

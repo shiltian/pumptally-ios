@@ -49,7 +49,7 @@ final class SyncRecoveryReadTests: XCTestCase {
     func testAssessmentIsReadOnlyOffMainAndFetchesOnlyRelevantHistory() async throws {
         let fixture = try RecoveryReadFixture(localCount: 800, incomingCount: 1, unrelated: 3200)
         let responded = OSAllocatedUnfairLock(initialState: false)
-        let assessment = try await SyncRecoveryReader.read(container: fixture.history.container) { reader in
+        let assessment = try await ModelStoreReader.read(container: fixture.history.container) { reader in
             XCTAssertFalse(Thread.isMainThread)
             try observeOnMainActor { responded.withLock { $0 = true } }
             let value = try SyncReviewService.assessment(in: reader.modelContext)
@@ -78,7 +78,7 @@ final class SyncRecoveryReadTests: XCTestCase {
 
     func testLargeMixedEnvelopeQueueIsDecodedOnceAndUnrelatedRowsStayUnloaded() async throws {
         let fixture = try RecoveryReadFixture(localCount: 400, incomingCount: 300, unrelated: 800)
-        let assessment = try await SyncRecoveryReader.read(container: fixture.history.container) {
+        let assessment = try await ModelStoreReader.read(container: fixture.history.container) {
             try SyncReviewService.assessment(in: $0.modelContext)
         }
         XCTAssertEqual(assessment.unitConfirmations.count, 300)

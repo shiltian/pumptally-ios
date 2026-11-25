@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Maintains the existing materialized statistics in the caller's transaction.
 /// Interval caches record their predecessor and distance. A chronological pass
@@ -46,13 +47,7 @@ final class StatisticsCacheService {
     }
 
     private static func update(_ vehicle: Vehicle, rebuilding: Bool) -> Update {
-        // Project each managed object once; sorting and reductions then use
-        // immutable values rather than repeated SwiftData property faults.
-        let records = (vehicle.fuelingRecords ?? []).map(Row.init).sorted {
-            OdometerChronologyValidator.areInIncreasingOrder(
-                lhsDate: $0.date, lhsOdometer: $0.odometer, lhsID: $0.id,
-                rhsDate: $1.date, rhsOdometer: $1.odometer, rhsID: $1.id)
-        }
+        let records = orderedRows(for: vehicle)
         var result = Update()
         var totals = Totals()
         for (index, record) in records.enumerated() {
@@ -75,6 +70,28 @@ final class StatisticsCacheService {
         return result
     }
 
+    private static func orderedRows(for vehicle: Vehicle) -> [Row] {
+        let ownerID = vehicle.persistentModelID
+        if let context = vehicle.modelContext, ownerID.storeIdentifier != nil {
+            // Fetch the records directly to avoid faults for each relationship
+            // member. The caller's context includes its staged changes.
+            let query = FetchDescriptor<FuelingRecord>(
+                predicate: #Predicate { $0.vehicleRelationship?.persistentModelID == ownerID },
+                sortBy: [SortDescriptor(\.date), SortDescriptor(\.odometer), SortDescriptor(\.id)])
+            if let fetched = try? context.fetch(query) {
+                let rows = fetched.map(Row.init)
+                // Verify the order of the projected values, including pending
+                // edits, before reducing floating-point totals.
+                if zip(rows, rows.dropFirst()).contains(where: { Row.precedes($1, $0) }) {
+                    return rows.sorted(by: Row.precedes)
+                }
+                return rows
+            }
+        }
+        // New and unattached owners are still represented by their staged graph.
+        return (vehicle.fuelingRecords ?? []).map(Row.init).sorted(by: Row.precedes)
+    }
+
     /// Models stay inside this synchronous, context-owned pass. Only Update
     /// (IDs and counters) can escape. Sorting never dereferences the model.
     private struct Row {
@@ -87,6 +104,12 @@ final class StatisticsCacheService {
         let totalCost: Double
         let fillUpType: FillUpType
         let cache: CachedInterval
+
+        static func precedes(_ lhs: Row, _ rhs: Row) -> Bool {
+            OdometerChronologyValidator.areInIncreasingOrder(
+                lhsDate: lhs.date, lhsOdometer: lhs.odometer, lhsID: lhs.id,
+                rhsDate: rhs.date, rhsOdometer: rhs.odometer, rhsID: rhs.id)
+        }
 
         init(_ record: FuelingRecord) {
             model = record

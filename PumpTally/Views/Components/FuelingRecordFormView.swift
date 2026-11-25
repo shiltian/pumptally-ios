@@ -40,7 +40,7 @@ struct FuelingRecordFormView: View {
 
     typealias EditableField = FuelingRecordDraft.Field
 
-    private func numericBinding(_ field: EditableField) -> Binding<Int> {
+    private func numericBinding(_ field: EditableField) -> Binding<Int?> {
         Binding(get: { draft.input(for: field) }, set: { draft.edit(field, input: $0) })
     }
 

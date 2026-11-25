@@ -349,11 +349,20 @@ final class FuelingRecordUITests: XCTestCase {
         let add = app.buttons["fueling.add"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
+        let odometer = app.textFields["fueling.odometer"]
+        XCTAssertTrue(odometer.waitForExistence(timeout: 5))
+        odometer.tap()
+        odometer.typeText("1600")
+        let fuel = app.textFields["fueling.fuel"]
+        fuel.tap()
+        fuel.typeText("10000")
         let price = app.textFields["fueling.price"]
         XCTAssertTrue(price.waitForExistence(timeout: 5))
         price.tap()
         price.typeText("12345")
         XCTAssertEqual(price.value as? String, "12.345")
+        XCTAssertTrue(app.buttons["Save"].isEnabled)
+        XCTAssertEqual(app.textFields["fueling.cost"].value as? String, "123.45")
         let text = price.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
         let selectAll = app.menuItems["Select All"]
         text.tap()
@@ -362,9 +371,12 @@ final class FuelingRecordUITests: XCTestCase {
         selectAll.tap()
         price.typeText(XCUIKeyboardKey.delete.rawValue)
         XCTAssertEqual(price.value as? String, "")
+        XCTAssertFalse(app.buttons["Save"].isEnabled)
         price.typeText("2.47")
         app.buttons["Done"].tap()
         XCTAssertEqual(price.value as? String, "2.470")
+        XCTAssertEqual(app.textFields["fueling.cost"].value as? String, "24.70")
+        XCTAssertTrue(app.buttons["Save"].isEnabled)
     }
 
     func testSpanishRecoveryReviewIsLocalized() {

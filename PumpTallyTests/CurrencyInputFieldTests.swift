@@ -16,12 +16,12 @@ final class CurrencyInputFieldTests: XCTestCase {
     }
 
     private final class Input {
-        var value: Int
+        var value: Int?
         var writes = 0
 
-        init(_ value: Int) { self.value = value }
+        init(_ value: Int?) { self.value = value }
 
-        var binding: Binding<Int> {
+        var binding: Binding<Int?> {
             Binding(
                 get: { self.value },
                 set: {
@@ -32,7 +32,7 @@ final class CurrencyInputFieldTests: XCTestCase {
     }
 
     private func withField(
-        value: Int = 0, decimalPlaces: Int = 2, locale: Locale = Locale(identifier: "en_US"),
+        value: Int? = nil, decimalPlaces: Int = 2, locale: Locale = Locale(identifier: "en_US"),
         _ body: (UITextField, Input) throws -> Void
     ) throws {
         let input = Input(value)
@@ -69,7 +69,22 @@ final class CurrencyInputFieldTests: XCTestCase {
     func testSelectAllDeleteClearsTheWholeValue() throws {
         try withField(value: 12345) { field, input in
             replace(field, range: NSRange(location: 0, length: field.text!.utf16.count), with: "")
+            XCTAssertNil(input.value)
+            field.delegate?.textFieldDidEndEditing?(field)
+            XCTAssertEqual(field.text, "")
+            XCTAssertEqual(field.placeholder, "0.00")
+        }
+    }
+
+    func testTypingZeroIsAnExplicitValueAndDeletingItClearsTheInput() throws {
+        try withField { field, input in
+            XCTAssertNil(input.value)
+            replace(field, range: NSRange(location: 0, length: 0), with: "0")
             XCTAssertEqual(input.value, 0)
+            let lastDigit = NSRange(location: field.text!.utf16.count - 1, length: 1)
+            replace(field, range: lastDigit, with: "", selected: false)
+            XCTAssertNil(input.value)
+            XCTAssertEqual(field.text, "")
         }
     }
 
@@ -229,7 +244,7 @@ final class CurrencyInputFieldTests: XCTestCase {
             XCTAssertEqual(input.value, 1234)
             field.selectAll(nil)
             field.deleteBackward()
-            XCTAssertEqual(input.value, 0)
+            XCTAssertNil(input.value)
         }
     }
 

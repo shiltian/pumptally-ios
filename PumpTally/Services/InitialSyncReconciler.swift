@@ -27,7 +27,15 @@ struct InitialSyncReconciler: Sendable {
         guard snapshot.otherRecords.isEmpty else {
             throw CloudSyncAdapterError.unsupportedRecordType(snapshot.otherRecords[0].recordType)
         }
-        let deletions = try context.fetch(FetchDescriptor<SyncChange>()).filter { $0.operationRaw == "delete" }
+        let deletions = try context.fetch(
+            FetchDescriptor<SyncChange>(predicate: #Predicate { $0.operationRaw == "delete" }))
+        if !deletions.isEmpty, try SyncPersistenceStore.isDetached(in: context) {
+            // Older versions also journaled detached deletes as local. Only a
+            // previously explicit confirmation proves consent to send them.
+            for change in deletions where SyncChangeJournal.needsDeletionReview(change, detached: true) {
+                if change.originRaw != nil { change.originRaw = nil }
+            }
+        }
         let deletedNames = Set(deletions.map(\.recordName))
         let result = try CloudReconciliationService(codec: codec).stageInitialMerge(
             vehicleCKRecords: snapshot.vehicles, fuelingCKRecords: snapshot.fuelingRecords, context: context)
@@ -93,19 +101,6 @@ struct InitialSyncReconciler: Sendable {
             try SyncChangeJournal.enqueue(
                 recordName: record.recordID.recordName, recordType: type, operation: .save, in: context)
         }
-    }
-
-    func uploadSnapshot(in context: ModelContext) throws -> [CKRecord] {
-        var records: [CKRecord] = []
-        for vehicle in try context.fetch(FetchDescriptor<Vehicle>()) {
-            let parent = codec.vehicleToCKRecord(vehicle)
-            records.append(parent)
-            for child in vehicle.fuelingRecords ?? [] {
-                records.append(codec.fuelingRecordToCKRecord(child, vehicleRecordID: parent.recordID))
-            }
-        }
-        for record in records { try codec.validateOutgoing(record) }
-        return records
     }
 
     private func applyConfirmedDeletions(_ deletions: [SyncChange], in context: ModelContext) throws -> Set<UUID> {

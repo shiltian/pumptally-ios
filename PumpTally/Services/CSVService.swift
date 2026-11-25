@@ -5,6 +5,12 @@ enum CSVService {
     static let csvHeader =
         "date,odometer,pricePerFuelUnit,fuelAmount,totalCost,fillUpType,notes"
 
+    static func suggestedFilename(vehicleName: String, storageUnit: UnitSystem) -> String {
+        let name = vehicleName.replacingOccurrences(of: " ", with: "_")
+        let fuelUnit = storageUnit == .imperial ? "USgal" : storageUnit.fuelUnit
+        return "\(name)_fuel_records_\(storageUnit.distanceUnit)_\(fuelUnit)"
+    }
+
     struct RecordSnapshot: Sendable {
         let id: UUID
         let date: Date

@@ -3,28 +3,18 @@ import Foundation
 import SwiftData
 import os
 
-/// Each reload has a fresh, read-only context on SwiftData's serial executor.
-/// Enumerating releases managed batches; only value snapshots leave this actor.
-actor VehicleHistoryReader: ModelActor {
-    nonisolated let modelContainer: ModelContainer
-    nonisolated let modelExecutor: any ModelExecutor
-
-    private init(container: ModelContainer) {
-        let context = ModelContext(container)
-        context.autosaveEnabled = false
-        modelContainer = container
-        modelExecutor = DefaultSerialModelExecutor(modelContext: context)
-    }
-
+/// History and recovery reads use fresh contexts on SwiftData's native executor.
+@ModelActor
+actor ModelStoreReader {
     /// Keep the whole read on a detached worker, including native executor
     /// shortcuts that can otherwise execute synchronous work on the caller.
     static func read<Result: Sendable>(
         container: ModelContainer,
-        _ operation: @escaping @Sendable (isolated VehicleHistoryReader) throws -> Result
+        _ operation: @escaping @Sendable (isolated ModelStoreReader) throws -> Result
     ) async throws -> Result {
         try Task.checkCancellation()
         let task = Task.detached(priority: .userInitiated) {
-            let reader = VehicleHistoryReader(container: container)
+            let reader = ModelStoreReader(modelContainer: container)
             return try await reader.perform(operation)
         }
         return try await withTaskCancellationHandler {
@@ -35,12 +25,16 @@ actor VehicleHistoryReader: ModelActor {
     }
 
     private func perform<Result: Sendable>(
-        _ operation: @Sendable (isolated VehicleHistoryReader) throws -> Result
-    ) rethrows -> Result { try operation(self) }
-
-    func read(vehicleID: UUID) throws -> VehicleHistorySource {
-        try Task.checkCancellation()
+        _ operation: @Sendable (isolated ModelStoreReader) throws -> Result
+    ) rethrows -> Result {
         modelContext.autosaveEnabled = false
+        return try operation(self)
+    }
+}
+
+extension ModelStoreReader {
+    func readHistory(vehicleID: UUID) throws -> VehicleHistorySource {
+        try Task.checkCancellation()
         var ownerQuery = FetchDescriptor<Vehicle>(predicate: #Predicate { $0.id == vehicleID })
         ownerQuery.fetchLimit = 1
         guard let vehicle = try modelContext.fetch(ownerQuery).first else {
@@ -52,7 +46,7 @@ actor VehicleHistoryReader: ModelActor {
         var records: [FuelingHistoryRecord] = []
         let query = FetchDescriptor<FuelingRecord>(
             predicate: #Predicate { $0.vehicleRelationship?.id == vehicleID },
-            sortBy: [SortDescriptor(\.date), SortDescriptor(\.odometer)])
+            sortBy: [SortDescriptor(\.date), SortDescriptor(\.odometer), SortDescriptor(\.id)])
         try modelContext.enumerate(query, batchSize: 256) { record in
             try Task.checkCancellation()
             records.append(FuelingHistoryRecord(record: record, storageUnit: storageUnit))
@@ -72,14 +66,13 @@ actor VehicleHistoryRepository {
     private var version = UUID()
     private var activeRead = UUID()
     private var source: VehicleHistorySource?
-    private var recordsByID: [UUID: FuelingHistoryRecord] = [:]
-    private var index: HistoryRecordsIndex?
+    private var index = HistoryRecordsIndex(chronologicalRecords: [], displayUnit: .imperial)
     private var latest: FuelingHistoryRecord?
     private var latestEfficiency = 0.0
     private var chartInput: ChartInput?
-    private var chartData: PrecomputedChartData?
+    private var presentation: VehicleHistoryPresentation?
     private var lastQuery: Query?
-    private var matchingIDs: [UUID] = []
+    private var matchingPositions: [Int] = []
     private(set) var sourceLoads = 0
     private(set) var chartPreparations = 0
     private(set) var queryEvaluations = 0
@@ -93,8 +86,8 @@ actor VehicleHistoryRepository {
 
     init(container: ModelContainer, vehicleID: UUID) {
         load = {
-            try await VehicleHistoryReader.read(container: container) { reader in
-                try reader.read(vehicleID: vehicleID)
+            try await ModelStoreReader.read(container: container) { reader in
+                try reader.readHistory(vehicleID: vehicleID)
             }
         }
     }
@@ -102,56 +95,53 @@ actor VehicleHistoryRepository {
     func refresh(revision: UInt64, saveGeneration: UInt64 = 0, format: MetricEfficiencyFormat) async throws
         -> VehicleHistoryPresentation
     {
+        try Task.checkCancellation()
         if sourceRevision != revision || sourceSaveGeneration != saveGeneration {
             let attempt = UUID()
             activeRead = attempt
             let loaded = try await load()
             try Task.checkCancellation()
             guard activeRead == attempt else { throw CancellationError() }
-            var indexed: [UUID: FuelingHistoryRecord] = [:]
-            for record in loaded.records {
-                guard indexed.updateValue(record, forKey: record.id) == nil else {
-                    throw CocoaError(.fileReadCorruptFile)
-                }
+            guard Set(loaded.records.lazy.map(\.id)).count == loaded.records.count else {
+                throw CocoaError(.fileReadCorruptFile)
             }
-            let preparedIndex = HistoryRecordsIndex(
-                records: loaded.records.map {
-                    HistoryRecordSnapshot(
-                        id: $0.id, date: $0.values.date, totalCost: $0.values.totalCost,
-                        odometer: loaded.displayUnit.distanceValue($0.values.odometer, from: $0.storageUnit),
-                        notes: $0.values.notes)
-                })
+            var ordered = loaded.records
+            if zip(ordered, ordered.dropFirst()).contains(where: { FuelingHistoryRecord.precedes($1, $0) }) {
+                ordered.sort(by: FuelingHistoryRecord.precedes)
+            }
             try Task.checkCancellation()
             sourceLoads += 1
-            source = loaded
+            source = VehicleHistorySource(
+                records: ordered, displayUnit: loaded.displayUnit, averageEfficiency: loaded.averageEfficiency)
             sourceRevision = revision
             sourceSaveGeneration = saveGeneration
             version = UUID()
-            recordsByID = indexed
-            index = preparedIndex
-            let ids = preparedIndex.recordIDs(searchText: "", sortOrder: .dateAscending)
-            latest = ids.last.flatMap { recordsByID[$0] }
+            index = HistoryRecordsIndex(chronologicalRecords: ordered, displayUnit: loaded.displayUnit)
+            latest = ordered.last
             latestEfficiency = latest?.cachedEfficiency ?? 0
             // Preserve the last-card fallback for legacy incomplete caches,
             // using the already ordered values rather than a relationship scan.
             if let latest, latest.cachedEfficiency == nil, !latest.hasIntervalCache,
-                ids.count > 1, let previous = recordsByID[ids[ids.count - 2]]
+                ordered.count > 1
             {
+                let previous = ordered[ordered.count - 2]
                 latestEfficiency =
                     FuelEfficiencyPolicy.rawEfficiency(
                         distanceDriven: latest.values.odometer - previous.values.odometer,
                         fuelAmount: latest.values.fuelAmount, currentFillUpType: latest.values.fillUpType,
-                        previousFillUpType: previous.values.fillUpType, previousIsFirstRecord: ids.count == 2) ?? 0
+                        previousFillUpType: previous.values.fillUpType, previousIsFirstRecord: ordered.count == 2) ?? 0
             }
             lastQuery = nil
-            matchingIDs = []
+            matchingPositions = []
+        } else if let presentation, presentation.chartData.metricEfficiencyFormat == format {
+            return presentation
         }
         guard let source else { throw FuelingRecordEditingError.recordUnavailable }
         let input = ChartInput(
             records: source.records.map { record in
                 ChartRecordSnapshot(
                     id: record.id, date: record.values.date,
-                    odometer: source.displayUnit.distanceValue(record.values.odometer, from: record.storageUnit),
+                    odometer: record.values.odometer,
                     cachedEfficiency: record.cachedEfficiency.map {
                         source.displayUnit.efficiencyValue($0, from: record.storageUnit)
                     }, totalCost: record.values.totalCost,
@@ -159,27 +149,32 @@ actor VehicleHistoryRepository {
                         record.values.pricePerFuelUnit, from: record.storageUnit))
             }, unitSystem: source.displayUnit, rawAverageEfficiency: source.averageEfficiency,
             metricEfficiencyFormat: format)
-        if input != chartInput {
-            chartData = PrecomputedChartData(input: input)
+        let chartData: PrecomputedChartData
+        if let presentation, input == chartInput {
+            chartData = presentation.chartData
+        } else {
+            chartData = PrecomputedChartData(chronologicalInput: input)
             chartInput = input
             chartPreparations += 1
         }
-        return VehicleHistoryPresentation(
-            version: version, recordCount: recordsByID.count, latestRecord: latest,
-            latestEfficiency: latestEfficiency, chartData: chartData!)
+        let refreshed = VehicleHistoryPresentation(
+            version: version, recordCount: source.records.count, latestRecord: latest,
+            latestEfficiency: latestEfficiency, chartData: chartData)
+        presentation = refreshed
+        return refreshed
     }
 
     func page(version: UUID, query: Query, offset: Int) throws -> VehicleHistoryPage? {
         try Task.checkCancellation()
-        guard version == self.version, let index, offset >= 0 else { return nil }
+        guard version == self.version, let source, offset >= 0 else { return nil }
         if query != lastQuery {
-            matchingIDs = index.recordIDs(searchText: query.searchText, sortOrder: query.sortOrder)
+            matchingPositions = index.positions(searchText: query.searchText, sortOrder: query.sortOrder)
             lastQuery = query
             queryEvaluations += 1
         }
         return VehicleHistoryPage(
-            records: matchingIDs.dropFirst(offset).prefix(VehicleHistoryPage.size).compactMap { recordsByID[$0] },
-            totalCount: matchingIDs.count)
+            records: matchingPositions.dropFirst(offset).prefix(VehicleHistoryPage.size).map { source.records[$0] },
+            totalCount: matchingPositions.count)
     }
 }
 
@@ -200,9 +195,7 @@ final class VehicleHistoryModel: ObservableObject {
 
     init(container: ModelContainer, vehicleID: UUID, repository: VehicleHistoryRepository? = nil) {
         self.repository = repository ?? VehicleHistoryRepository(container: container, vehicleID: vehicleID)
-        saveObserver = NotificationCenter.default.publisher(for: ModelContext.didSave)
-            .merge(with: NotificationCenter.default.publisher(for: ModelStoreChange.didCommit))
-            .filter { Self.isRelevant($0, container: container) }
+        saveObserver = ModelStoreChange.publisher(in: container, affecting: ["Vehicle", "FuelingRecord"])
             .map { [generation = saveGeneration] _ in generation.withLock { $0 &+= 1 } }
             .receive(on: RunLoop.main)
             .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
@@ -224,8 +217,10 @@ final class VehicleHistoryModel: ObservableObject {
                 saveGeneration.withLock({ $0 }) == generation
             else { return }
             presentationGeneration = generation
-            presentation = result
-            failed = false
+            if presentation?.version != result.version || presentation?.chartData.metricEfficiencyFormat != format {
+                presentation = result
+            }
+            if failed { failed = false }
         } catch is CancellationError {
             return
         } catch {
@@ -246,41 +241,5 @@ final class VehicleHistoryModel: ObservableObject {
             presentationGeneration == saveGeneration.withLock({ $0 })
         else { return nil }
         return page
-    }
-
-    /// Inspect the saving context only on its posting executor, and forward a
-    /// value signal to MainActor. Journal/checkpoint saves do not reload views.
-    nonisolated private static func isRelevant(_ notification: Notification, container: ModelContainer) -> Bool {
-        if let entities = ModelStoreChange.entities(in: notification, container: container) {
-            return !entities.isDisjoint(with: ["Vehicle", "FuelingRecord"])
-        }
-        guard let context = notification.object as? ModelContext, context.container === container else { return false }
-        let invalidationKey = ModelContext.NotificationKey.invalidatedAllIdentifiers
-        if let invalidated = notification.userInfo?[invalidationKey.rawValue] ?? notification.userInfo?[invalidationKey]
-        {
-            if let all = invalidated as? Bool {
-                if all { return true }
-            } else if let ids = invalidated as? [PersistentIdentifier] {
-                if !ids.isEmpty { return true }
-            } else {
-                return true
-            }
-        }
-        var recognized = false
-        for key in [ModelContext.NotificationKey.insertedIdentifiers, .updatedIdentifiers, .deletedIdentifiers] {
-            guard let value = notification.userInfo?[key.rawValue] ?? notification.userInfo?[key] else { continue }
-            let ids: [PersistentIdentifier]
-            if let array = value as? [PersistentIdentifier] {
-                ids = array
-            } else if let set = value as? Set<PersistentIdentifier> {
-                ids = Array(set)
-            } else {
-                return true
-            }
-            recognized = true
-            if ids.contains(where: { $0.entityName == "Vehicle" || $0.entityName == "FuelingRecord" }) { return true }
-        }
-        // Older runtimes may omit identifier details. Refresh conservatively.
-        return !recognized
     }
 }

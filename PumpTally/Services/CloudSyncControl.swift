@@ -70,14 +70,6 @@ struct CloudSyncControl: Sendable {
         return try Self(record: record, zone: zone)
     }
 
-    func changing(generation: String, phase: Phase) throws -> Self {
-        let copy = record.copy() as! CKRecord
-        copy["generation"] = generation
-        copy["phase"] = phase.rawValue
-        copy["transaction"] = UUID().uuidString
-        return try Self(record: copy, zone: record.recordID.zoneID)
-    }
-
     func batchRecord() -> CKRecord {
         let copy = record.copy() as! CKRecord
         copy["transaction"] = UUID().uuidString
@@ -136,23 +128,46 @@ struct CloudSyncControl: Sendable {
                 // A business conflict rejects the guard along with its peers.
                 // Resolve the root error below; retain the observed guard.
                 guard !businessSaves.isEmpty || !sent.failedDeletes.isEmpty else { throw failure.error }
+            case let code where Self.isRetriedByEngine(code):
+                break
             default: throw failure.error
             }
         }
-        let conflicted = sent.failedSaves.contains { $0.error.code == .serverRecordChanged }
+        let retriesRoot =
+            sent.failedSaves.contains {
+                $0.error.code == .serverRecordChanged || Self.isRetriedByEngine($0.error.code)
+            } || sent.failedDeletes.values.contains { Self.isRetriedByEngine($0.code) }
         let retrySaves = sent.failedSaves.filter {
-            $0.record.recordID != id && conflicted && $0.error.code == .batchRequestFailed
+            $0.record.recordID != id && retriesRoot && $0.error.code == .batchRequestFailed
         }
-        let retryDeletes = sent.failedDeletes.filter { conflicted && $0.value.code == .batchRequestFailed }
+        let retryDeletes = sent.failedDeletes.filter { retriesRoot && $0.value.code == .batchRequestFailed }
         return SendOutcome(
             control: next,
             business: SyncEngineSentChanges(
                 savedRecords: sent.savedRecords.filter { $0.recordID != id },
                 deletedRecordIDs: sent.deletedRecordIDs,
                 failedSaves: sent.failedSaves.filter {
-                    $0.record.recordID != id && !(conflicted && $0.error.code == .batchRequestFailed)
+                    $0.record.recordID != id && !(retriesRoot && $0.error.code == .batchRequestFailed)
                 },
-                failedDeletes: sent.failedDeletes.filter { !(conflicted && $0.value.code == .batchRequestFailed) }),
+                failedDeletes: sent.failedDeletes.filter { !(retriesRoot && $0.value.code == .batchRequestFailed) }),
             retryIDs: Set(retrySaves.map { $0.record.recordID }).union(retryDeletes.keys))
+    }
+
+    /// These failures are delivered for visibility while CKSyncEngine waits to retry.
+    static func isRetriedByEngine(_ code: CKError.Code) -> Bool {
+        switch code {
+        case .notAuthenticated, .accountTemporarilyUnavailable, .networkFailure, .networkUnavailable,
+            .requestRateLimited, .serviceUnavailable, .zoneBusy:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func isRetryableFailureOnly(_ sent: SyncEngineSentChanges) -> Bool {
+        guard sent.savedRecords.isEmpty, sent.deletedRecordIDs.isEmpty else { return false }
+        let codes = sent.failedSaves.map(\.error.code) + sent.failedDeletes.values.map(\.code)
+        return codes.contains(where: isRetriedByEngine)
+            && codes.allSatisfy { isRetriedByEngine($0) || $0 == .batchRequestFailed }
     }
 }

@@ -106,6 +106,11 @@ enum SyncChangeJournal {
         case delete
     }
 
+    static func needsDeletionReview(_ change: SyncChange, detached: Bool) -> Bool {
+        change.operationRaw == Operation.delete.rawValue
+            && (change.originRaw == nil || (detached && change.originRaw == "local"))
+    }
+
     static func enqueue(
         recordName: String,
         recordType: RecordType,

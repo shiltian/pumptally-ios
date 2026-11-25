@@ -23,7 +23,7 @@ struct FuelingRecordEditSelection: Identifiable, Sendable {
 struct EditRecordView: View {
     let selection: FuelingRecordEditSelection
     let vehicle: Vehicle
-    let records: [FuelingRecord]
+    let history: FuelingRecordEditorHistory
 
     @State private var isSaving = false
     @EnvironmentObject private var writer: OwnedModelStore
@@ -42,9 +42,9 @@ struct EditRecordView: View {
 
     @FocusState private var focusedField: FuelingRecordFormView.EditableField?
 
-    init(selection: FuelingRecordEditSelection, vehicle: Vehicle, records: [FuelingRecord]) {
+    init(selection: FuelingRecordEditSelection, vehicle: Vehicle, history: FuelingRecordEditorHistory) {
         self.selection = selection
-        self.records = records
+        self.history = history
         self.vehicle = vehicle
         _metricEfficiencyFormatRaw = AppStorage(
             wrappedValue: MetricEfficiencyFormat.defaultFormat.rawValue,
@@ -57,12 +57,10 @@ struct EditRecordView: View {
     }
 
     private var chronologyValidation: OdometerChronologyValidation? {
-        guard let current = draft.storageOdometer else { return nil }
-        return OdometerChronologyValidator.validate(
+        history.validate(
             date: draft.date,
-            odometer: current,
-            records: records.map(OdometerReadingSnapshot.init(record:)),
-            originalRecord: OdometerReadingSnapshot(
+            odometer: draft.storageOdometer,
+            original: OdometerReadingSnapshot(
                 id: selection.id, date: selection.values.date, odometer: selection.values.odometer)
         )
     }
@@ -151,7 +149,10 @@ struct EditRecordView: View {
         vehicle: vehicle
     )
 
-    return EditRecordView(selection: FuelingRecordEditSelection(record: record), vehicle: vehicle, records: [record])
+    return EditRecordView(
+        selection: FuelingRecordEditSelection(record: record), vehicle: vehicle,
+        history: FuelingRecordEditorHistory(records: [record])
+    )
         .modelContainer(container)
         .environmentObject(writer)
 }

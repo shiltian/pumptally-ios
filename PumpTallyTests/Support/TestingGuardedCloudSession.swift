@@ -1,6 +1,6 @@
 import CloudKit
 
-/// One explicit guarded publication through the same native SDK adapter as
+/// One explicit guarded test or probe publication through the same native adapter as
 /// ordinary sync. Its source is immutable; restart recomputes work from server
 /// state. Failed guards are never refreshed here to retry obsolete deletions.
 @MainActor
@@ -102,5 +102,15 @@ final class GuardedCloudSession: SyncEngineReceiver {
             default: break
             }
         } catch { failure = error }
+    }
+}
+
+extension CloudSyncControl {
+    func changing(generation: String, phase: Phase) throws -> Self {
+        let copy = record.copy() as! CKRecord
+        copy["generation"] = generation
+        copy["phase"] = phase.rawValue
+        copy["transaction"] = UUID().uuidString
+        return try Self(record: copy, zone: record.recordID.zoneID)
     }
 }

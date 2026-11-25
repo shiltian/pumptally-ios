@@ -189,10 +189,14 @@ final class SyncPersistenceStore {
 
     var isDetached: Bool {
         get async throws {
-            try await transaction {
-                try $0.modelContext.fetch(FetchDescriptor<SyncCheckpoint>()).first?.detached == true
-            }
+            try await transaction { try Self.isDetached(in: $0.modelContext) }
         }
+    }
+
+    nonisolated static func isDetached(in context: ModelContext) throws -> Bool {
+        var descriptor = FetchDescriptor<SyncCheckpoint>()
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first?.detached == true
     }
 
     /// Preferences may not have been written when the process stopped after

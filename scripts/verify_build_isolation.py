@@ -19,6 +19,8 @@ for configuration in sys.argv[2:] or ("Debug", "Release"):
         assert ("TestingAppBootstrap.swift" in sources) == isolated, f"Incorrect test composition: {configuration}"
         assert ("TestingCloudSyncEnvironment.swift" in sources) == isolated, f"Incorrect transport: {configuration}"
         assert ("TestingRecoveryScenario.swift" in sources) == isolated, f"Incorrect recovery fixture composition: {configuration}"
+        for publication in ("TestingCloudRecoveryCoordinator.swift", "TestingGuardedCloudSession.swift"):
+            assert (publication in sources) == isolated, f"Incorrect replacement publication composition: {configuration}"
     app = derived / "Build/Products" / f"{configuration}-iphonesimulator/PumpTally.app"
     with (app / "Info.plist").open("rb") as source:
         expected_bundle = "me.tianshilei.fuelio.benchmark" if isolated else "me.tianshilei.fuelio"

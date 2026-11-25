@@ -111,10 +111,55 @@ actor ModelStoreActor {
 enum ModelStoreChange {
     static let didCommit = Notification.Name("PumpTally.ModelStore.didCommit")
 
-    static func entities(in notification: Notification, container: ModelContainer) -> Set<String>? {
+    static func publisher(in container: ModelContainer, affecting entities: Set<String>) -> AnyPublisher<Void, Never> {
+        NotificationCenter.default.publisher(for: ModelContext.didSave)
+            .merge(with: NotificationCenter.default.publisher(for: didCommit, object: container))
+            .filter { affects(entities, in: $0, container: container) }
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+
+    private static func entities(in notification: Notification, container: ModelContainer) -> Set<String>? {
         guard notification.name == didCommit, let source = notification.object as? ModelContainer,
             source === container
         else { return nil }
         return notification.userInfo?["entities"] as? Set<String>
+    }
+
+    /// Inspect a native notification on the posting executor. Subscribers can
+    /// forward the resulting value signal without moving a managed context.
+    private static func affects(_ entities: Set<String>, in notification: Notification, container: ModelContainer)
+        -> Bool
+    {
+        if let changed = Self.entities(in: notification, container: container) {
+            return !changed.isDisjoint(with: entities)
+        }
+        guard let context = notification.object as? ModelContext, context.container === container else { return false }
+        let invalidationKey = ModelContext.NotificationKey.invalidatedAllIdentifiers
+        if let value = notification.userInfo?[invalidationKey.rawValue] ?? notification.userInfo?[invalidationKey] {
+            if let all = value as? Bool {
+                if all { return true }
+            } else if let ids = value as? [PersistentIdentifier] {
+                if !ids.isEmpty { return true }
+            } else {
+                return true
+            }
+        }
+        var recognized = false
+        for key in [ModelContext.NotificationKey.insertedIdentifiers, .updatedIdentifiers, .deletedIdentifiers] {
+            guard let value = notification.userInfo?[key.rawValue] ?? notification.userInfo?[key] else { continue }
+            let ids: [PersistentIdentifier]
+            if let array = value as? [PersistentIdentifier] {
+                ids = array
+            } else if let set = value as? Set<PersistentIdentifier> {
+                ids = Array(set)
+            } else {
+                return true
+            }
+            recognized = true
+            if ids.contains(where: { entities.contains($0.entityName) }) { return true }
+        }
+        // Refresh conservatively when native notifications omit model details.
+        return !recognized
     }
 }

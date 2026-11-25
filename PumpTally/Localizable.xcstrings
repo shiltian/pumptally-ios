@@ -423,21 +423,39 @@
         }
       }
     },
-    "An older app left %lld deletion request(s). Confirm whether these should remove data from iCloud." : {
+    "You have %lld saved deletion request(s). Confirm whether these should remove data from iCloud." : {
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "You have %lld saved deletion request. Confirm whether it should remove data from iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "You have %lld saved deletion requests. Confirm whether these should remove data from iCloud."
+                }
+              }
+            }
+          }
+        },
         "es" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Una versión anterior dejó %lld solicitud de eliminación. Confirma si quieres eliminar los datos correspondientes de iCloud."
+                  "value" : "Tienes %lld solicitud de eliminación guardada. Confirma si quieres eliminar los datos correspondientes de iCloud."
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Una versión anterior dejó %lld solicitudes de eliminación. Confirma si quieres eliminar los datos correspondientes de iCloud."
+                  "value" : "Tienes %lld solicitudes de eliminación guardadas. Confirma si quieres eliminar los datos correspondientes de iCloud."
                 }
               }
             }
@@ -449,7 +467,7 @@
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "旧版本应用留下了 %lld 条删除请求。请确认是否要删除 iCloud 中的相应数据。"
+                  "value" : "你有 %lld 条删除请求待确认。请选择是否要删除 iCloud 中的相应数据。"
                 }
               }
             }
@@ -2028,6 +2046,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud错误"
+          }
+        }
+      }
+    },
+    "iCloud data changed while choosing a sync source. Review the latest data and try again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos de iCloud cambiaron mientras elegías el origen de sincronización. Revisa los datos más recientes e inténtalo de nuevo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择同步来源期间，iCloud 数据发生了变化。请检查最新数据后重试。"
           }
         }
       }
@@ -4744,6 +4778,68 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 CSV 使用的单位"
+          }
+        }
+      }
+    },
+    "Using the iCloud copy replaces the local copy on this device. If you merge both copies, review %lld saved deletion requests before sending them to iCloud." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Using the iCloud copy replaces the local copy on this device. If you merge both copies, review %lld saved deletion request before sending it to iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Using the iCloud copy replaces the local copy on this device. If you merge both copies, review %lld saved deletion requests before sending them to iCloud."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Usar la copia de iCloud reemplaza la copia local en este dispositivo. Si combinas las copias, revisa %lld solicitud de eliminación antes de enviarla a iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Usar la copia de iCloud reemplaza la copia local en este dispositivo. Si combinas las copias, revisa %lld solicitudes de eliminación antes de enviarlas a iCloud."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 iCloud 副本会替换此设备上的本地副本。如果合并两个副本，请先检查 %lld 条已保存的删除请求，再将它们发送到 iCloud。"
+          }
+        }
+      }
+    },
+    "Unable to load iCloud counts." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cargar los recuentos de iCloud."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载 iCloud 中的记录数。"
           }
         }
       }

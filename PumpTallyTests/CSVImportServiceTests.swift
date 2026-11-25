@@ -44,6 +44,58 @@ final class CSVImportServiceTests: XCTestCase {
         XCTAssertEqual(records.map(\.fillUpType), [.full, .partial])
     }
 
+    func testDateOnlyRowsUseLocalMidnightInBothSupportedFormats() throws {
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let records = try CSVImportService.parse(
+            validCSV(
+                rows: """
+                    2025-01-15,100,3,10,30
+                    07/15/2025,200,3,10,30
+                    """), dateOnlyTimeZone: timeZone)
+
+        let iso = ISO8601DateFormatter()
+        XCTAssertEqual(records.first?.date, iso.date(from: "2025-01-15T05:00:00Z"))
+        XCTAssertEqual(records.last?.date, iso.date(from: "2025-07-15T04:00:00Z"))
+    }
+
+    func testISODateOffsetsTakePrecedenceOverDateOnlyTimeZone() throws {
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let records = try CSVImportService.parse(
+            validCSV(
+                rows: """
+                    2025-01-15T00:00:00+02:00,100,3,10,30
+                    2025-01-14T22:00:00Z,200,3,10,30
+                    """), dateOnlyTimeZone: timeZone)
+
+        XCTAssertEqual(records.first?.date, records.last?.date)
+        XCTAssertTrue(records.allSatisfy { $0.legacyUTCDate == nil })
+    }
+
+    func testDateOnlyReimportRecognizesARecordSavedByTheUTCImporter() async throws {
+        let context = try makeContext()
+        let vehicle = Vehicle(name: "Legacy Import")
+        context.insert(vehicle)
+        let originalDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2025-01-15T00:00:00Z"))
+        let original = FuelingRecord(
+            date: originalDate, odometer: 1000, pricePerFuelUnit: 3, fuelAmount: 10, totalCost: 30, vehicle: vehicle)
+        context.insert(original)
+        try context.save()
+
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let records = try CSVImportService.parse(
+            validCSV(rows: "2025-01-15,1000,3,10,30"), dateOnlyTimeZone: timeZone)
+        let row = try XCTUnwrap(records.first)
+        XCTAssertNotEqual(row.date, originalDate)
+
+        let service = FuelingRecordPersistenceService(writer: OwnedModelStore(container: context.container))
+        let plan = try await service.prepareImport(records, vehicleID: vehicle.id, sourceUnit: .imperial)
+        XCTAssertEqual(plan.possibleDuplicateIDs, [row.id])
+        let insertedIDs = try await service.importRecords(plan: plan, duplicates: .skipPossibleDuplicates)
+        XCTAssertTrue(insertedIDs.isEmpty)
+        let unchanged = try XCTUnwrap(ModelContext(context.container).fetch(FetchDescriptor<FuelingRecord>()).first)
+        XCTAssertEqual(unchanged.date, originalDate)
+    }
+
     func testParseRejectsEntireFileWhenOneRowIsMalformed() {
         let csv = validCSV(
             rows: """

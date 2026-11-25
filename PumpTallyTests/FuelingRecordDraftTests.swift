@@ -98,18 +98,48 @@ final class FuelingRecordDraftTests: XCTestCase {
     }
 
     func testExplicitZeroPriceAndCostUseTheSamePolicyAsPersistence() throws {
+        for freeField in [FuelingRecordDraft.Field.pricePerFuelUnit, .totalCost] {
+            var draft = FuelingRecordDraft()
+            draft.odometerString = "1000"
+            draft.edit(freeField, input: 0)
+            XCTAssertFalse(draft.isValid)
+            draft.edit(.fuelAmount, input: 10_000)
+            let saved = try draft.makeValues()
+            XCTAssertEqual(saved.fuelAmount, 10)
+            XCTAssertEqual(saved.pricePerFuelUnit, 0)
+            XCTAssertEqual(saved.totalCost, 0)
+            XCTAssertNoThrow(try FuelingRecordValidation.validate(saved))
+        }
+    }
+
+    func testClearingACalculationSourceDiscardsTheStaleResultAndBlocksSave() throws {
+        for original in [nil, values()] {
+            var draft = original.map { FuelingRecordDraft(values: $0) } ?? FuelingRecordDraft()
+            draft.odometerString = "1000"
+            draft.edit(.pricePerFuelUnit, input: 4000)
+            draft.edit(.fuelAmount, input: 10_000)
+            XCTAssertEqual(try draft.makeValues().totalCost, 40)
+
+            draft.edit(.pricePerFuelUnit, input: nil)
+            XCTAssertNil(draft.input(for: .pricePerFuelUnit))
+            XCTAssertNil(draft.input(for: .totalCost))
+            XCTAssertFalse(draft.isValid)
+            XCTAssertThrowsError(try draft.makeValues())
+
+            draft.edit(.pricePerFuelUnit, input: 0)
+            let saved = try draft.makeValues()
+            XCTAssertEqual(saved.pricePerFuelUnit, 0)
+            XCTAssertEqual(saved.totalCost, 0)
+        }
+    }
+
+    func testZeroPriceAndTotalCostCannotDetermineFuelAmount() {
         var draft = FuelingRecordDraft()
         draft.odometerString = "1000"
-        draft.edit(.pricePerFuelUnit, input: 3500)
-        draft.edit(.fuelAmount, input: 10_000)
         draft.edit(.pricePerFuelUnit, input: 0)
         draft.edit(.totalCost, input: 0)
-        XCTAssertTrue(draft.isValid)
-        let saved = try draft.makeValues()
-        XCTAssertEqual(saved.fuelAmount, 10)
-        XCTAssertEqual(saved.pricePerFuelUnit, 0)
-        XCTAssertEqual(saved.totalCost, 0)
-        XCTAssertNoThrow(try FuelingRecordValidation.validate(saved))
+        XCTAssertNil(draft.input(for: .fuelAmount))
+        XCTAssertFalse(draft.isValid)
     }
 
     func testBusinessPolicyRejectsNewInvalidAndNonfiniteMeasurements() {
@@ -173,7 +203,7 @@ final class FuelingRecordDraftTests: XCTestCase {
     func testReturningToOriginalDisplayedValuePreservesOriginalPrecision() throws {
         let original = values()
         var draft = FuelingRecordDraft(values: original)
-        let initialInput = draft.input(for: .fuelAmount)
+        let initialInput = try XCTUnwrap(draft.input(for: .fuelAmount))
         draft.edit(.fuelAmount, input: initialInput + 1)
         draft.edit(.fuelAmount, input: initialInput)
         XCTAssertTrue(try draft.makeUpdate().isEmpty)
