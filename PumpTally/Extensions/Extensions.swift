@@ -68,20 +68,6 @@ extension LinearGradient {
         endPoint: .bottomTrailing
     )
 
-    /// Efficiency chart area gradient (purple fade)
-    static let efficiencyChartFill = LinearGradient(
-        colors: [.purple.opacity(0.3), .purple.opacity(0.05)],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    /// Price chart area gradient (green fade)
-    static let priceChartFill = LinearGradient(
-        colors: [.green.opacity(0.3), .green.opacity(0.05)],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
     /// Efficiency icon gradient (purple → indigo)
     static let efficiencyIcon = LinearGradient(
         colors: [.purple, .indigo],

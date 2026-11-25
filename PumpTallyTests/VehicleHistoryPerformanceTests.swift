@@ -22,7 +22,8 @@ final class VehicleHistoryPerformanceTests: XCTestCase {
                         query: .init(searchText: "", sortOrder: .dateDescending), offset: 0)
                     XCTAssertEqual(page?.records.count, 50)
                     XCTAssertEqual(page?.totalCount, count)
-                    XCTAssertLessThanOrEqual(data.chartData.costData.count, 200)
+                    XCTAssertEqual(data.chartData.fillUps.count, count)
+                    XCTAssertLessThan(data.chartData.months.count, count / 20)
                 } catch { XCTFail("\(error)") }
                 completed.fulfill()
             }

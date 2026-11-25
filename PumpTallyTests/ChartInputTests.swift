@@ -50,11 +50,11 @@ final class ChartInputTests: XCTestCase {
         XCTAssertEqual(vehicle.cacheLastUpdated, timestamp)
         XCTAssertEqual(vehicle.cachedAveragePricePerFuelUnit, 4)
         XCTAssertNotEqual(after, before)
-        XCTAssertEqual(PrecomputedChartData(input: before).priceData.map(\.value), [3, 4, 5])
-        XCTAssertEqual(PrecomputedChartData(input: after).priceData.map(\.value), [4, 3, 5])
+        XCTAssertEqual(PrecomputedChartData(input: before).fillUps.map(\.price), [3, 4, 5])
+        XCTAssertEqual(PrecomputedChartData(input: after).fillUps.map(\.price), [4, 3, 5])
         XCTAssertEqual(
-            PrecomputedChartData(input: before).priceAverage,
-            PrecomputedChartData(input: after).priceAverage)
+            PrecomputedChartData(input: before).period(for: .all)?.summary.price?.average,
+            PrecomputedChartData(input: after).period(for: .all)?.summary.price?.average)
     }
 
     func testCostSwapChangesSeriesEvenWithUnchangedTotalAndAverage() throws {
@@ -65,9 +65,9 @@ final class ChartInputTests: XCTestCase {
         let after = ChartInput(vehicle: vehicle, records: records)
         XCTAssertNotEqual(after, before)
         XCTAssertEqual(
-            PrecomputedChartData(input: before).costAverage,
-            PrecomputedChartData(input: after).costAverage)
-        XCTAssertEqual(PrecomputedChartData(input: after).costData.map(\.value), [40, 30, 50])
+            PrecomputedChartData(input: before).period(for: .all)?.summary.cost?.average,
+            PrecomputedChartData(input: after).period(for: .all)?.summary.cost?.average)
+        XCTAssertEqual(PrecomputedChartData(input: after).fillUps.map(\.cost), [40, 30, 50])
     }
 
     func testDisplayUnitsAndEfficiencyFormatChangeInputsWithoutChangingStoredMeasurements() throws {
@@ -160,7 +160,7 @@ final class ChartInputTests: XCTestCase {
             }, object: nil)
         await fulfillment(of: [updated], timeout: 5)
         let input = try XCTUnwrap(observer.input)
-        XCTAssertEqual(PrecomputedChartData(input: input).priceData.map(\.value), [4, 3, 5])
+        XCTAssertEqual(PrecomputedChartData(input: input).fillUps.map(\.price), [4, 3, 5])
         XCTAssertEqual(vehicle.cacheLastUpdated, timestamp)
     }
 }
@@ -174,7 +174,7 @@ private extension ChartRecordSnapshot {
             id: record.id, date: record.date,
             odometer: units.distanceValue(record.odometer, from: storage),
             cachedEfficiency: record.cachedEfficiency.map { units.efficiencyValue($0, from: storage) },
-            totalCost: record.totalCost,
+            fuelAmount: record.fuelAmount, totalCost: record.totalCost,
             pricePerFuelUnit: units.priceValue(record.pricePerFuelUnit, from: storage))
     }
 }

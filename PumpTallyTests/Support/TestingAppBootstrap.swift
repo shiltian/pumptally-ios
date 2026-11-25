@@ -105,6 +105,18 @@ enum AppBootstrap {
                         vehicle: vehicle))
             }
         }
+        if arguments.contains("--ui-testing-chart-history") {
+            record.date = Date(timeIntervalSince1970: 1_577_880_000)  // Jan 1, 2020, noon UTC
+            for index in 1..<800 {
+                let price = index == 799 ? 4.25 : 2.75 + Double(index / 100) * 0.19 + sin(Double(index) / 17) * 0.38
+                let fuel = 10.25 + sin(Double(index) / 27) * 1.6
+                context.insert(
+                    FuelingRecord(
+                        date: record.date.addingTimeInterval(Double(index) * 172_800),
+                        odometer: record.odometer + Double(index) * 300, pricePerFuelUnit: price,
+                        fuelAmount: fuel, totalCost: price * fuel, vehicle: vehicle))
+            }
+        }
         if arguments.contains("--ui-testing-legacy-record") || arguments.contains("--ui-testing-malformed-record") {
             let codec = CloudRecordCodec(zoneID: CKRecordZone.ID(zoneName: "FuelioZone"))
             let incoming = codec.fuelingRecordToCKRecord(

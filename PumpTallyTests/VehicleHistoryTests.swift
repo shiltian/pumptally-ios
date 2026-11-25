@@ -108,7 +108,7 @@ final class VehicleHistoryTests: XCTestCase {
         }.map(\.key)
         XCTAssertEqual(rows.map(\.id), expected)
         XCTAssertEqual(data.latestRecord?.id, expected.first)
-        XCTAssertEqual(data.chartData.costData.map(\.id), Array(expected.reversed()))
+        XCTAssertEqual(data.chartData.fillUps.map(\.id), Array(expected.reversed()))
         let searchResult = try await repository.page(
             version: data.version, query: .init(searchText: "RECORD 105", sortOrder: .costHighest), offset: 0)
         let searched = try XCTUnwrap(searchResult)
@@ -134,7 +134,7 @@ final class VehicleHistoryTests: XCTestCase {
         let after = try await repository.refresh(revision: 1, format: .defaultFormat)
         let repeated = try await repository.refresh(revision: 1, format: .defaultFormat)
         XCTAssertEqual(repeated.version, after.version)
-        XCTAssertEqual(repeated.chartData.costData, after.chartData.costData)
+        XCTAssertEqual(repeated.chartData.fillUps, after.chartData.fillUps)
         XCTAssertNotEqual(after.version, before.version)
         let stale = try await repository.page(version: before.version, query: query, offset: 0)
         XCTAssertNil(stale)
@@ -147,7 +147,7 @@ final class VehicleHistoryTests: XCTestCase {
         _ = try await repository.refresh(revision: 1, format: MetricEfficiencyFormat.allCases.last!)
         let loads = await repository.sourceLoads
         XCTAssertEqual(loads, 2)
-        XCTAssertEqual(before.chartData.priceData, after.chartData.priceData)
+        XCTAssertEqual(before.chartData.fillUps, after.chartData.fillUps)
     }
 
     func testNativeSaveNotificationsRefreshRemotePriceSwapWithoutCacheTimestampChanges() async throws {
@@ -179,9 +179,11 @@ final class VehicleHistoryTests: XCTestCase {
         let after = try XCTUnwrap(model.presentation)
         let reader = ModelContext(fixture.container)
         XCTAssertEqual(try reader.fetch(FetchDescriptor<Vehicle>()).first?.cacheLastUpdated, timestamp)
-        XCTAssertNotEqual(after.chartData.priceData, before.chartData.priceData)
-        XCTAssertEqual(after.chartData.priceAverage, before.chartData.priceAverage)
-        let prices = Dictionary(uniqueKeysWithValues: after.chartData.priceData.map { ($0.id, $0.value) })
+        XCTAssertNotEqual(after.chartData.fillUps, before.chartData.fillUps)
+        XCTAssertEqual(
+            after.chartData.period(for: .all)?.summary.price?.average,
+            before.chartData.period(for: .all)?.summary.price?.average)
+        let prices = Dictionary(uniqueKeysWithValues: after.chartData.fillUps.map { ($0.id, $0.price) })
         XCTAssertEqual(prices[records[0].id], 4)
         XCTAssertEqual(prices[records[1].id], 3)
     }
@@ -244,8 +246,10 @@ final class VehicleHistoryTests: XCTestCase {
         let metric = try await repository.refresh(revision: 1, format: .defaultFormat)
         XCTAssertEqual(metric.chartData.unitSystem, .metric)
         XCTAssertEqual(
-            metric.chartData.priceAverage,
-            UnitSystem.metric.priceValue(imperial.chartData.priceAverage, from: .imperial), accuracy: 0.0000001)
+            try XCTUnwrap(metric.chartData.period(for: .all)?.summary.price?.average),
+            UnitSystem.metric.priceValue(
+                try XCTUnwrap(imperial.chartData.period(for: .all)?.summary.price?.average), from: .imperial),
+            accuracy: 0.0000001)
         let source = try await fixture.source()
         for record in source.records { XCTAssertEqual(record.values, fixture.values[record.id]) }
         let first = try XCTUnwrap(source.records.first)

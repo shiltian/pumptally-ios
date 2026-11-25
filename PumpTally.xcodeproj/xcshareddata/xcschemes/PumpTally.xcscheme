@@ -28,6 +28,16 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "NO">
+      <CommandLineArguments>
+         <CommandLineArgument
+            argument = "-com.apple.CoreData.ConcurrencyDebug"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "1"
+            isEnabled = "YES">
+         </CommandLineArgument>
+      </CommandLineArguments>
       <Testables>
          <TestableReference
             skipped = "NO"
@@ -40,23 +50,42 @@
                ReferencedContainer = "container:PumpTally.xcodeproj">
             </BuildableReference>
             <SkippedTests>
-               <Test Identifier="SyncPerformanceTests"/>
-               <Test Identifier="StartupCachePerformanceTests"/>
-               <Test Identifier="CSVImportPerformanceTests"/>
-               <Test Identifier="StatisticsMutationPerformanceTests"/>
-               <Test Identifier="VehicleHistoryPerformanceTests"/>
-               <Test Identifier="SyncRecoveryReadPerformanceTests"/>
+               <Test
+                  Identifier = "CSVImportPerformanceTests">
+               </Test>
+               <Test
+                  Identifier = "StartupCachePerformanceTests">
+               </Test>
+               <Test
+                  Identifier = "StatisticsMutationPerformanceTests">
+               </Test>
+               <Test
+                  Identifier = "SyncPerformanceTests">
+               </Test>
+               <Test
+                  Identifier = "SyncRecoveryReadPerformanceTests">
+               </Test>
+               <Test
+                  Identifier = "VehicleHistoryPerformanceTests">
+               </Test>
             </SkippedTests>
          </TestableReference>
-         <TestableReference skipped="NO" parallelizable="NO">
-            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="UI0000000000000000000005" BuildableName="PumpTallyUITests.xctest" BlueprintName="PumpTallyUITests" ReferencedContainer="container:PumpTally.xcodeproj"/>
-            <SkippedTests><Test Identifier="InPlaceUpgradeUITests"/></SkippedTests>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "UI0000000000000000000005"
+               BuildableName = "PumpTallyUITests.xctest"
+               BlueprintName = "PumpTallyUITests"
+               ReferencedContainer = "container:PumpTally.xcodeproj">
+            </BuildableReference>
+            <SkippedTests>
+               <Test
+                  Identifier = "InPlaceUpgradeUITests">
+               </Test>
+            </SkippedTests>
          </TestableReference>
       </Testables>
-      <CommandLineArguments>
-         <CommandLineArgument argument="-com.apple.CoreData.ConcurrencyDebug" isEnabled="YES"/>
-         <CommandLineArgument argument="1" isEnabled="YES"/>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Release"
@@ -95,15 +124,6 @@
             ReferencedContainer = "container:PumpTally.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A10000FF296A0001"
-            BuildableName = "PumpTally.app"
-            BlueprintName = "PumpTally"
-            ReferencedContainer = "container:PumpTally.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

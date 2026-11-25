@@ -1,32 +1,26 @@
 import Foundation
 
-// MARK: - Pre-computed Chart Data (for performance)
+enum ChartMetric {
+    case efficiency
+    case cost
+    case pricePerFuelUnit
+}
 
-/// Value-only snapshot of the fields chart preparation needs. SwiftData models
-/// stay on their model executor; only immutable values enter chart preparation.
+enum ChartRange: CaseIterable {
+    case threeMonths
+    case year
+    case all
+}
+
+/// A chart-only snapshot. Managed records and their caches remain on the store executor.
 struct ChartRecordSnapshot: Equatable, Sendable {
     let id: UUID
     let date: Date
     let odometer: Double
     let cachedEfficiency: Double?
+    let fuelAmount: Double
     let totalCost: Double
     let pricePerFuelUnit: Double
-
-    init(
-        id: UUID,
-        date: Date,
-        odometer: Double,
-        cachedEfficiency: Double?,
-        totalCost: Double,
-        pricePerFuelUnit: Double
-    ) {
-        self.id = id
-        self.date = date
-        self.odometer = odometer
-        self.cachedEfficiency = cachedEfficiency
-        self.totalCost = totalCost
-        self.pricePerFuelUnit = pricePerFuelUnit
-    }
 }
 
 /// The complete, immutable dependency of cached chart preparation.
@@ -35,222 +29,283 @@ struct ChartInput: Equatable, Sendable {
     let unitSystem: UnitSystem
     let rawAverageEfficiency: Double
     var metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
+    var calendar: Calendar = .current
+}
 
-    init(
-        records: [ChartRecordSnapshot], unitSystem: UnitSystem, rawAverageEfficiency: Double,
-        metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
-    ) {
-        self.records = records
-        self.unitSystem = unitSystem
-        self.rawAverageEfficiency = rawAverageEfficiency
-        self.metricEfficiencyFormat = metricEfficiencyFormat
+struct ChartFillUp: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let date: Date
+    let efficiency: Double?
+    let cost: Double
+    let price: Double
+    fileprivate let rawEfficiency: Double?
+    fileprivate let fuelAmount: Double
+
+    fileprivate init(_ record: ChartRecordSnapshot, input: ChartInput) {
+        id = record.id
+        date = record.date
+        cost = record.totalCost
+        price = record.pricePerFuelUnit
+        fuelAmount = record.fuelAmount
+        let raw = record.cachedEfficiency.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        rawEfficiency = raw
+        efficiency = raw.map {
+            input.unitSystem.efficiencyDisplayValue(from: $0, metricFormat: input.metricEfficiencyFormat)
+        }
+    }
+
+    func value(for metric: ChartMetric) -> Double? {
+        let value: Double?
+        switch metric {
+        case .efficiency: value = efficiency
+        case .cost: value = cost
+        case .pricePerFuelUnit: value = price
+        }
+        return value.flatMap { $0.isFinite ? $0 : nil }
     }
 }
 
-/// Pre-computed data point for charts
-struct ChartDataPoint: Identifiable, Equatable, Sendable {
-    let id: UUID
+struct ChartMetricSummary: Equatable, Sendable {
+    let count: Int
+    let average: Double
+    let minimum: Double
+    let maximum: Double
+}
+
+struct ChartSummary: Sendable {
+    let efficiency: ChartMetricSummary?
+    let cost: ChartMetricSummary?
+    let price: ChartMetricSummary?
+
+    subscript(metric: ChartMetric) -> ChartMetricSummary? {
+        switch metric {
+        case .efficiency: efficiency
+        case .cost: cost
+        case .pricePerFuelUnit: price
+        }
+    }
+}
+
+struct ChartMonth: Identifiable, Sendable {
+    let interval: DateInterval
+    let summary: ChartSummary
+    let priceSeriesStart: Date
+    let efficiencySeriesStart: Date
+
+    var id: Date { interval.start }
+    var midpoint: Date { interval.start.addingTimeInterval(interval.duration / 2) }
+
+    func seriesStart(for metric: ChartMetric) -> Date {
+        metric == .efficiency ? efficiencySeriesStart : priceSeriesStart
+    }
+}
+
+struct ChartPeriod: Sendable {
+    let dates: ClosedRange<Date>
+    let fillUps: ArraySlice<ChartFillUp>
+    let summary: ChartSummary
+}
+
+struct ChartPoint: Equatable, Sendable {
     let date: Date
     let value: Double
 }
 
-/// Pre-computed chart data to avoid recalculation on every render
+extension Array where Element == ChartPoint {
+    /// Search an ascending series, preferring the earlier point on a tie.
+    func nearest(to date: Date) -> ChartPoint? {
+        var lower = 0
+        var upper = count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if self[middle].date < date {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        if lower == 0 { return first }
+        if lower == count { return last }
+        let before = self[lower - 1]
+        let after = self[lower]
+        return date.timeIntervalSince(before.date) <= after.date.timeIntervalSince(date) ? before : after
+    }
+}
+
+/// Calendar grouping, unit conversion and range statistics run once per chart input.
 struct PrecomputedChartData: Sendable {
-    let efficiencyData: [ChartDataPoint]
-    let efficiencyAverage: Double
-    let efficiencyYRange: ClosedRange<Double>
-
-    let costData: [ChartDataPoint]
-    let costAverage: Double
-    let costYRange: ClosedRange<Double>
-
-    let priceData: [ChartDataPoint]
-    let priceAverage: Double
-    let priceYRange: ClosedRange<Double>
-
-    let showPoints: Bool  // Only show points if data count is reasonable
+    let id = UUID()
+    let fillUps: [ChartFillUp]
+    let months: [ChartMonth]
     let unitSystem: UnitSystem
     let metricEfficiencyFormat: MetricEfficiencyFormat
+    let calendar: Calendar
+
+    private let all: ChartPeriod?
+    private let year: ChartPeriod?
+    private let threeMonths: ChartPeriod?
 
     init(input: ChartInput) {
-        self.init(
-            records: input.records, unitSystem: input.unitSystem,
-            rawAverageEfficiency: input.rawAverageEfficiency,
-            metricEfficiencyFormat: input.metricEfficiencyFormat)
+        let ordered = ChartInput(
+            records: input.records.sorted {
+                OdometerChronologyValidator.areInIncreasingOrder(
+                    lhsDate: $0.date, lhsOdometer: $0.odometer, lhsID: $0.id,
+                    rhsDate: $1.date, rhsOdometer: $1.odometer, rhsID: $1.id)
+            }, unitSystem: input.unitSystem, rawAverageEfficiency: input.rawAverageEfficiency,
+            metricEfficiencyFormat: input.metricEfficiencyFormat, calendar: input.calendar)
+        self.init(chronologicalInput: ordered)
     }
 
     init(chronologicalInput input: ChartInput) {
-        self.init(
-            chronologicalRecords: input.records, unitSystem: input.unitSystem,
-            rawAverageEfficiency: input.rawAverageEfficiency,
-            metricEfficiencyFormat: input.metricEfficiencyFormat)
-    }
-
-    /// Maximum number of individual point markers to display for performance.
-    static let maxPointMarkers = 100
-    /// Cap every rendered series to bound Swift Charts layout and drawing work.
-    static let maxTrendPoints = 200
-
-    init(
-        records: [ChartRecordSnapshot],
-        unitSystem: UnitSystem,
-        rawAverageEfficiency: Double,
-        metricEfficiencyFormat: MetricEfficiencyFormat = .defaultFormat
-    ) {
-        let sorted = records.sorted {
-            OdometerChronologyValidator.areInIncreasingOrder(
-                lhsDate: $0.date,
-                lhsOdometer: $0.odometer,
-                lhsID: $0.id,
-                rhsDate: $1.date,
-                rhsOdometer: $1.odometer,
-                rhsID: $1.id
-            )
-        }
-        self.init(
-            chronologicalRecords: sorted, unitSystem: unitSystem,
-            rawAverageEfficiency: rawAverageEfficiency, metricEfficiencyFormat: metricEfficiencyFormat)
-    }
-
-    private init(
-        chronologicalRecords records: [ChartRecordSnapshot], unitSystem: UnitSystem,
-        rawAverageEfficiency: Double, metricEfficiencyFormat: MetricEfficiencyFormat
-    ) {
-        self.unitSystem = unitSystem
-        self.metricEfficiencyFormat = metricEfficiencyFormat
-        self.showPoints = records.count <= Self.maxPointMarkers
-
-        // Downsample after gathering summaries over the complete series.
-        var allEfficiencyData: [ChartDataPoint] = []
-        var allCostData: [ChartDataPoint] = []
-        var allPriceData: [ChartDataPoint] = []
-        allEfficiencyData.reserveCapacity(records.count)
-        allCostData.reserveCapacity(records.count)
-        allPriceData.reserveCapacity(records.count)
-
-        var efficiencyMinimum: Double?
-        var efficiencyMaximum: Double?
-        var costTotal = 0.0
-        var costMinimum: Double?
-        var costMaximum: Double?
-        var priceTotal = 0.0
-        var priceMinimum: Double?
-        var priceMaximum: Double?
-
-        for record in records {
-            let cost = record.totalCost
-            allCostData.append(ChartDataPoint(id: record.id, date: record.date, value: cost))
-            costTotal += cost
-            costMinimum = min(costMinimum ?? cost, cost)
-            costMaximum = max(costMaximum ?? cost, cost)
-
-            let price = record.pricePerFuelUnit
-            allPriceData.append(ChartDataPoint(id: record.id, date: record.date, value: price))
-            priceTotal += price
-            priceMinimum = min(priceMinimum ?? price, price)
-            priceMaximum = max(priceMaximum ?? price, price)
-
-            if let rawEfficiency = record.cachedEfficiency, rawEfficiency > 0 {
-                let displayEfficiency = unitSystem.efficiencyDisplayValue(
-                    from: rawEfficiency,
-                    metricFormat: metricEfficiencyFormat
-                )
-                allEfficiencyData.append(
-                    ChartDataPoint(
-                        id: record.id,
-                        date: record.date,
-                        value: displayEfficiency
-                    ))
-                efficiencyMinimum = min(efficiencyMinimum ?? displayEfficiency, displayEfficiency)
-                efficiencyMaximum = max(efficiencyMaximum ?? displayEfficiency, displayEfficiency)
-            }
-        }
-
-        efficiencyData = Self.averagedDataPoints(
-            allEfficiencyData,
-            targetCount: Self.maxTrendPoints
-        )
-        costData = Self.averagedDataPoints(allCostData, targetCount: Self.maxTrendPoints)
-        priceData = Self.averagedDataPoints(allPriceData, targetCount: Self.maxTrendPoints)
-
-        if allEfficiencyData.isEmpty {
-            efficiencyAverage = 0
+        unitSystem = input.unitSystem
+        metricEfficiencyFormat = input.metricEfficiencyFormat
+        calendar = input.calendar
+        let fillUps = input.records.map { ChartFillUp($0, input: input) }
+        self.fillUps = fillUps
+        months = Self.months(from: fillUps, input: input)
+        if let first = fillUps.first, let last = fillUps.last {
+            let start = months.first?.interval.start ?? first.date
+            let end = months.last?.interval.end ?? last.date
+            all = ChartPeriod(
+                dates: start...end, fillUps: fillUps[...],
+                summary: Self.summary(fillUps[...], input: input, lifetimeAverage: input.rawAverageEfficiency))
+            year = Self.period(
+                fillUps, starting: input.calendar.date(byAdding: .year, value: -1, to: last.date), input: input)
+            threeMonths = Self.period(
+                fillUps, starting: input.calendar.date(byAdding: .month, value: -3, to: last.date), input: input)
         } else {
-            efficiencyAverage = unitSystem.efficiencyDisplayValue(
-                from: rawAverageEfficiency,
-                metricFormat: metricEfficiencyFormat
-            )
+            all = nil
+            year = nil
+            threeMonths = nil
         }
-        costAverage = records.isEmpty ? 0 : costTotal / Double(records.count)
-        priceAverage = records.isEmpty ? 0 : priceTotal / Double(records.count)
-
-        efficiencyYRange = Self.roundedRange(
-            minimum: efficiencyMinimum,
-            maximum: efficiencyMaximum,
-            step: 5,
-            fallback: 0...40
-        )
-        costYRange = Self.roundedRange(
-            minimum: costMinimum,
-            maximum: costMaximum,
-            step: 10,
-            fallback: 0...100
-        )
-        priceYRange = Self.roundedRange(
-            minimum: priceMinimum,
-            maximum: priceMaximum,
-            step: 0.5,
-            fallback: 0...5
-        )
     }
 
-    /// Average a date-ordered series into stable buckets. The midpoint record's
-    /// ID and date keep SwiftUI identity deterministic between preparations.
-    private static func averagedDataPoints(
-        _ data: [ChartDataPoint],
-        targetCount: Int
-    ) -> [ChartDataPoint] {
-        guard data.count > targetCount else { return data }
+    func period(for range: ChartRange) -> ChartPeriod? {
+        switch range {
+        case .all: all
+        case .year: year
+        case .threeMonths: threeMonths
+        }
+    }
 
-        var dataPoints: [ChartDataPoint] = []
-        dataPoints.reserveCapacity(targetCount)
-
-        let bucketSize = Double(data.count) / Double(targetCount)
-
-        for index in 0..<targetCount {
-            let startIndex = Int(Double(index) * bucketSize)
-            let endIndex = min(Int(Double(index + 1) * bucketSize), data.count)
-
-            guard startIndex < endIndex else { continue }
-
-            var total = 0.0
-            for dataIndex in startIndex..<endIndex {
-                total += data[dataIndex].value
+    func points(for metric: ChartMetric, in range: ChartRange) -> [ChartPoint] {
+        if range == .all {
+            return months.compactMap { month in
+                month.summary[metric].map { ChartPoint(date: month.midpoint, value: $0.average) }
             }
-
-            let middleIndex = startIndex + (endIndex - startIndex) / 2
-            let representative = data[middleIndex]
-
-            dataPoints.append(
-                ChartDataPoint(
-                    id: representative.id,
-                    date: representative.date,
-                    value: total / Double(endIndex - startIndex)
-                ))
         }
-
-        return dataPoints
+        guard let fillUps = period(for: range)?.fillUps else { return [] }
+        var points: [ChartPoint] = []
+        points.reserveCapacity(fillUps.count)
+        for fillUp in fillUps {
+            if let value = fillUp.value(for: metric), points.last?.date != fillUp.date {
+                points.append(ChartPoint(date: fillUp.date, value: value))
+            }
+        }
+        return points
     }
 
-    private static func roundedRange(
-        minimum: Double?,
-        maximum: Double?,
-        step: Double,
-        fallback: ClosedRange<Double>
-    ) -> ClosedRange<Double> {
-        guard let minimum, let maximum else { return fallback }
-        let lowerBound = floor(minimum / step) * step
-        let upperBound = ceil(maximum / step) * step
-        return lowerBound...max(upperBound, lowerBound + step)
+    func yRange(for metric: ChartMetric, in range: ChartRange) -> ClosedRange<Double>? {
+        guard let summary = period(for: range)?.summary[metric] else { return nil }
+        let lower: Double
+        let upper: Double
+        let step: Double
+        switch metric {
+        case .efficiency:
+            (lower, upper, step) = (min(summary.minimum, summary.average), max(summary.maximum, summary.average), 5)
+        case .cost:
+            let monthlyCosts = months.lazy.compactMap { $0.summary.cost?.average }
+            lower = min(0, range == .all ? monthlyCosts.min() ?? 0 : summary.minimum)
+            upper = range == .all ? monthlyCosts.max() ?? 0 : summary.maximum
+            step = 10
+        case .pricePerFuelUnit:
+            (lower, upper, step) = (summary.minimum, summary.maximum, 0.5)
+        }
+        let roundedLower = floor(lower / step) * step
+        return roundedLower...max(roundedLower + step, ceil(upper / step) * step)
+    }
+
+    private static func period(_ fillUps: [ChartFillUp], starting start: Date?, input: ChartInput) -> ChartPeriod? {
+        guard let start, let last = fillUps.last,
+            let firstIndex = fillUps.firstIndex(where: { $0.date >= start })
+        else { return nil }
+        let visible = fillUps[firstIndex...]
+        return ChartPeriod(dates: start...last.date, fillUps: visible, summary: summary(visible, input: input))
+    }
+
+    private static func months(from fillUps: [ChartFillUp], input: ChartInput) -> [ChartMonth] {
+        var months: [ChartMonth] = []
+        var start = fillUps.startIndex
+        while start < fillUps.endIndex {
+            guard let interval = input.calendar.dateInterval(of: .month, for: fillUps[start].date) else {
+                start += 1
+                continue
+            }
+            var end = start + 1
+            while end < fillUps.endIndex, fillUps[end].date < interval.end { end += 1 }
+
+            let records = fillUps[start..<end]
+            let summary = summary(records, input: input)
+            let previous = months.last
+            let consecutive = previous?.interval.end == interval.start
+            months.append(
+                ChartMonth(
+                    interval: interval, summary: summary,
+                    priceSeriesStart: consecutive ? previous?.priceSeriesStart ?? interval.start : interval.start,
+                    efficiencySeriesStart: consecutive && previous?.summary.efficiency != nil
+                        ? previous?.efficiencySeriesStart ?? interval.start : interval.start))
+            start = end
+        }
+        return months
+    }
+
+    private static func summary(
+        _ fillUps: ArraySlice<ChartFillUp>, input: ChartInput, lifetimeAverage: Double? = nil
+    ) -> ChartSummary {
+        var price = Totals()
+        var cost = Totals()
+        var efficiency = Totals()
+        var weightedEfficiency = 0.0
+        var eligibleFuel = 0.0
+        for fillUp in fillUps {
+            price.add(fillUp.price)
+            cost.add(fillUp.cost)
+            if let value = fillUp.efficiency, let raw = fillUp.rawEfficiency {
+                efficiency.add(value)
+                if fillUp.fuelAmount.isFinite && fillUp.fuelAmount > 0 {
+                    weightedEfficiency += raw * fillUp.fuelAmount
+                    eligibleFuel += fillUp.fuelAmount
+                }
+            }
+        }
+        // Weight the distance-per-fuel ratio before converting to L/100km.
+        // Each eligible interval belongs to the month in which it ended.
+        let raw = lifetimeAverage ?? (eligibleFuel > 0 ? weightedEfficiency / eligibleFuel : 0)
+        let average =
+            raw.isFinite && raw > 0
+            ? input.unitSystem.efficiencyDisplayValue(from: raw, metricFormat: input.metricEfficiencyFormat) : nil
+        return ChartSummary(
+            efficiency: efficiency.summary(average: average), cost: cost.summary(), price: price.summary())
+    }
+
+    private struct Totals {
+        private var count = 0
+        private var sum = 0.0
+        private var minimum = Double.infinity
+        private var maximum = -Double.infinity
+
+        mutating func add(_ value: Double) {
+            guard value.isFinite else { return }
+            count += 1
+            sum += value
+            minimum = min(minimum, value)
+            maximum = max(maximum, value)
+        }
+
+        func summary(average: Double? = nil) -> ChartMetricSummary? {
+            guard count > 0 else { return nil }
+            return ChartMetricSummary(
+                count: count, average: average ?? sum / Double(count), minimum: minimum, maximum: maximum)
+        }
     }
 }

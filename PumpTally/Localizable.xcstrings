@@ -45,6 +45,16 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -279,6 +289,70 @@
     "© 2026 Shilei Tian" : {
       "shouldTranslate" : false
     },
+    "1 Year" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 año"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1年"
+          }
+        }
+      }
+    },
+    "1Y" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 año"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1年"
+          }
+        }
+      }
+    },
+    "3 Months" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 meses"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3个月"
+          }
+        }
+      }
+    },
+    "3M" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 meses"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3个月"
+          }
+        }
+      }
+    },
     "Actions" : {
       "localizations" : {
         "es" : {
@@ -359,6 +433,38 @@
         }
       }
     },
+    "All Time" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todo el historial"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部时间"
+          }
+        }
+      }
+    },
+    "All" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        }
+      }
+    },
     "All data has been successfully deleted." : {
       "localizations" : {
         "es" : {
@@ -419,58 +525,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "旧版本应用更改了此车辆的计量单位。请确认这些单位，以转换此设备上的副本，同时保持实际里程和燃油量不变。之后可单独检查收到的加油记录。"
-          }
-        }
-      }
-    },
-    "You have %lld saved deletion request(s). Confirm whether these should remove data from iCloud." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "You have %lld saved deletion request. Confirm whether it should remove data from iCloud."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "You have %lld saved deletion requests. Confirm whether these should remove data from iCloud."
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Tienes %lld solicitud de eliminación guardada. Confirma si quieres eliminar los datos correspondientes de iCloud."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Tienes %lld solicitudes de eliminación guardadas. Confirma si quieres eliminar los datos correspondientes de iCloud."
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "你有 %lld 条删除请求待确认。请选择是否要删除 iCloud 中的相应数据。"
-                }
-              }
-            }
           }
         }
       }
@@ -619,6 +673,22 @@
         }
       }
     },
+    "Average Cost per Fill-up" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Costo promedio por repostaje"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平均单次加油费用"
+          }
+        }
+      }
+    },
     "Avg %@" : {
       "localizations" : {
         "es" : {
@@ -700,6 +770,7 @@
       }
     },
     "Avg: %@ %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -781,6 +852,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用其他账户启用同步前，请先检查上一个 iCloud 账户的更改。"
+          }
+        }
+      }
+    },
+    "Chart Range" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Período del gráfico"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图表时间范围"
           }
         }
       }
@@ -1890,6 +1977,9 @@
         }
       }
     },
+    "High" : {
+
+    },
     "Highest Cost" : {
       "localizations" : {
         "es" : {
@@ -1902,6 +1992,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "费用最高"
+          }
+        }
+      }
+    },
+    "Hold to inspect" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantén pulsado para ver el valor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "长按查看数值"
           }
         }
       }
@@ -1986,6 +2092,22 @@
         }
       }
     },
+    "iCloud data changed while choosing a sync source. Review the latest data and try again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos de iCloud cambiaron mientras elegías el origen de sincronización. Revisa los datos más recientes e inténtalo de nuevo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择同步来源期间，iCloud 数据发生了变化。请检查最新数据后重试。"
+          }
+        }
+      }
+    },
     "iCloud Data Found" : {
       "localizations" : {
         "es" : {
@@ -2046,22 +2168,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud错误"
-          }
-        }
-      }
-    },
-    "iCloud data changed while choosing a sync source. Review the latest data and try again." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los datos de iCloud cambiaron mientras elegías el origen de sincronización. Revisa los datos más recientes e inténtalo de nuevo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择同步来源期间，iCloud 数据发生了变化。请检查最新数据后重试。"
           }
         }
       }
@@ -2546,6 +2652,9 @@
         }
       }
     },
+    "Low" : {
+
+    },
     "Lowest Cost" : {
       "localizations" : {
         "es" : {
@@ -2713,6 +2822,7 @@
       }
     },
     "Min" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -2788,6 +2898,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "型号（例如，凯美瑞）"
+          }
+        }
+      }
+    },
+    "Month" : {
+
+    },
+    "Month end" : {
+
+    },
+    "Monthly average and range" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Promedio y rango mensual"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "月均值及范围"
           }
         }
       }
@@ -2868,6 +3000,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "暂无加油记录"
+          }
+        }
+      }
+    },
+    "No measurements in this range" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay mediciones en este período"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此时间范围内没有测量数据"
           }
         }
       }
@@ -3176,6 +3324,9 @@
         }
       }
     },
+    "Period" : {
+
+    },
     "Please add a vehicle first before importing records." : {
       "localizations" : {
         "es" : {
@@ -3257,6 +3408,7 @@
       }
     },
     "Price" : {
+      "extractionState" : "stale",
       "localizations" : {
         "es" : {
           "stringUnit" : {
@@ -4654,6 +4806,22 @@
         }
       }
     },
+    "Unable to load iCloud counts." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cargar los recuentos de iCloud."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载 iCloud 中的记录数。"
+          }
+        }
+      }
+    },
     "Unable to open the selected file. Please try again." : {
       "localizations" : {
         "es" : {
@@ -4782,6 +4950,22 @@
         }
       }
     },
+    "Use iCloud Data" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar Datos de iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用iCloud数据"
+          }
+        }
+      }
+    },
     "Using the iCloud copy replaces the local copy on this device. If you merge both copies, review %lld saved deletion requests before sending them to iCloud." : {
       "localizations" : {
         "en" : {
@@ -4828,37 +5012,8 @@
         }
       }
     },
-    "Unable to load iCloud counts." : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudieron cargar los recuentos de iCloud."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法加载 iCloud 中的记录数。"
-          }
-        }
-      }
-    },
-    "Use iCloud Data" : {
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usar Datos de iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用iCloud数据"
-          }
-        }
-      }
+    "Value" : {
+
     },
     "Vehicle" : {
       "localizations" : {
@@ -5068,6 +5223,58 @@
         }
       }
     },
+    "You have %lld saved deletion request(s). Confirm whether these should remove data from iCloud." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "You have %lld saved deletion request. Confirm whether it should remove data from iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "You have %lld saved deletion requests. Confirm whether these should remove data from iCloud."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Tienes %lld solicitud de eliminación guardada. Confirma si quieres eliminar los datos correspondientes de iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Tienes %lld solicitudes de eliminación guardadas. Confirma si quieres eliminar los datos correspondientes de iCloud."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "你有 %lld 条删除请求待确认。请选择是否要删除 iCloud 中的相应数据。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Your changes could not be saved. No data was changed. Please try again." : {
       "localizations" : {
         "es" : {
@@ -5163,6 +5370,9 @@
           }
         }
       }
+    },
+    "Zero" : {
+
     }
   },
   "version" : "1.0"

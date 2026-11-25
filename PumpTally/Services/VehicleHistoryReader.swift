@@ -92,8 +92,9 @@ actor VehicleHistoryRepository {
         }
     }
 
-    func refresh(revision: UInt64, saveGeneration: UInt64 = 0, format: MetricEfficiencyFormat) async throws
-        -> VehicleHistoryPresentation
+    func refresh(
+        revision: UInt64, saveGeneration: UInt64 = 0, format: MetricEfficiencyFormat, calendar: Calendar = .current
+    ) async throws -> VehicleHistoryPresentation
     {
         try Task.checkCancellation()
         if sourceRevision != revision || sourceSaveGeneration != saveGeneration {
@@ -133,7 +134,9 @@ actor VehicleHistoryRepository {
             }
             lastQuery = nil
             matchingPositions = []
-        } else if let presentation, presentation.chartData.metricEfficiencyFormat == format {
+        } else if let presentation, presentation.chartData.metricEfficiencyFormat == format,
+            presentation.chartData.calendar == calendar
+        {
             return presentation
         }
         guard let source else { throw FuelingRecordEditingError.recordUnavailable }
@@ -144,11 +147,11 @@ actor VehicleHistoryRepository {
                     odometer: record.values.odometer,
                     cachedEfficiency: record.cachedEfficiency.map {
                         source.displayUnit.efficiencyValue($0, from: record.storageUnit)
-                    }, totalCost: record.values.totalCost,
+                    }, fuelAmount: record.values.fuelAmount, totalCost: record.values.totalCost,
                     pricePerFuelUnit: source.displayUnit.priceValue(
                         record.values.pricePerFuelUnit, from: record.storageUnit))
             }, unitSystem: source.displayUnit, rawAverageEfficiency: source.averageEfficiency,
-            metricEfficiencyFormat: format)
+            metricEfficiencyFormat: format, calendar: calendar)
         let chartData: PrecomputedChartData
         if let presentation, input == chartInput {
             chartData = presentation.chartData
@@ -217,7 +220,9 @@ final class VehicleHistoryModel: ObservableObject {
                 saveGeneration.withLock({ $0 }) == generation
             else { return }
             presentationGeneration = generation
-            if presentation?.version != result.version || presentation?.chartData.metricEfficiencyFormat != format {
+            if presentation?.version != result.version || presentation?.chartData.metricEfficiencyFormat != format
+                || presentation?.chartData.calendar != result.chartData.calendar
+            {
                 presentation = result
             }
             if failed { failed = false }

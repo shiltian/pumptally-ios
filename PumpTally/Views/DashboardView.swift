@@ -109,7 +109,6 @@ struct DashboardView: View {
                             .padding(.horizontal)
 
                         ChartView(data: data.chartData)
-                            .frame(height: 250)
                             .padding(.horizontal)
                     }
                 }

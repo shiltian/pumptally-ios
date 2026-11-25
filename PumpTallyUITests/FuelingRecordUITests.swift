@@ -169,6 +169,60 @@ final class FuelingRecordUITests: XCTestCase {
         add(screenshot)
     }
 
+    func testTrendsInspectMonthlyAndIndividualFillUpsWithALongPress() {
+        let app = launch(arguments: ["--ui-testing-chart-history", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"])
+        let range = app.buttons["trends.range"]
+        let plot = app.descendants(matching: .any).matching(identifier: "trends.plot").firstMatch
+        let selection = app.staticTexts["trends.selection"]
+        XCTAssertTrue(range.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !app.staticTexts["Hold to inspect"].isHittable { app.swipeUp() }
+        XCTAssertEqual(range.value as? String, "All Time")
+        XCTAssertTrue(app.staticTexts["Monthly average and range"].exists)
+        XCTAssertFalse(app.buttons["trends.browseMonths"].exists)
+        XCTAssertTrue(plot.isHittable)
+
+        let older = plot.coordinate(withNormalizedOffset: CGVector(dx: 0.32, dy: 0.48))
+        let newer = plot.coordinate(withNormalizedOffset: CGVector(dx: 0.83, dy: 0.48))
+        older.tap()
+        XCTAssertFalse(app.buttons["Done"].exists)
+        XCTAssertFalse(selection.exists)
+
+        older.press(forDuration: 0.55)
+        XCTAssertTrue(selection.waitForExistence(timeout: 5))
+        let initial = selection.label
+        XCTAssertTrue(initial.contains("2021"), initial)
+        older.press(forDuration: 0.45, thenDragTo: newer)
+        XCTAssertNotEqual(selection.label, initial)
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "800 fill-ups with an inspected month"
+        overview.lifetime = .keepAlways
+        add(overview)
+
+        let beforeScroll = plot.frame.minY
+        plot.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(
+            forDuration: 0.03, thenDragTo: plot.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+        XCTAssertGreaterThan(plot.frame.minY, beforeScroll + 10)
+        for _ in 0..<3 where !app.staticTexts["Hold to inspect"].isHittable { app.swipeUp() }
+
+        app.segmentedControls["trends.metric"].buttons["Cost"].tap()
+        XCTAssertTrue(app.staticTexts["Average Cost per Fill-up"].exists)
+        XCTAssertFalse(selection.exists)
+        range.tap()
+        app.buttons["1 Year"].tap()
+        XCTAssertEqual(range.value as? String, "1 Year")
+        XCTAssertTrue(app.staticTexts["Cost per Fill-up"].exists)
+        range.tap()
+        app.buttons["3 Months"].tap()
+        XCTAssertEqual(range.value as? String, "3 Months")
+        newer.press(forDuration: 0.55)
+        XCTAssertTrue(selection.waitForExistence(timeout: 5))
+        XCTAssertTrue(selection.label.contains("$"), selection.label)
+        let detail = XCTAttachment(screenshot: app.screenshot())
+        detail.name = "3M cost chart with an inspected fill-up"
+        detail.lifetime = .keepAlways
+        add(detail)
+    }
+
     func testHistoryLoadsAnotherPageAndKeepsItAfterEditing() {
         let app = launch(arguments: ["--ui-testing-history-pages"])
         let history = app.tabBars.buttons["History"]
