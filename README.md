@@ -1,5 +1,7 @@
 # PumpTally: Fuel & Car Log
 
+<img src="PumpTally/Assets.xcassets/AppIcon.appiconset/icon.png" alt="PumpTally app icon" width="120" height="120">
+
 A native iOS app for tracking your vehicles' fuel consumption, costs and efficiency.
 
 [![Download on the App Store](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg)](https://apps.apple.com/us/app/id6756544340)
